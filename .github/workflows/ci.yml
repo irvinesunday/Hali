@@ -53,8 +53,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
-      - run: dotnet restore
-      - run: dotnet build --no-restore --configuration Release
+      - name: Check for .NET solution
+        id: check-sln
+        run: |
+          if find . -name "*.sln" -o -name "*.csproj" 2>/dev/null | grep -q .; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No solution yet (expected before Session 01) - skipping"
+          fi
+      - name: Restore dependencies
+        if: steps.check-sln.outputs.exists == 'true'
+        run: dotnet restore
+      - name: Build
+        if: steps.check-sln.outputs.exists == 'true'
+        run: dotnet build --no-restore --configuration Release
 
   unit-tests:
     name: Unit Tests + Coverage
