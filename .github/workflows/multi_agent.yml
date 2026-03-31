@@ -10,12 +10,7 @@ on:
         type: choice
         options: ["00","01","02","03","04","05","06","07"]
 
-  # Or trigger automatically when a session branch is pushed
-  push:
-    branches:
-      - "session/**"
-
-jobs:
+  jobs:
   orchestrate:
     name: "Run Agents A + B + C for Session ${{ github.event.inputs.session || 'auto' }}"
     runs-on: ubuntu-latest
