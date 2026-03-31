@@ -2,23 +2,31 @@
 openapi: 3.1.0
 info:
   title: Hali API
-  version: 0.2.0
+  version: 0.3.0
   summary: Civic signal and official update API for the Hali MVP
 servers:
   - url: http://localhost:8080
 tags:
   - name: Auth
+  - name: Users
   - name: Localities
   - name: Signals
   - name: Clusters
   - name: Participations
+  - name: Devices
   - name: OfficialPosts
+    description: Institution-only endpoints — not part of citizen client
   - name: Admin
+    description: Admin-only endpoints — not part of citizen client
 paths:
-  /v1/auth/request-otp:
+  /v1/auth/otp:
     post:
       tags: [Auth]
-      summary: Request phone or email OTP
+      summary: Request phone OTP
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -27,15 +35,26 @@ paths:
               type: object
               required: [method, destination]
               properties:
-                method: { type: string, enum: [phone_otp, email_otp, magic_link] }
-                destination: { type: string }
+                method: { type: string, enum: [phone_otp] }
+                destination: { type: string, description: "E.164 phone number" }
       responses:
         '202':
-          description: Challenge created
-  /v1/auth/verify-otp:
+          description: OTP challenge created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challengeId: { type: string, format: uuid }
+
+  /v1/auth/verify:
     post:
       tags: [Auth]
-      summary: Verify OTP and return access tokens
+      summary: Verify OTP and return access + refresh tokens
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -49,31 +68,183 @@ paths:
                 deviceFingerprint: { type: string }
       responses:
         '200':
-          description: Verified
-  /v1/localities/followed:
-    get:
-      tags: [Localities]
-      summary: List current user's followed wards
-      responses:
-        '200': { description: OK }
+          description: Verified — returns access and refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /v1/auth/refresh:
     post:
-      tags: [Localities]
-      summary: Follow a ward
+      tags: [Auth]
+      summary: Refresh access token using a valid refresh token
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [localityId]
+              required: [refreshToken]
               properties:
-                localityId: { type: string, format: uuid }
+                refreshToken: { type: string }
       responses:
-        '201': { description: Created }
+        '200':
+          description: New access token (and rotated refresh token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh token invalid, expired, or revoked
+
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token and end session
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string, nullable: true }
+      responses:
+        '204':
+          description: Logged out
+
+  /v1/home:
+    get:
+      tags: [Signals]
+      summary: Get the home feed for followed localities
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Home feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeFeedResponse'
+
+  /v1/users/me:
+    get:
+      tags: [Users]
+      summary: Get current user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  displayName: { type: string, nullable: true }
+                  phone: { type: string, nullable: true }
+                  accountType: { type: string }
+                  createdAt: { type: string, format: date-time }
+
+  /v1/users/me/notification-settings:
+    put:
+      tags: [Users]
+      summary: Update notification preferences
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                restorationPrompts: { type: boolean }
+                clusterActivations: { type: boolean }
+                officialUpdates: { type: boolean }
+      responses:
+        '204':
+          description: Settings updated
+
+  /v1/localities/followed:
+    get:
+      tags: [Localities]
+      summary: List current user's followed localities
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  localities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        wardName: { type: string }
+                        cityName: { type: string }
+                        countyName: { type: string, nullable: true }
+    put:
+      tags: [Localities]
+      summary: Replace full set of followed localities (max 5)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [localityIds]
+              properties:
+                localityIds:
+                  type: array
+                  maxItems: 5
+                  items: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Followed set replaced
+        '422':
+          description: Unprocessable — max_followed_localities_exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /v1/signals/preview:
     post:
       tags: [Signals]
-      summary: NLP-first preview that extracts candidate structured civic signals
+      summary: NLP-first preview — extracts candidate structured civic signals
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -87,10 +258,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalPreviewResponse'
-  /v1/signals:
+
+  /v1/signals/submit:
     post:
       tags: [Signals]
       summary: Submit a civic signal event after preview confirmation
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -100,10 +278,20 @@ paths:
       responses:
         '201':
           description: Submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signalEventId: { type: string, format: uuid }
+                  clusterId: { type: string, format: uuid, nullable: true }
+
   /v1/clusters:
     get:
       tags: [Clusters]
       summary: Browse clusters for a locality
+      security:
+        - BearerAuth: []
       parameters:
         - in: query
           name: localityId
@@ -111,32 +299,44 @@ paths:
           schema: { type: string, format: uuid }
         - in: query
           name: state
-          schema: { type: string, enum: [active, possible_restoration, unconfirmed] }
+          schema:
+            type: string
+            enum: [active, possible_restoration, unconfirmed, resolved]
         - in: query
           name: category
           schema: { type: string }
       responses:
         '200': { description: OK }
-  /v1/clusters/{clusterId}:
+
+  /v1/clusters/{id}:
     get:
       tags: [Clusters]
       summary: Get cluster detail with official updates side by side
+      security:
+        - BearerAuth: []
       parameters:
         - in: path
-          name: clusterId
+          name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
         '200': { description: OK }
-  /v1/clusters/{clusterId}/participations:
+        '404': { description: Cluster not found }
+
+  /v1/clusters/{id}/participation:
     post:
       tags: [Participations]
-      summary: Add Affected, Observing, No Longer Affected, or restoration response
+      summary: Add or replace participation (Affected / Observing / No Longer Affected)
+      security:
+        - BearerAuth: []
       parameters:
         - in: path
-          name: clusterId
+          name: id
           required: true
           schema: { type: string, format: uuid }
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -145,10 +345,101 @@ paths:
               $ref: '#/components/schemas/ParticipationRequest'
       responses:
         '202': { description: Accepted }
+
+  /v1/clusters/{id}/context:
+    post:
+      tags: [Participations]
+      summary: Add further context — only available after I'm Affected
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contextText]
+              properties:
+                contextText: { type: string, maxLength: 150 }
+      responses:
+        '204': { description: Context recorded }
+        '422':
+          description: Requires affected participation or edit window expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/clusters/{id}/restoration-response:
+    post:
+      tags: [Participations]
+      summary: Submit restoration response (yes / no / unsure)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response, idempotencyKey]
+              properties:
+                response:
+                  type: string
+                  enum: [restoration_yes, restoration_no, restoration_unsure]
+                idempotencyKey: { type: string }
+      responses:
+        '202': { description: Accepted }
+
+  /v1/devices/push-token:
+    post:
+      tags: [Devices]
+      summary: Register or update Expo push token for this device
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expoPushToken, deviceFingerprint]
+              properties:
+                expoPushToken: { type: string, maxLength: 200 }
+                deviceFingerprint: { type: string }
+      responses:
+        '204': { description: Token registered }
+
   /v1/official-posts:
     post:
       tags: [OfficialPosts]
-      summary: Create geo-scoped institution post
+      summary: "[InstitutionOnly] Create geo-scoped institution post"
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -157,14 +448,37 @@ paths:
               $ref: '#/components/schemas/OfficialPostCreateRequest'
       responses:
         '201': { description: Created }
+
   /v1/admin/orphaned-signals:
     get:
       tags: [Admin]
-      summary: View unowned categories and orphaned civic clusters
+      summary: "[AdminOnly] View unowned categories and orphaned civic clusters"
+      security:
+        - BearerAuth: []
       responses:
         '200': { description: OK }
+
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
+    TokenResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: "Access token TTL in seconds" }
+
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+
     SignalPreviewRequest:
       type: object
       required: [text, sourceLanguage]
@@ -177,6 +491,7 @@ components:
             latitude: { type: number }
             longitude: { type: number }
             userEnteredPlace: { type: string }
+
     SignalCandidate:
       type: object
       properties:
@@ -187,6 +502,10 @@ components:
         locationLabel: { type: string }
         locationConfidence: { type: number, minimum: 0, maximum: 1 }
         temporalType: { type: string }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1, nullable: true }
+        locationSource: { type: string, enum: [nlp, search, pin], nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
+
     ExistingClusterCandidate:
       type: object
       properties:
@@ -194,6 +513,7 @@ components:
         summary: { type: string }
         locationLabel: { type: string }
         rawConfirmationCount: { type: integer }
+
     SignalPreviewResponse:
       type: object
       properties:
@@ -203,6 +523,7 @@ components:
         existingClusterCandidates:
           type: array
           items: { $ref: '#/components/schemas/ExistingClusterCandidate' }
+
     SignalSubmitRequest:
       type: object
       required: [candidate, deviceFingerprint, idempotencyKey]
@@ -211,15 +532,16 @@ components:
         joinClusterId: { type: string, format: uuid, nullable: true }
         deviceFingerprint: { type: string }
         idempotencyKey: { type: string }
+
     ParticipationRequest:
       type: object
       required: [type, idempotencyKey]
       properties:
         type:
           type: string
-          enum: [affected, observing, no_longer_affected, restoration_yes, restoration_no, restoration_unsure]
-        contextText: { type: string, maxLength: 150, nullable: true }
+          enum: [affected, observing, no_longer_affected]
         idempotencyKey: { type: string }
+
     OfficialPostCreateRequest:
       type: object
       required: [officialPostType, title, body, scopes]
@@ -240,3 +562,58 @@ components:
             properties:
               localityId: { type: string, format: uuid, nullable: true }
               corridorName: { type: string, nullable: true }
+
+    HomeFeedResponse:
+      type: object
+      properties:
+        activeNow:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              category: { type: string }
+              subcategorySlug: { type: string }
+              state: { type: string }
+              temporalType: { type: string }
+              title: { type: string }
+              summary: { type: string }
+              locationLabel: { type: string }
+              rawConfirmationCount: { type: integer }
+              affectedCount: { type: integer }
+              observingCount: { type: integer }
+              lastSeenAt: { type: string, format: date-time }
+        officialUpdates:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              officialPostType: { type: string }
+              category: { type: string, nullable: true }
+              title: { type: string }
+              body: { type: string }
+              startsAt: { type: string, format: date-time, nullable: true }
+              endsAt: { type: string, format: date-time, nullable: true }
+        recurringAtThisTime:
+          type: array
+          items: { $ref: '#/components/schemas/HomeFeedClusterItem' }
+        otherActiveSignals:
+          type: array
+          items: { $ref: '#/components/schemas/HomeFeedClusterItem' }
+        followedLocalityIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    HomeFeedClusterItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string }
+        state: { type: string }
+        temporalType: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        locationLabel: { type: string }
+        rawConfirmationCount: { type: integer }
+        lastSeenAt: { type: string, format: date-time }
