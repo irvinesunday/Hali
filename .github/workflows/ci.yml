@@ -211,7 +211,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - name: Setup Node for Dredd
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with: { node-version: "22" }
       - run: npm install -g dredd
       - run: dotnet restore
