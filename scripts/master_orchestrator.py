@@ -363,9 +363,13 @@ def get_latest_ci_run(branch: str) -> Optional[dict]:
     try:
         r = requests.get(f"{GH_API}/repos/{GITHUB_REPO}/actions/runs",
                          headers=GH_HEADERS,
-                         params={"branch": branch, "per_page": 1, "event": "push"},
+                         params={"branch": branch, "per_page": 5, "event": "push"},
                          timeout=15)
         runs = r.json().get("workflow_runs", [])
+        # Only watch the main CI workflow, ignore multi_agent and others
+        for run in runs:
+            if "Hali CI" in run.get("name", "") or run.get("path", "").endswith("ci.yml"):
+                return run
         return runs[0] if runs else None
     except Exception as e:
         log(f"CI poll error: {e}", "WARN")
