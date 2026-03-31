@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hali.Api/Hali.Api.csproj" />
+    <Project Path="src/Hali.Application/Hali.Application.csproj" />
+    <Project Path="src/Hali.Contracts/Hali.Contracts.csproj" />
+    <Project Path="src/Hali.Domain/Hali.Domain.csproj" />
+    <Project Path="src/Hali.Infrastructure/Hali.Infrastructure.csproj" />
+    <Project Path="src/Hali.Workers/Hali.Workers.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hali.Tests.Integration/Hali.Tests.Integration.csproj" />
+    <Project Path="tests/Hali.Tests.Unit/Hali.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
