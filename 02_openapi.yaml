@@ -1,0 +1,242 @@
+
+openapi: 3.1.0
+info:
+  title: Hali API
+  version: 0.2.0
+  summary: Civic signal and official update API for the Hali MVP
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: Auth
+  - name: Localities
+  - name: Signals
+  - name: Clusters
+  - name: Participations
+  - name: OfficialPosts
+  - name: Admin
+paths:
+  /v1/auth/request-otp:
+    post:
+      tags: [Auth]
+      summary: Request phone or email OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, destination]
+              properties:
+                method: { type: string, enum: [phone_otp, email_otp, magic_link] }
+                destination: { type: string }
+      responses:
+        '202':
+          description: Challenge created
+  /v1/auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and return access tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, otpCode, deviceFingerprint]
+              properties:
+                challengeId: { type: string, format: uuid }
+                otpCode: { type: string }
+                deviceFingerprint: { type: string }
+      responses:
+        '200':
+          description: Verified
+  /v1/localities/followed:
+    get:
+      tags: [Localities]
+      summary: List current user's followed wards
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Localities]
+      summary: Follow a ward
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [localityId]
+              properties:
+                localityId: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+  /v1/signals/preview:
+    post:
+      tags: [Signals]
+      summary: NLP-first preview that extracts candidate structured civic signals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalPreviewRequest'
+      responses:
+        '200':
+          description: Preview result with candidate clusters to join
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalPreviewResponse'
+  /v1/signals:
+    post:
+      tags: [Signals]
+      summary: Submit a civic signal event after preview confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalSubmitRequest'
+      responses:
+        '201':
+          description: Submitted
+  /v1/clusters:
+    get:
+      tags: [Clusters]
+      summary: Browse clusters for a locality
+      parameters:
+        - in: query
+          name: localityId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: state
+          schema: { type: string, enum: [active, possible_restoration, unconfirmed] }
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /v1/clusters/{clusterId}:
+    get:
+      tags: [Clusters]
+      summary: Get cluster detail with official updates side by side
+      parameters:
+        - in: path
+          name: clusterId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+  /v1/clusters/{clusterId}/participations:
+    post:
+      tags: [Participations]
+      summary: Add Affected, Observing, No Longer Affected, or restoration response
+      parameters:
+        - in: path
+          name: clusterId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipationRequest'
+      responses:
+        '202': { description: Accepted }
+  /v1/official-posts:
+    post:
+      tags: [OfficialPosts]
+      summary: Create geo-scoped institution post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfficialPostCreateRequest'
+      responses:
+        '201': { description: Created }
+  /v1/admin/orphaned-signals:
+    get:
+      tags: [Admin]
+      summary: View unowned categories and orphaned civic clusters
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    SignalPreviewRequest:
+      type: object
+      required: [text, sourceLanguage]
+      properties:
+        text: { type: string, maxLength: 500 }
+        sourceLanguage: { type: string, example: en }
+        location:
+          type: object
+          properties:
+            latitude: { type: number }
+            longitude: { type: number }
+            userEnteredPlace: { type: string }
+    SignalCandidate:
+      type: object
+      properties:
+        category: { type: string }
+        subcategorySlug: { type: string }
+        conditionSlug: { type: string, nullable: true }
+        neutralSummary: { type: string }
+        locationLabel: { type: string }
+        locationConfidence: { type: number, minimum: 0, maximum: 1 }
+        temporalType: { type: string }
+    ExistingClusterCandidate:
+      type: object
+      properties:
+        clusterId: { type: string, format: uuid }
+        summary: { type: string }
+        locationLabel: { type: string }
+        rawConfirmationCount: { type: integer }
+    SignalPreviewResponse:
+      type: object
+      properties:
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/SignalCandidate' }
+        existingClusterCandidates:
+          type: array
+          items: { $ref: '#/components/schemas/ExistingClusterCandidate' }
+    SignalSubmitRequest:
+      type: object
+      required: [candidate, deviceFingerprint, idempotencyKey]
+      properties:
+        candidate: { $ref: '#/components/schemas/SignalCandidate' }
+        joinClusterId: { type: string, format: uuid, nullable: true }
+        deviceFingerprint: { type: string }
+        idempotencyKey: { type: string }
+    ParticipationRequest:
+      type: object
+      required: [type, idempotencyKey]
+      properties:
+        type:
+          type: string
+          enum: [affected, observing, no_longer_affected, restoration_yes, restoration_no, restoration_unsure]
+        contextText: { type: string, maxLength: 150, nullable: true }
+        idempotencyKey: { type: string }
+    OfficialPostCreateRequest:
+      type: object
+      required: [officialPostType, title, body, scopes]
+      properties:
+        officialPostType:
+          type: string
+          enum: [live_update, scheduled_disruption, advisory_public_notice]
+        category: { type: string, nullable: true }
+        title: { type: string, maxLength: 220 }
+        body: { type: string, maxLength: 5000 }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        relatedClusterId: { type: string, format: uuid, nullable: true }
+        scopes:
+          type: array
+          items:
+            type: object
+            properties:
+              localityId: { type: string, format: uuid, nullable: true }
+              corridorName: { type: string, nullable: true }

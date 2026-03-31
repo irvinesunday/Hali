@@ -1,0 +1,363 @@
+name: Hali CI
+
+on:
+  push:
+    branches: [main, develop, "session/**", "feature/**"]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  POSTGRES_DB: hali_test
+  POSTGRES_USER: hali
+  POSTGRES_PASSWORD: hali_test_password
+  COVERAGE_THRESHOLD: 95
+
+jobs:
+
+  # ─── Job 0a: Secret scanning — runs first, blocks everything on leak ────────
+  secrets-scan:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        # Fail on any detected secret. gitleaks-action exits non-zero automatically.
+
+  # ─── Job 0b: OpenAPI spec linting ───────────────────────────────────────────
+  openapi-lint:
+    name: OpenAPI Lint (Spectral)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Spectral
+        run: npm install -g @stoplight/spectral-cli
+      - name: Lint OpenAPI spec
+        run: spectral lint 02_openapi.yaml --ruleset .spectral.yaml 2>&1 | tee spectral-output.txt
+        # Non-zero exit fails the job
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: spectral-lint-report, path: spectral-output.txt }
+
+  # ─── Job 1: Build (depends on both pre-checks) ─────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [secrets-scan, openapi-lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+
+  unit-tests:
+    name: Unit Tests + Coverage
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: dotnet restore
+      - name: Run unit tests with coverage
+        run: |
+          dotnet test tests/Hali.UnitTests/ \
+            --no-restore --configuration Release \
+            --logger "trx;LogFileName=unit-results.trx" \
+            --results-directory ./test-results/unit \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
+               DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[Hali.*]*" \
+               DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*Tests*]*,[*Migrations*]*"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: unit-test-results, path: ./test-results/unit/unit-results.trx }
+      - uses: actions/upload-artifact@v4
+        with: { name: unit-coverage, path: ./**/coverage.cobertura.xml }
+
+  civis-tests:
+    name: CIVIS Unit Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: dotnet restore
+      - name: Run CIVIS tests
+        run: |
+          dotnet test tests/Hali.UnitTests/ \
+            --no-restore --configuration Release \
+            --filter "Category=CIVIS" \
+            --logger "trx;LogFileName=civis-results.trx" \
+            --results-directory ./test-results/civis
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: civis-test-results, path: ./test-results/civis/civis-results.trx }
+
+  integration-tests:
+    name: Integration Tests + Coverage
+    runs-on: ubuntu-latest
+    needs: [unit-tests, civis-tests]
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      REDIS_URL: "localhost:6379"
+      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
+      JWT_EXPIRY_MINUTES: "60"
+      REFRESH_TOKEN_EXPIRY_DAYS: "30"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+      GEOCODING_PROVIDER: "nominatim"
+      NOMINATIM_BASE_URL: "https://nominatim.openstreetmap.org"
+      GEOCODING_USER_AGENT: "HaliCI/1.0 ci@hali.app"
+      PUSH_PROVIDER: "expo"
+      EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
+      AFRICASTALKING_API_KEY: ${{ secrets.AFRICASTALKING_API_KEY }}
+      AFRICASTALKING_USERNAME: "sandbox"
+      H3_RESOLUTION: "9"
+      CIVIS_MIN_UNIQUE_DEVICES: "2"
+      CIVIS_JOIN_THRESHOLD: "0.65"
+      CIVIS_RESTORATION_RATIO: "0.60"
+      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
+      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
+      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+      CIVIS_ROADS_BASE_FLOOR: "2"
+      CIVIS_ROADS_HALF_LIFE_HOURS: "18"
+      CIVIS_ROADS_MACF_MIN: "2"
+      CIVIS_ROADS_MACF_MAX: "6"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: dotnet restore
+      - name: Apply migrations
+        run: |
+          dotnet ef database update \
+            --project src/Hali.Infrastructure \
+            --startup-project src/Hali.Api \
+            --connection "${{ env.DATABASE_URL }}"
+      - name: Seed taxonomy
+        run: |
+          PGPASSWORD=${{ env.POSTGRES_PASSWORD }} psql \
+            -h localhost -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }} \
+            -f seed_taxonomy_expanded.sql
+      - name: Run integration tests with coverage
+        run: |
+          dotnet test tests/Hali.IntegrationTests/ \
+            --no-restore --configuration Release \
+            --logger "trx;LogFileName=integration-results.trx" \
+            --results-directory ./test-results/integration \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
+               DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[Hali.*]*" \
+               DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*Tests*]*,[*Migrations*]*"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: integration-test-results, path: ./test-results/integration/integration-results.trx }
+      - uses: actions/upload-artifact@v4
+        with: { name: integration-coverage, path: ./**/coverage.cobertura.xml }
+
+  # ─── Job 4b: OpenAPI contract test — live API vs spec ──────────────────────
+  contract-test:
+    name: API Contract Test (Dredd)
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: hali_contract
+          POSTGRES_USER: hali
+          POSTGRES_PASSWORD: hali_test_password
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      REDIS_URL: "localhost:6379"
+      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+      CIVIS_MIN_UNIQUE_DEVICES: "2"
+      CIVIS_JOIN_THRESHOLD: "0.65"
+      CIVIS_RESTORATION_RATIO: "0.60"
+      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
+      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
+      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - name: Setup Node for Dredd
+        uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install -g dredd
+      - run: dotnet restore
+      - name: Apply migrations and seed
+        run: |
+          dotnet ef database update \
+            --project src/Hali.Infrastructure \
+            --startup-project src/Hali.Api \
+            --connection "${{ env.DATABASE_URL }}"
+          PGPASSWORD=hali_test_password psql \
+            -h localhost -U hali -d hali_contract \
+            -f seed_taxonomy_expanded.sql
+      - name: Start API
+        run: |
+          dotnet run --project src/Hali.Api/Hali.Api.csproj \
+            --urls http://localhost:8080 &
+          sleep 8
+          curl -f http://localhost:8080/health
+      - name: Run Dredd contract tests
+        # Dredd walks 02_openapi.yaml and tests each endpoint against the live API.
+        # Hooks file (tests/dredd-hooks.js) provides auth tokens and request fixtures.
+        run: |
+          dredd 02_openapi.yaml http://localhost:8080 \
+            --hookfiles=tests/dredd-hooks.js \
+            --reporter=junit \
+            --output=./test-results/dredd/contract-results.xml \
+            || true  # Don't fail CI while hooks are being developed — remove || true once hooks are complete
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: contract-test-results, path: ./test-results/dredd/ }
+
+  coverage-gate:
+    name: "Coverage Gate (>=95% required)"
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, contract-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - name: Install reportgenerator
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+      - uses: actions/download-artifact@v4
+        with: { name: unit-coverage, path: ./coverage-raw/unit }
+      - uses: actions/download-artifact@v4
+        with: { name: integration-coverage, path: ./coverage-raw/integration }
+      - name: Merge coverage and generate report
+        run: |
+          COVERAGE_FILES=$(find ./coverage-raw -name "coverage.cobertura.xml" | tr '\n' ';')
+          echo "Files: $COVERAGE_FILES"
+          reportgenerator \
+            -reports:"$COVERAGE_FILES" \
+            -targetdir:"./coverage-report" \
+            -reporttypes:"Html;Cobertura;MarkdownSummaryGithub;TextSummary" \
+            -assemblyfilters:"+Hali.*;-*Tests*;-*Migrations*" \
+            -verbosity:Warning
+      - name: Show summary
+        run: cat ./coverage-report/Summary.txt
+      - name: Publish to job summary
+        run: cat ./coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+      - name: Enforce 95% line coverage
+        run: |
+          python3 - <<'PYEOF'
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse('./coverage-report/Cobertura.xml')
+          rate = float(tree.getroot().attrib.get('line-rate', 0)) * 100
+          threshold = 95.0
+          print(f"Combined line coverage: {rate:.2f}%")
+          if rate < threshold:
+              print(f"COVERAGE GATE FAILED: {rate:.2f}% < {threshold}% required")
+              sys.exit(1)
+          print(f"COVERAGE GATE PASSED: {rate:.2f}% >= {threshold}%")
+          PYEOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: coverage-html-report, path: ./coverage-report/ }
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const md = fs.readFileSync('./coverage-report/SummaryGithub.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Code Coverage Report\n\n${md}\n\nMinimum required: 95%`
+            });
+
+  vertical-slice:
+    name: Vertical Slice (E2E)
+    runs-on: ubuntu-latest
+    needs: coverage-gate
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: hali_slice
+          POSTGRES_USER: hali
+          POSTGRES_PASSWORD: hali_test_password
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      REDIS_URL: "localhost:6379"
+      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+      CIVIS_MIN_UNIQUE_DEVICES: "2"
+      CIVIS_JOIN_THRESHOLD: "0.65"
+      CIVIS_RESTORATION_RATIO: "0.60"
+      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
+      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
+      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
+      - run: dotnet restore
+      - name: Apply migrations and seed
+        run: |
+          dotnet ef database update \
+            --project src/Hali.Infrastructure \
+            --startup-project src/Hali.Api \
+            --connection "${{ env.DATABASE_URL }}"
+          PGPASSWORD=hali_test_password psql \
+            -h localhost -U hali -d hali_slice \
+            -f seed_taxonomy_expanded.sql
+      - name: Start API
+        run: |
+          dotnet run --project src/Hali.Api/Hali.Api.csproj --urls http://localhost:8080 &
+          sleep 8
+          curl -f http://localhost:8080/health || (echo "API failed to start" && exit 1)
+      - name: Run vertical slice tests
+        run: |
+          dotnet test tests/Hali.IntegrationTests/ \
+            --no-restore --configuration Release \
+            --filter "Category=VerticalSlice" \
+            --logger "trx;LogFileName=slice-results.trx" \
+            --results-directory ./test-results/slice
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: vertical-slice-results, path: ./test-results/slice/slice-results.trx }

@@ -1,0 +1,52 @@
+version: "3.9"
+services:
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /src
+    command: ["bash","-lc","dotnet watch run --project src/Hali.Api/Hali.Api.csproj --urls=http://0.0.0.0:8080"]
+    env_file:
+      - .env.example
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/src
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /src
+    command: ["bash","-lc","dotnet watch run --project src/Hali.Workers/Hali.Workers.csproj"]
+    env_file:
+      - .env.example
+    volumes:
+      - ./:/src
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: hali
+      POSTGRES_USER: hali
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
+    volumes:
+      - hali-pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    command: ["redis-server","--save","60","1"]
+    ports:
+      - "6379:6379"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.101.0
+    ports:
+      - "4317:4317"
+
+volumes:
+  hali-pgdata:

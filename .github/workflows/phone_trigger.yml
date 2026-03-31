@@ -1,0 +1,132 @@
+name: Run Session (Phone / Remote Trigger)
+
+# Trigger this from anywhere:
+#   - GitHub mobile app → Actions tab → Run workflow
+#   - github.com on any browser → Actions → this workflow → Run workflow
+#   - GitHub CLI: gh workflow run phone_trigger.yml -f session=04
+#   - REST API: POST /repos/irvinesunday/hali/actions/workflows/phone_trigger.yml/dispatches
+
+on:
+  workflow_dispatch:
+    inputs:
+      session:
+        description: "Session number to run"
+        required: true
+        type: choice
+        options: ["00","01","02","03","04","05","06","07"]
+      mode:
+        description: "Agent mode"
+        required: true
+        type: choice
+        options: ["multi-agent", "dry-run-only"]
+        default: "multi-agent"
+      budget_override:
+        description: "Override monthly budget USD (leave blank to use default)"
+        required: false
+        type: string
+
+jobs:
+  run-session:
+    name: "Session ${{ github.event.inputs.session }} [${{ github.event.inputs.mode }}]"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.email "hali-orchestrator@github-actions"
+          git config user.name "Hali Orchestrator"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      # ── Dry run: show cost estimate only, no API calls ────────────────────
+      - name: Dry run — cost estimate
+        if: github.event.inputs.mode == 'dry-run-only'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_OWNER_LOGIN: irvinesunday
+          MONTHLY_API_BUDGET_USD: ${{ github.event.inputs.budget_override || '50' }}
+        run: |
+          python3 scripts/orchestrate.py \
+            --session ${{ github.event.inputs.session }} \
+            --dry-run
+
+      # ── Multi-agent run: Agents A+B+C+D via Anthropic API ─────────────────
+      # No laptop needed — runs entirely on GitHub's servers
+      - name: Run multi-agent session
+        if: github.event.inputs.mode == 'multi-agent'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_OWNER_LOGIN: irvinesunday
+          MONTHLY_API_BUDGET_USD: ${{ github.event.inputs.budget_override || '50' }}
+        run: |
+          python3 scripts/orchestrate.py \
+            --session ${{ github.event.inputs.session }}
+
+      - name: Upload agent outputs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "session-${{ github.event.inputs.session }}-outputs"
+          path: agent_outputs/
+          retention-days: 30
+
+      - name: Show spend status
+        if: always()
+        run: |
+          echo "=== Spend tracker ==="
+          cat agent_outputs/.spend.json 2>/dev/null || echo "No spend data"
+
+      # ── Post summary to job summary (readable on phone) ───────────────────
+      - name: Post session summary
+        if: always()
+        run: |
+          SESSION="${{ github.event.inputs.session }}"
+          AGENT_C="agent_outputs/session_${SESSION}/agent_c.md"
+
+          echo "## Session ${SESSION} Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "$AGENT_C" ]; then
+            # Extract verdict line
+            VERDICT=$(grep "Overall verdict\|Approved to merge" "$AGENT_C" | head -2)
+            echo "### Agent C Verdict" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$VERDICT" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f "agent_outputs/.spend.json" ]; then
+            SPENT=$(python3 -c "import json; d=json.load(open('agent_outputs/.spend.json')); print(f'\${d[\"total_usd\"]:.4f} / \${d[\"budget_usd\"]:.2f}')")
+            echo "### Budget" >> $GITHUB_STEP_SUMMARY
+            echo "Spent: $SPENT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next step" >> $GITHUB_STEP_SUMMARY
+          NEXT=$(python3 -c "
+          sessions = ['00','01','02','03','04','05','06','07']
+          cur = '${{ github.event.inputs.session }}'
+          idx = sessions.index(cur) + 1
+          print(sessions[idx] if idx < len(sessions) else 'ALL DONE')
+          " 2>/dev/null || echo "?")
+          echo "Next session to run: **${NEXT}**" >> $GITHUB_STEP_SUMMARY
+          echo "Trigger it from: Actions → Run Session → session=${NEXT}" >> $GITHUB_STEP_SUMMARY

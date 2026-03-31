@@ -1,0 +1,44 @@
+extends:
+  - "spectral:oas"
+
+rules:
+  # Require all operations to have a summary
+  operation-summary:
+    description: "Every operation must have a summary"
+    given: "$.paths.*[get,post,put,patch,delete]"
+    severity: error
+    then:
+      field: summary
+      function: truthy
+
+  # Require all 2xx responses to have a response schema
+  response-schema-defined:
+    description: "All 2xx responses should define a schema"
+    given: "$.paths.*[get,post,put,patch,delete].responses[?(@property >= '200' && @property < '300')]"
+    severity: warn
+    then:
+      field: content
+      function: truthy
+
+  # All paths must use /v1/ versioning
+  path-versioned:
+    description: "All paths must include /v1/ version prefix"
+    given: "$.paths"
+    severity: error
+    then:
+      function: pattern
+      functionOptions:
+        match: "^/v1/"
+
+  # No $ref pointing to undefined schemas
+  no-$ref-siblings:
+    severity: error
+
+  # Require operationId on every operation for client generation
+  operation-operationId:
+    description: "Every operation must have an operationId"
+    given: "$.paths.*[get,post,put,patch,delete]"
+    severity: warn
+    then:
+      field: operationId
+      function: truthy

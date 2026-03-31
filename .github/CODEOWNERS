@@ -1,0 +1,21 @@
+# =============================================================================
+# Hali MVP — CODEOWNERS
+# All PRs require review from the repository owner.
+# Replace @irvinesunday with your actual GitHub username.
+# =============================================================================
+
+# Global ownership — you must approve every PR
+*                               @irvinesunday
+
+# Agent prompts and session prompts are especially sensitive
+# Any changes to these files require your explicit review
+/agent_prompts/                 @irvinesunday
+/session_prompts/               @irvinesunday
+/scripts/                       @irvinesunday
+/.github/                       @irvinesunday
+
+# Spec files — changes here affect Claude Code's behaviour
+/claude.md                      @irvinesunday
+/mvp_locked_decisions.md        @irvinesunday
+/01_postgres_schema.sql         @irvinesunday
+/02_openapi.yaml                @irvinesunday

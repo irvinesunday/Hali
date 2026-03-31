@@ -1,0 +1,29 @@
+name: Create GitHub Issues
+
+on:
+  # Run once manually after repo is created
+  workflow_dispatch:
+
+jobs:
+  create-issues:
+    name: Create Epics, Stories, and Tasks
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyGithub
+        run: pip install PyGithub
+
+      - name: Create all issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: python3 scripts/create_github_issues.py

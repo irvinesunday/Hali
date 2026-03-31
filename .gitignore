@@ -1,0 +1,121 @@
+# =============================================================================
+# Hali MVP — .gitignore
+# =============================================================================
+
+# ── Secrets (NEVER commit these) ─────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+**/secrets/**
+
+# ── .NET build artifacts ──────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+[Ll]og/
+[Ll]ogs/
+TestResults/
+*.trx
+coverage.cobertura.xml
+coverage-report/
+
+# ── NuGet ─────────────────────────────────────────────────────────────────────
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuspec
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ── EF Core ───────────────────────────────────────────────────────────────────
+# Never commit the actual DB — only migrations
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Node / React Native / Expo ────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.jsbundle
+
+# ── React Native ─────────────────────────────────────────────────────────────
+android/.gradle
+android/app/build/
+android/local.properties
+ios/Pods/
+ios/build/
+*.xcworkspace
+*.xcuserdata/
+DerivedData/
+
+# ── Python (scripts/) ─────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── Agent outputs (large, auto-generated, not code) ───────────────────────────
+# Keep the directory, the spend tracker, and the gitkeep — exclude generated content
+agent_outputs/**/*.md
+!agent_outputs/.gitkeep
+!agent_outputs/.spend.json
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Test results (uploaded as CI artifacts, don't commit) ─────────────────────
+test-results/
+coverage-raw/
+
+# ── Local dev overrides ───────────────────────────────────────────────────────
+*.local
+local.*
+build_state.json
+
+# Master orchestrator state (local only)
+build_state.json
+agent_outputs/session_*_prompt.txt
+agent_outputs/session_*_claude_output.txt
+agent_outputs/master_orchestrator.log

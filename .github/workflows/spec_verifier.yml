@@ -1,0 +1,60 @@
+name: Post-Merge Spec Verifier
+
+on:
+  # Runs after CI completes on main or develop — catches coverage drops or test failures
+  # that sneak through and updates Agent A's lessons file automatically
+  workflow_run:
+    workflows: ["Hali CI"]
+    types: [completed]
+    branches: [main, develop]
+
+jobs:
+  spec-verify:
+    name: Post-CI Spec Verification
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.email "hali-agents@ci.hali.app"
+          git config user.name "Hali Spec Verifier"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install anthropic tenacity
+
+      - name: Download test results from triggering run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ./ci-artifacts/
+        continue-on-error: true  # artifacts may not exist if CI was cancelled
+
+      - name: Run spec verifier
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/spec_verifier.py
+
+      - name: Commit updated lessons if changed
+        run: |
+          git add agent_prompts/agent_a_lessons.md
+          git diff --staged --quiet || \
+            git commit -m "lessons: post-CI spec verification update [skip ci]"
+          git push origin HEAD || true

@@ -1,0 +1,71 @@
+name: Multi-Agent Orchestration
+
+on:
+  # Trigger manually from GitHub UI with a session number
+  workflow_dispatch:
+    inputs:
+      session:
+        description: "Session number (00-07)"
+        required: true
+        type: choice
+        options: ["00","01","02","03","04","05","06","07"]
+
+  # Or trigger automatically when a session branch is pushed
+  push:
+    branches:
+      - "session/**"
+
+jobs:
+  orchestrate:
+    name: "Run Agents A + B + C for Session ${{ github.event.inputs.session || 'auto' }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install anthropic PyGithub tenacity
+
+      - name: Configure git identity
+        run: |
+          git config user.email "hali-agents@ci.hali.app"
+          git config user.name "Hali Build Agents"
+
+      - name: Detect session from branch name (if not manually specified)
+        id: detect-session
+        run: |
+          SESSION="${{ github.event.inputs.session }}"
+          if [ -z "$SESSION" ]; then
+            # Extract from branch name: session/04-clustering → 04
+            BRANCH="${{ github.ref_name }}"
+            SESSION=$(echo "$BRANCH" | grep -oP '(?<=session/)\d+' | head -1)
+          fi
+          echo "session=$SESSION" >> $GITHUB_OUTPUT
+          echo "Detected session: $SESSION"
+
+      - name: Run multi-agent orchestration
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          python3 scripts/orchestrate.py --session ${{ steps.detect-session.outputs.session }}
+
+      - name: Upload agent outputs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-outputs-session-${{ steps.detect-session.outputs.session }}
+          path: agent_outputs/
