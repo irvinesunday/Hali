@@ -1,8 +1,8 @@
 {
-  "total_usd": 0.81,
-  "updated_at": "2026-03-31T22:12:36.334557+00:00",
+  "total_usd": 0.945,
+  "updated_at": "2026-03-31T22:19:03.336156+00:00",
   "budget_usd": 30.0,
-  "remaining_usd": 29.19,
+  "remaining_usd": 29.055,
   "note": "Reset this file to zero at the start of each billing month. Set MONTHLY_API_BUDGET_USD env var to change the budget.",
   "sessions": {
     "00": {
@@ -10,7 +10,7 @@
       "output_tokens": 4000,
       "cost_usd": 0.135,
       "mode": "claude-code",
-      "completed_at": "2026-03-31T22:12:36.334501+00:00"
+      "completed_at": "2026-03-31T22:19:03.336085+00:00"
     }
   }
 }
