@@ -38,7 +38,7 @@ jobs:
 
       - name: Docker metadata — API
         id: meta-api
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_API }}
           tags: |
@@ -47,7 +47,7 @@ jobs:
 
       - name: Docker metadata — Worker
         id: meta-worker
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_WORKER }}
           tags: |
