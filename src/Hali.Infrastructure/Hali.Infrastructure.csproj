@@ -2,12 +2,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
+    <ProjectReference Include="..\Hali.Application\Hali.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.5" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="*" />
+    <PackageReference Include="StackExchange.Redis" Version="2.12.8" />
   </ItemGroup>
 
   <PropertyGroup>
