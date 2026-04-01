@@ -17,11 +17,15 @@ public class SignalCluster
     public string? SpatialCellId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
+    public DateTime? ActivatedAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public DateTime? PossibleRestorationAt { get; set; }
     public decimal? CivisScore { get; set; }
     public decimal? Wrab { get; set; }
     public decimal? Sds { get; set; }
-    public decimal? Macf { get; set; }
+    public int? Macf { get; set; }
     public int RawConfirmationCount { get; set; }
     public string? TemporalType { get; set; }
     public int AffectedCount { get; set; }

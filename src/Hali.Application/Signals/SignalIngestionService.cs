@@ -1,3 +1,4 @@
+using Hali.Application.Clusters;
 using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
@@ -9,6 +10,7 @@ public class SignalIngestionService : ISignalIngestionService
     private readonly INlpExtractionService _nlp;
     private readonly IGeocodingService _geocoding;
     private readonly ISignalRepository _repo;
+    private readonly IClusteringService _clustering;
 
     private static readonly HashSet<string> AllowedCategories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -23,11 +25,13 @@ public class SignalIngestionService : ISignalIngestionService
     public SignalIngestionService(
         INlpExtractionService nlp,
         IGeocodingService geocoding,
-        ISignalRepository repo)
+        ISignalRepository repo,
+        IClusteringService clustering)
     {
         _nlp = nlp;
         _geocoding = geocoding;
         _repo = repo;
+        _clustering = clustering;
     }
 
     public async Task<SignalPreviewResponseDto> PreviewAsync(SignalPreviewRequestDto request, CancellationToken ct = default)
@@ -140,6 +144,9 @@ public class SignalIngestionService : ISignalIngestionService
 
         // Mark idempotency key (set after persist to avoid locking a key for a failed write)
         await _repo.SetIdempotencyKeyAsync(idemKey, TimeSpan.FromHours(24), ct);
+
+        // Route to cluster (Phase 7)
+        await _clustering.RouteSignalAsync(saved, ct);
 
         return new SignalSubmitResponseDto(saved.Id, saved.CreatedAt);
     }

@@ -1,7 +1,10 @@
 using Hali.Application.Auth;
+using Hali.Application.Clusters;
 using Hali.Application.Signals;
 using Hali.Infrastructure.Auth;
+using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Data.Auth;
+using Hali.Infrastructure.Data.Clusters;
 using Hali.Infrastructure.Data.Signals;
 using Hali.Infrastructure.Signals;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +28,10 @@ public static class ServiceCollectionExtensions
                 config.GetConnectionString("Signals"),
                 npgsql => npgsql.UseNetTopologySuite()));
 
+        // PostgreSQL / Clusters DB
+        services.AddDbContext<ClustersDbContext>(opts =>
+            opts.UseNpgsql(config.GetConnectionString("Clusters")));
+
         // Redis
         var redisUrl = config["Redis:Url"] ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisUrl));
@@ -44,6 +51,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INlpExtractionService, AnthropicNlpExtractionService>();
         services.AddHttpClient<NominatimGeocodingService>();
         services.AddScoped<IGeocodingService, NominatimGeocodingService>();
+
+        // Cluster infrastructure services
+        services.AddSingleton<IH3CellService, H3CellService>();
+        services.AddScoped<IClusterRepository, ClusterRepository>();
+        services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
+        services.AddScoped<IClusteringService, ClusteringService>();
+
+        services.Configure<CivisOptions>(config.GetSection(CivisOptions.Section));
 
         return services;
     }

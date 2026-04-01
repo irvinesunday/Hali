@@ -1,3 +1,4 @@
+using Hali.Application.Clusters;
 using Hali.Application.Signals;
 using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Signals;
@@ -11,8 +12,9 @@ public class SignalIngestionServiceTests
     private readonly INlpExtractionService _nlp = Substitute.For<INlpExtractionService>();
     private readonly IGeocodingService _geocoding = Substitute.For<IGeocodingService>();
     private readonly ISignalRepository _repo = Substitute.For<ISignalRepository>();
+    private readonly IClusteringService _clustering = Substitute.For<IClusteringService>();
 
-    private SignalIngestionService CreateService() => new(_nlp, _geocoding, _repo);
+    private SignalIngestionService CreateService() => new(_nlp, _geocoding, _repo, _clustering);
 
     private static NlpExtractionResultDto MakeNlpResult(string category = "roads") =>
         new(
