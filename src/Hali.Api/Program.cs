@@ -14,7 +14,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Sentry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +56,38 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// OpenTelemetry — enabled when OTEL_EXPORTER_OTLP_ENDPOINT is configured
+string? otelEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]
+    ?? Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+if (!string.IsNullOrWhiteSpace(otelEndpoint))
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(r => r.AddService("hali-api", serviceVersion: "1.0.0"))
+        .WithTracing(t => t
+            .AddAspNetCoreInstrumentation(o => o.RecordException = true)
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)))
+        .WithMetrics(m => m
+            .AddAspNetCoreInstrumentation()
+            .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
+}
+
+// Sentry — enabled when SENTRY_DSN is configured
+string? sentryDsn = builder.Configuration["SENTRY_DSN"]
+    ?? Environment.GetEnvironmentVariable("SENTRY_DSN");
+
+if (!string.IsNullOrWhiteSpace(sentryDsn))
+{
+    SentrySdk.Init(o =>
+    {
+        o.Dsn = sentryDsn;
+        o.SendDefaultPii = false;
+        o.TracesSampleRate = 0.1;
+    });
+}
 
 // Health checks
 builder.Services.AddHealthChecks()
