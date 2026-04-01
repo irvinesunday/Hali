@@ -42,12 +42,12 @@ public class AuthDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.AccountId).HasColumnName("account_id");
-            e.Property(x => x.DeviceFingerprintHash).HasColumnName("device_fingerprint_hash").HasMaxLength(64);
-            e.Property(x => x.IntegrityLevel).HasColumnName("integrity_level").HasMaxLength(20);
-            e.Property(x => x.Platform).HasColumnName("platform").HasMaxLength(20);
-            e.Property(x => x.AppVersion).HasColumnName("app_version").HasMaxLength(20);
+            e.Property(x => x.DeviceFingerprintHash).HasColumnName("device_fingerprint_hash").HasMaxLength(128);
+            e.Property(x => x.IntegrityLevel).HasColumnName("device_integrity_level").HasMaxLength(30);
+            e.Property(x => x.Platform).HasColumnName("platform").HasMaxLength(30);
+            e.Property(x => x.AppVersion).HasColumnName("app_version").HasMaxLength(30);
             e.Property(x => x.ExpoPushToken).HasColumnName("expo_push_token").HasMaxLength(200);
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.CreatedAt).HasColumnName("first_seen_at");
             e.Property(x => x.LastSeenAt).HasColumnName("last_seen_at");
             e.Property(x => x.IsBlocked).HasColumnName("is_blocked");
         });

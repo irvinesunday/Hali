@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Hali.Application.Auth;
 using Hali.Application.Signals;
 using Hali.Contracts.Signals;
 using Microsoft.AspNetCore.Authorization;
@@ -11,10 +12,12 @@ namespace Hali.Api.Controllers;
 public class SignalsController : ControllerBase
 {
     private readonly ISignalIngestionService _ingestion;
+    private readonly IAuthRepository _auth;
 
-    public SignalsController(ISignalIngestionService ingestion)
+    public SignalsController(ISignalIngestionService ingestion, IAuthRepository auth)
     {
         _ingestion = ingestion;
+        _auth = auth;
     }
 
     [HttpPost("preview")]
@@ -54,9 +57,13 @@ public class SignalsController : ControllerBase
         if (Guid.TryParse(sub, out var parsed))
             accountId = parsed;
 
+        var device = string.IsNullOrWhiteSpace(dto.DeviceHash)
+            ? null
+            : await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
+
         try
         {
-            var result = await _ingestion.SubmitAsync(dto, accountId, deviceId: null, ct);
+            var result = await _ingestion.SubmitAsync(dto, accountId, deviceId: device?.Id, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex) when (ex.Message == "SIGNAL_DUPLICATE")

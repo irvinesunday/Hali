@@ -2,6 +2,7 @@ using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 
 namespace Hali.Infrastructure.Data.Signals;
 
@@ -32,7 +33,7 @@ public class SignalsDbContext : DbContext
             e.Property(x => x.WardName).HasColumnName("ward_name").HasMaxLength(100);
             e.Property(x => x.WardCode).HasColumnName("ward_code").HasMaxLength(50);
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property<object?>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
+            e.Property<MultiPolygon?>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
         });
 
         modelBuilder.Entity<LocationLabel>(e =>
@@ -51,7 +52,7 @@ public class SignalsDbContext : DbContext
             e.Property(x => x.Latitude).HasColumnName("latitude");
             e.Property(x => x.Longitude).HasColumnName("longitude");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property<object?>("Geom").HasColumnName("geom").HasColumnType("geometry(Point, 4326)");
+            e.Property<Point?>("Geom").HasColumnName("geom").HasColumnType("geometry(Point, 4326)");
         });
 
         modelBuilder.Entity<TaxonomyCategory>(e =>

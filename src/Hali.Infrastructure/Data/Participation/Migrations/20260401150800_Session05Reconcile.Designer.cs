@@ -3,6 +3,7 @@ using System;
 using Hali.Infrastructure.Data.Participation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hali.Infrastructure.Data.Participation.Migrations
 {
     [DbContext(typeof(ParticipationDbContext))]
-    partial class ParticipationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260401150800_Session05Reconcile")]
+    partial class Session05Reconcile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -104,7 +104,7 @@ public class AnthropicNlpExtractionService : INlpExtractionService
             var category = r.GetProperty("category").GetString() ?? "";
             var subcategory = r.GetProperty("subcategory").GetString() ?? "";
             var conditionLevel = r.TryGetProperty("condition_level", out var cl) ? cl.GetString() : null;
-            var conditionConfidence = r.GetProperty("condition_confidence").GetDouble();
+            var conditionConfidence = r.TryGetProperty("condition_confidence", out var ccEl) ? ccEl.GetDouble() : 0.5;
 
             // Backend validation: reject unknown categories
             if (!AllowedCategories.Contains(category))

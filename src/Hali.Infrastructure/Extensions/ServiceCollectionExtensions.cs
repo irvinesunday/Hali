@@ -2,6 +2,7 @@ using Hali.Application.Auth;
 using Hali.Application.Clusters;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
+using Hali.Domain.Enums;
 using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Data.Auth;
@@ -13,31 +14,46 @@ using Hali.Infrastructure.Signals;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql.NameTranslation;
 using StackExchange.Redis;
 
 namespace Hali.Infrastructure.Extensions;
 
 public static class ServiceCollectionExtensions
 {
+    private static readonly NpgsqlSnakeCaseNameTranslator Snake = new();
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        // PostgreSQL / Auth DB
+        // PostgreSQL — use ConfigureDataSource to register enum type mappings.
+        // HasPostgresEnum in OnModelCreating handles migration schema only;
+        // runtime mapping is done here via ConfigureDataSource/MapEnum.
         services.AddDbContext<AuthDbContext>(opts =>
-            opts.UseNpgsql(config.GetConnectionString("Auth")));
+            opts.UseNpgsql(config.GetConnectionString("Auth"), npgsql =>
+            {
+                npgsql.MapEnum<AccountType>("account_type", nameTranslator: Snake);
+                npgsql.MapEnum<AuthMethod>("auth_method", nameTranslator: Snake);
+            }));
 
-        // PostgreSQL / Signals DB
         services.AddDbContext<SignalsDbContext>(opts =>
-            opts.UseNpgsql(
-                config.GetConnectionString("Signals"),
-                npgsql => npgsql.UseNetTopologySuite()));
+            opts.UseNpgsql(config.GetConnectionString("Signals"), npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MapEnum<CivicCategory>("civic_category", nameTranslator: Snake);
+                npgsql.MapEnum<LocationPrecisionType>("location_precision_type", nameTranslator: Snake);
+            }));
 
-        // PostgreSQL / Clusters DB
         services.AddDbContext<ClustersDbContext>(opts =>
-            opts.UseNpgsql(config.GetConnectionString("Clusters")));
+            opts.UseNpgsql(config.GetConnectionString("Clusters"), npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MapEnum<CivicCategory>("civic_category", nameTranslator: Snake);
+                npgsql.MapEnum<SignalState>("signal_state", nameTranslator: Snake);
+            }));
 
-        // PostgreSQL / Participation DB
         services.AddDbContext<ParticipationDbContext>(opts =>
-            opts.UseNpgsql(config.GetConnectionString("Participation")));
+            opts.UseNpgsql(config.GetConnectionString("Participation"), npgsql =>
+                npgsql.MapEnum<ParticipationType>("participation_type", nameTranslator: Snake)));
 
         // Redis
         var redisUrl = config["Redis:Url"] ?? "localhost:6379";

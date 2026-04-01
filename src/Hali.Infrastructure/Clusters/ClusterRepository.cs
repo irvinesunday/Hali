@@ -97,12 +97,15 @@ public class ClusterRepository : IClusterRepository
 
     public async Task<int> CountUniqueDevicesAsync(Guid clusterId, CancellationToken ct)
     {
-        // NULL device_id is excluded from the distinct count (anonymous signals don't count toward device diversity)
-        return await _db.ClusterEventLinks
-            .Where(l => l.ClusterId == clusterId && l.DeviceId != null)
-            .Select(l => l.DeviceId)
-            .Distinct()
-            .CountAsync(ct);
+        // device_id is stored on signal_events, not cluster_event_links — use raw SQL to count distinct devices
+        // SqlQuery<int> requires the scalar column to be named "Value"
+        var result = await _db.Database.SqlQuery<int>(
+            $@"SELECT COUNT(DISTINCT se.device_id)::int AS ""Value""
+               FROM cluster_event_links cel
+               JOIN signal_events se ON se.id = cel.signal_event_id
+               WHERE cel.cluster_id = {clusterId} AND se.device_id IS NOT NULL")
+            .FirstOrDefaultAsync(ct);
+        return result;
     }
 
     public async Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
