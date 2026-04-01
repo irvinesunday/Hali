@@ -1,11 +1,14 @@
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
+using Hali.Application.Participation;
 using Hali.Application.Signals;
 using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
+using Hali.Infrastructure.Data.Participation;
 using Hali.Infrastructure.Data.Signals;
+using Hali.Infrastructure.Participation;
 using Hali.Infrastructure.Signals;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +34,10 @@ public static class ServiceCollectionExtensions
         // PostgreSQL / Clusters DB
         services.AddDbContext<ClustersDbContext>(opts =>
             opts.UseNpgsql(config.GetConnectionString("Clusters")));
+
+        // PostgreSQL / Participation DB
+        services.AddDbContext<ParticipationDbContext>(opts =>
+            opts.UseNpgsql(config.GetConnectionString("Participation")));
 
         // Redis
         var redisUrl = config["Redis:Url"] ?? "localhost:6379";
@@ -59,6 +66,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IClusteringService, ClusteringService>();
 
         services.Configure<CivisOptions>(config.GetSection(CivisOptions.Section));
+
+        // Participation infrastructure services
+        services.AddScoped<IParticipationRepository, ParticipationRepository>();
 
         return services;
     }

@@ -121,4 +121,14 @@ public class ClusterRepository : IClusterRepository
         _db.OutboxEvents.Add(outboxEvent);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct)
+    {
+        var cluster = await _db.SignalClusters.FindAsync([clusterId], ct);
+        if (cluster is null) return;
+        cluster.AffectedCount = affectedCount;
+        cluster.ObservingCount = observingCount;
+        cluster.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
 }

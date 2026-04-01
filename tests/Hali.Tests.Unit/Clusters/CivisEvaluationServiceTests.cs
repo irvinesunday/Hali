@@ -64,6 +64,9 @@ internal sealed class FakeClusterRepo : IClusterRepository
 
     public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<SignalCluster>>(Array.Empty<SignalCluster>());
+
+    public Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct)
+        => Task.CompletedTask;
 }
 
 /// <summary>

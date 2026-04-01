@@ -40,4 +40,6 @@ public interface IClusterRepository
     Task WriteCivisDecisionAsync(CivisDecision decision, CancellationToken ct);
 
     Task WriteOutboxEventAsync(OutboxEvent outboxEvent, CancellationToken ct);
+
+    Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct);
 }

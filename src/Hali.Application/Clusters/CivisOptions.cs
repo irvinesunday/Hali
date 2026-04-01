@@ -12,6 +12,9 @@ public class CivisOptions
     public double DeactivationThreshold { get; set; } = 0.5;
     public int ActiveMassHorizonHours { get; set; } = 48;
     public double TimeScoreMaxAgeHours { get; set; } = 24.0;
+    public int ContextEditWindowMinutes { get; set; } = 2;
+    public double RestorationRatio { get; set; } = 0.60;
+    public int MinRestorationAffectedVotes { get; set; } = 1;
 
     // Per-category constants from §9 of mvp_locked_decisions.md
     public CivisCategoryOptions Roads { get; set; } = new() { BaseFloor = 2, HalfLifeHours = 18, MacfMin = 2, MacfMax = 6 };

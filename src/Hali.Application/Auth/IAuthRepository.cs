@@ -13,4 +13,5 @@ public interface IAuthRepository
     Task<RefreshToken?> FindActiveRefreshTokenAsync(string tokenHash, DateTime now, CancellationToken ct = default);
     Task SaveRefreshTokenAsync(RefreshToken token, CancellationToken ct = default);
     Task RevokeRefreshTokenAsync(RefreshToken token, DateTime revokedAt, CancellationToken ct = default);
+    Task<Device?> FindDeviceByFingerprintAsync(string fingerprintHash, CancellationToken ct = default);
 }

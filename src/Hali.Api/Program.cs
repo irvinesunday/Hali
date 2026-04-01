@@ -1,5 +1,6 @@
 using System.Text;
 using Hali.Application.Auth;
+using Hali.Application.Participation;
 using Hali.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -17,6 +18,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<Hali.Application.Signals.ISignalIngestionService, Hali.Application.Signals.SignalIngestionService>();
+builder.Services.AddScoped<IParticipationService, ParticipationService>();
 
 // JWT authentication
 var jwtSecret = builder.Configuration["Auth:JwtSecret"] ?? throw new InvalidOperationException("Auth:JwtSecret is required");

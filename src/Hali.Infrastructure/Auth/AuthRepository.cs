@@ -96,4 +96,7 @@ public class AuthRepository : IAuthRepository
         token.RevokedAt = revokedAt;
         await _db.SaveChangesAsync(ct);
     }
+
+    public Task<Device?> FindDeviceByFingerprintAsync(string fingerprintHash, CancellationToken ct = default)
+        => _db.Devices.FirstOrDefaultAsync(d => d.DeviceFingerprintHash == fingerprintHash, ct);
 }
