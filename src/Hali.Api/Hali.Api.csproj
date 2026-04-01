@@ -5,6 +5,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
     <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
     <ProjectReference Include="..\Hali.Application\Hali.Application.csproj" />
     <ProjectReference Include="..\Hali.Contracts\Hali.Contracts.csproj" />

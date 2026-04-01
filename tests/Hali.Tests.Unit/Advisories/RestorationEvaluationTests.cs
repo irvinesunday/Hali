@@ -36,6 +36,7 @@ public class RestorationEvaluationTests
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task<IReadOnlyList<SignalCluster>> GetPossibleRestorationClustersAsync(CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
     }
 
     private sealed class FakeParticipationRepo : IParticipationRepository
@@ -71,6 +72,9 @@ public class RestorationEvaluationTests
                 (x.ParticipationType == ParticipationType.RestorationYes ||
                  x.ParticipationType == ParticipationType.RestorationNo ||
                  x.ParticipationType == ParticipationType.RestorationUnsure)).Count);
+
+        public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
     }
 
     private static (ParticipationService svc, FakeClusterRepo clusterRepo, FakeParticipationRepo participRepo) BuildSut(SignalCluster cluster)

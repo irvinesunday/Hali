@@ -24,4 +24,7 @@ public class Account
 	public DateTime CreatedAt { get; set; }
 
 	public DateTime UpdatedAt { get; set; }
+
+	/// <summary>JSON object: { "cluster_activated": true, "restoration_prompt": true, "cluster_resolved": true }</summary>
+	public string? NotificationSettings { get; set; }
 }

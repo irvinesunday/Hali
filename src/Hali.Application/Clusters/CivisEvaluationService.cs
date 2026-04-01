@@ -2,8 +2,10 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Notifications;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hali.Application.Clusters;
@@ -14,10 +16,18 @@ public class CivisEvaluationService : ICivisEvaluationService
 
 	private readonly CivisOptions _options;
 
-	public CivisEvaluationService(IClusterRepository repo, IOptions<CivisOptions> options)
+	private readonly INotificationQueueService? _notificationQueue;
+
+	private readonly ILogger<CivisEvaluationService>? _logger;
+
+	public CivisEvaluationService(IClusterRepository repo, IOptions<CivisOptions> options,
+		INotificationQueueService? notificationQueue = null,
+		ILogger<CivisEvaluationService>? logger = null)
 	{
 		_repo = repo;
 		_options = options.Value;
+		_notificationQueue = notificationQueue;
+		_logger = logger;
 	}
 
 	public async Task EvaluateClusterAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
@@ -72,6 +82,26 @@ public class CivisEvaluationService : ICivisEvaluationService
 					}),
 					OccurredAt = now
 				}, ct);
+
+				_logger?.LogInformation(
+					"{eventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
+					"cluster.activated", clusterId, cluster.LocalityId, cluster.Category);
+
+				if (_notificationQueue != null)
+				{
+					try
+					{
+						await _notificationQueue.QueueClusterActivatedAsync(
+							clusterId, cluster.LocalityId,
+							cluster.Title ?? "New civic issue",
+							cluster.Summary ?? string.Empty,
+							ct);
+					}
+					catch (Exception ex)
+					{
+						_logger?.LogError(ex, "Failed to queue cluster_activated notifications for {ClusterId}", clusterId);
+					}
+				}
 			}
 			else
 			{
@@ -140,6 +170,27 @@ public class CivisEvaluationService : ICivisEvaluationService
 				}),
 				OccurredAt = now
 			}, ct);
+
+			if (_notificationQueue != null)
+			{
+				try
+				{
+					if (toState == SignalState.PossibleRestoration)
+					{
+						_logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.possible_restoration", clusterId);
+						await _notificationQueue.QueueRestorationPromptAsync(clusterId, cluster.Title ?? "Civic issue", ct);
+					}
+					else if (toState == SignalState.Resolved)
+					{
+						_logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.resolved_by_decay", clusterId);
+						await _notificationQueue.QueueClusterResolvedAsync(clusterId, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
+					}
+				}
+				catch (Exception ex)
+				{
+					_logger?.LogError(ex, "Failed to queue decay notifications for {ClusterId}", clusterId);
+				}
+			}
 		}
 	}
 }

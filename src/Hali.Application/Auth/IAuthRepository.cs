@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Domain.Entities.Auth;
@@ -26,4 +27,13 @@ public interface IAuthRepository
 	Task RevokeRefreshTokenAsync(RefreshToken token, DateTime revokedAt, CancellationToken ct = default(CancellationToken));
 
 	Task<Device?> FindDeviceByFingerprintAsync(string fingerprintHash, CancellationToken ct = default(CancellationToken));
+
+	Task UpdateExpoPushTokenAsync(Guid deviceId, string expoPushToken, CancellationToken ct = default(CancellationToken));
+
+	Task<Account?> FindAccountByIdAsync(Guid accountId, CancellationToken ct = default(CancellationToken));
+
+	Task UpdateAccountAsync(Account account, CancellationToken ct = default(CancellationToken));
+
+	/// <summary>Returns expo push tokens for the given account IDs (one per account, latest device).</summary>
+	Task<IReadOnlyList<string>> GetPushTokensByAccountIdsAsync(IEnumerable<Guid> accountIds, CancellationToken ct = default(CancellationToken));
 }

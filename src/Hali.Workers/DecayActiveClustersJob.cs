@@ -32,12 +32,14 @@ public sealed class DecayActiveClustersJob(IServiceScopeFactory scopeFactory, IL
 
 	private async Task RunDecayPassAsync(CancellationToken ct)
 	{
+		logger.LogInformation("{job} {event}", "DecayActiveClustersJob", "start");
 		await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
 		IClusterRepository clusterRepo = scope.ServiceProvider.GetRequiredService<IClusterRepository>();
 		ICivisEvaluationService civis = scope.ServiceProvider.GetRequiredService<ICivisEvaluationService>();
 		IReadOnlyList<SignalCluster> clusters = await clusterRepo.GetActiveClustersForDecayAsync(ct);
 		if (clusters.Count == 0)
 		{
+			logger.LogInformation("{job} {event} clustersProcessed=0", "DecayActiveClustersJob", "complete");
 			return;
 		}
 		logger.LogInformation("DecayActiveClustersJob: evaluating {Count} cluster(s)", clusters.Count);
@@ -45,5 +47,6 @@ public sealed class DecayActiveClustersJob(IServiceScopeFactory scopeFactory, IL
 		{
 			await civis.ApplyDecayAsync(cluster.Id, ct);
 		}
+		logger.LogInformation("{job} {event} clustersProcessed={Count}", "DecayActiveClustersJob", "complete", clusters.Count);
 	}
 }

@@ -1,5 +1,6 @@
 using Hali.Application.Clusters;
 using Hali.Application.Advisories;
+using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Data.Clusters;
@@ -15,9 +16,15 @@ using Microsoft.Extensions.Hosting;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Notification services needed by workers
+builder.Services.AddScoped<IFollowService, Hali.Application.Notifications.FollowService>();
+builder.Services.AddScoped<INotificationQueueService, Hali.Application.Notifications.NotificationQueueService>();
+
 builder.Services.AddHostedService<DecayActiveClustersJob>();
 builder.Services.AddHostedService<ExpireOfficialPostsJob>();
 builder.Services.AddHostedService<EvaluatePossibleRestorationJob>();
+builder.Services.AddHostedService<SendPushNotificationsJob>();
 
 var host = builder.Build();
 host.Run();

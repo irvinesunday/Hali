@@ -124,4 +124,13 @@ public class ClusterRepository : IClusterRepository
 			await _db.SaveChangesAsync(ct);
 		}
 	}
+
+	public async Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+	{
+		var ids = localityIds.ToList();
+		return await _db.SignalClusters
+			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1)
+			.OrderByDescending(c => c.ActivatedAt)
+			.ToListAsync(ct);
+	}
 }

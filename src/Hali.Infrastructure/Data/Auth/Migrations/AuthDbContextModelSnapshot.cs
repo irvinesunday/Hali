@@ -32,6 +32,7 @@ internal class AuthDbContextModelSnapshot : ModelSnapshot
 				.HasColumnType("character varying(20)")
 				.HasColumnName("status");
 			b.Property<DateTime>("UpdatedAt").HasColumnType("timestamp with time zone").HasColumnName("updated_at");
+			b.Property<string?>("NotificationSettings").HasColumnType("jsonb").HasColumnName("notification_settings");
 			b.HasKey("Id");
 			b.HasIndex("Email").IsUnique().HasDatabaseName("uq_accounts_email");
 			b.HasIndex("PhoneE164").IsUnique().HasDatabaseName("uq_accounts_phone");

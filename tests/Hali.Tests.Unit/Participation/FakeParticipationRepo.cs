@@ -55,4 +55,14 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 	{
 		return Task.FromResult(_store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && (x.ParticipationType == ParticipationType.RestorationYes || x.ParticipationType == ParticipationType.RestorationNo || x.ParticipationType == ParticipationType.RestorationUnsure)));
 	}
+
+	public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
+	{
+		IReadOnlyList<Guid> result = _store
+			.Where(x => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.Affected && x.AccountId != null)
+			.Select(x => x.AccountId!.Value)
+			.Distinct()
+			.ToList();
+		return Task.FromResult(result);
+	}
 }

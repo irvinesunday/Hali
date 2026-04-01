@@ -80,6 +80,8 @@ public class OfficialPostsServiceTests
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
 
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

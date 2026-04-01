@@ -34,4 +34,7 @@ public interface IClusterRepository
 	Task WriteOutboxEventAsync(OutboxEvent outboxEvent, CancellationToken ct);
 
 	Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct);
+
+	/// <summary>Returns active clusters for the specified localities.</summary>
+	Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct);
 }

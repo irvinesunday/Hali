@@ -55,6 +55,8 @@ public class EvaluatePossibleRestorationJobTests
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
     }
 
     private sealed class FakeParticipationRepo : IParticipationRepository
@@ -87,6 +89,8 @@ public class EvaluatePossibleRestorationJobTests
         public Task DeleteByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.CompletedTask;
         public Task AddAsync(ParticipationEntity p, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateContextAsync(Guid id, string text, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
     }
 
     private static CivisOptions DefaultOptions => new CivisOptions

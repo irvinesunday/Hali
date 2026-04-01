@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Domain.Entities.Participation;
@@ -19,4 +20,7 @@ public interface IParticipationRepository
 	Task<int> CountByTypeAsync(Guid clusterId, ParticipationType type, CancellationToken ct);
 
 	Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct);
+
+	/// <summary>Returns account IDs of all users with an active affected participation on this cluster.</summary>
+	Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct);
 }

@@ -63,4 +63,15 @@ public class ParticipationRepository : IParticipationRepository
 	{
 		return _db.Participations.CountAsync((Hali.Domain.Entities.Participation.Participation p) => p.ClusterId == clusterId && ((int)p.ParticipationType == 3 || (int)p.ParticipationType == 4 || (int)p.ParticipationType == 5), ct);
 	}
+
+	public async Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
+	{
+		return await _db.Participations
+			.Where(p => p.ClusterId == clusterId
+				&& (int)p.ParticipationType == (int)ParticipationType.Affected
+				&& p.AccountId != null)
+			.Select(p => p.AccountId!.Value)
+			.Distinct()
+			.ToListAsync(ct);
+	}
 }

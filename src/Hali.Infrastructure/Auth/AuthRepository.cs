@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -109,5 +110,37 @@ public class AuthRepository : IAuthRepository
 	public Task<Device?> FindDeviceByFingerprintAsync(string fingerprintHash, CancellationToken ct = default(CancellationToken))
 	{
 		return _db.Devices.FirstOrDefaultAsync((Device d) => d.DeviceFingerprintHash == fingerprintHash, ct);
+	}
+
+	public async Task UpdateExpoPushTokenAsync(Guid deviceId, string expoPushToken, CancellationToken ct = default(CancellationToken))
+	{
+		Device? device = await _db.Devices.FindAsync(new object[] { deviceId }, ct);
+		if (device != null)
+		{
+			device.ExpoPushToken = expoPushToken;
+			device.LastSeenAt = DateTime.UtcNow;
+			await _db.SaveChangesAsync(ct);
+		}
+	}
+
+	public Task<Account?> FindAccountByIdAsync(Guid accountId, CancellationToken ct = default(CancellationToken))
+	{
+		return _db.Accounts.FindAsync(new object[] { accountId }, ct).AsTask();
+	}
+
+	public async Task UpdateAccountAsync(Account account, CancellationToken ct = default(CancellationToken))
+	{
+		_db.Accounts.Update(account);
+		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task<IReadOnlyList<string>> GetPushTokensByAccountIdsAsync(IEnumerable<Guid> accountIds, CancellationToken ct = default(CancellationToken))
+	{
+		var ids = accountIds.ToList();
+		return await _db.Devices
+			.Where(d => d.AccountId != null && ids.Contains(d.AccountId.Value) && d.ExpoPushToken != null && !d.IsBlocked)
+			.Select(d => d.ExpoPushToken!)
+			.Distinct()
+			.ToListAsync(ct);
 	}
 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
@@ -37,27 +38,36 @@ public sealed class EvaluatePossibleRestorationJob(
 
     private async Task RunPassAsync(CancellationToken ct)
     {
+        logger.LogInformation("{job} {event}", "EvaluatePossibleRestorationJob", "start");
         await using var scope = scopeFactory.CreateAsyncScope();
         var clusterRepo = scope.ServiceProvider.GetRequiredService<IClusterRepository>();
         var participationRepo = scope.ServiceProvider.GetRequiredService<IParticipationRepository>();
+        var notificationQueue = scope.ServiceProvider.GetService<INotificationQueueService>();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<CivisOptions>>().Value;
 
         var clusters = await clusterRepo.GetPossibleRestorationClustersAsync(ct);
         if (clusters.Count == 0)
+        {
+            logger.LogInformation("{job} {event} clustersProcessed=0", "EvaluatePossibleRestorationJob", "complete");
             return;
+        }
 
         logger.LogInformation("EvaluatePossibleRestorationJob: evaluating {Count} cluster(s)", clusters.Count);
 
+        int processed = 0;
         foreach (var cluster in clusters)
         {
-            await EvaluateClusterAsync(cluster, clusterRepo, participationRepo, options, ct);
+            await EvaluateClusterAsync(cluster, clusterRepo, participationRepo, notificationQueue, options, ct);
+            processed++;
         }
+        logger.LogInformation("{job} {event} clustersProcessed={Count}", "EvaluatePossibleRestorationJob", "complete", processed);
     }
 
     private async Task EvaluateClusterAsync(
         SignalCluster cluster,
         IClusterRepository clusterRepo,
         IParticipationRepository participationRepo,
+        INotificationQueueService? notificationQueue,
         CivisOptions options,
         CancellationToken ct)
     {
@@ -125,6 +135,19 @@ public sealed class EvaluatePossibleRestorationJob(
                     }),
                     OccurredAt = DateTime.UtcNow
                 }, ct);
+
+                if (notificationQueue != null)
+                {
+                    try
+                    {
+                        logger.LogInformation("{eventName} clusterId={ClusterId}", "cluster.resolved", cluster.Id);
+                        await notificationQueue.QueueClusterResolvedAsync(cluster.Id, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to queue cluster_resolved notifications for {ClusterId}", cluster.Id);
+                    }
+                }
             }
         }
     }

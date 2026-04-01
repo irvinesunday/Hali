@@ -38,6 +38,7 @@ public class AuthDbContext : DbContext
 			e.Property((Account x) => x.Status).HasColumnName("status").HasMaxLength(20);
 			e.Property((Account x) => x.CreatedAt).HasColumnName("created_at");
 			e.Property((Account x) => x.UpdatedAt).HasColumnName("updated_at");
+			e.Property((Account x) => x.NotificationSettings).HasColumnName("notification_settings").HasColumnType("jsonb");
 			e.HasIndex((Account x) => x.Email).IsUnique().HasDatabaseName("uq_accounts_email");
 			e.HasIndex((Account x) => x.PhoneE164).IsUnique().HasDatabaseName("uq_accounts_phone");
 		});

@@ -8,4 +8,6 @@ public class HomeResponseDto
 {
     public List<ClusterResponseDto> ActiveNow { get; set; } = new();
     public List<OfficialPostResponseDto> OfficialUpdates { get; set; } = new();
+    public List<ClusterResponseDto> RecurringAtThisTime { get; set; } = new();
+    public List<ClusterResponseDto> OtherActiveSignals { get; set; } = new();
 }

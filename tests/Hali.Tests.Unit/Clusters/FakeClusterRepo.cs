@@ -96,4 +96,9 @@ internal sealed class FakeClusterRepo : IClusterRepository
 	{
 		return Task.CompletedTask;
 	}
+
+	public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+	{
+		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+	}
 }

@@ -2,6 +2,7 @@ using System;
 using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
+using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
 using Hali.Domain.Enums;
@@ -11,8 +12,10 @@ using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
+using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
 using Hali.Infrastructure.Data.Signals;
+using Hali.Infrastructure.Notifications;
 using Hali.Infrastructure.Participation;
 using Hali.Infrastructure.Signals;
 using Microsoft.EntityFrameworkCore;
@@ -92,6 +95,17 @@ public static class ServiceCollectionExtensions
 			});
 		});
 		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
+
+		// Notifications
+		services.AddDbContext<NotificationsDbContext>(delegate(DbContextOptionsBuilder opts)
+		{
+			opts.UseNpgsql(config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth"));
+		});
+		services.AddScoped<INotificationRepository, NotificationRepository>();
+		services.AddScoped<IFollowRepository, FollowRepository>();
+		services.AddHttpClient<ExpoPushNotificationService>();
+		services.AddScoped<IPushNotificationService, ExpoPushNotificationService>();
+
 		return services;
 	}
 }
