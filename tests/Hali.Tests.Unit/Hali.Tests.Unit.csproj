@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);SER002;SER003;SER006</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hali.Domain\Hali.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Hali.Application\Hali.Application.csproj" />
+    <ProjectReference Include="..\..\src\Hali.Contracts\Hali.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hali.Infrastructure\Hali.Infrastructure.csproj" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
+    <PackageReference Include="StackExchange.Redis" Version="2.12.8" />
+  </ItemGroup>
+</Project>

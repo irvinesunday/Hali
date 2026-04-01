@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
+    <ProjectReference Include="..\Hali.Application\Hali.Application.csproj" />
+    <ProjectReference Include="..\Hali.Contracts\Hali.Contracts.csproj" />
+    <ProjectReference Include="..\Hali.Infrastructure\Hali.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.17.0" />
+  </ItemGroup>
+</Project>
