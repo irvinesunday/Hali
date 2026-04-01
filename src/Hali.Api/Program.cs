@@ -16,6 +16,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // Application services
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<Hali.Application.Signals.ISignalIngestionService, Hali.Application.Signals.SignalIngestionService>();
 
 // JWT authentication
 var jwtSecret = builder.Configuration["Auth:JwtSecret"] ?? throw new InvalidOperationException("Auth:JwtSecret is required");

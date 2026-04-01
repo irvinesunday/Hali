@@ -1,3 +1,4 @@
+using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,7 @@ public class SignalsDbContext : DbContext
     public DbSet<TaxonomyCategory> TaxonomyCategories => Set<TaxonomyCategory>();
     public DbSet<TaxonomyCondition> TaxonomyConditions => Set<TaxonomyCondition>();
     public DbSet<SignalEvent> SignalEvents => Set<SignalEvent>();
+    public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +108,19 @@ public class SignalsDbContext : DbContext
             e.Property(x => x.CivisPrecheck).HasColumnName("civis_precheck").HasColumnType("jsonb");
             e.HasIndex(x => new { x.LocalityId, x.Category, x.OccurredAt }).HasDatabaseName("ix_signal_events_locality_category_time");
             e.HasIndex(x => new { x.SpatialCellId, x.OccurredAt }).HasDatabaseName("ix_signal_events_spatial_cell_time");
+        });
+
+        modelBuilder.Entity<OutboxEvent>(e =>
+        {
+            e.ToTable("outbox_events");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.AggregateType).HasColumnName("aggregate_type").HasMaxLength(100);
+            e.Property(x => x.AggregateId).HasColumnName("aggregate_id");
+            e.Property(x => x.EventType).HasColumnName("event_type").HasMaxLength(100);
+            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+            e.Property(x => x.PublishedAt).HasColumnName("published_at");
         });
     }
 }
