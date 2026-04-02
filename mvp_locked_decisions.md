@@ -201,3 +201,13 @@ See `.env.example` in the project root.
 ## Final Reminder
 These decisions are locked to reduce ambiguity during implementation.
 Do not casually change them during coding.
+
+
+### CIVIS Decay Constants (documented post-build, Agent C BLOCKING-6)
+
+| Constant | Value | Description |
+|---|---|---|
+| `DeactivationThreshold` | 0.5 | Ratio of `live_mass / effective_wrab` below which a cluster decays. Active → PossibleRestoration; PossibleRestoration → Resolved. Configurable via `CIVIS_DEACTIVATION_THRESHOLD`. |
+
+This threshold is separate from the restoration vote threshold. Decay-based resolution
+fires when activity falls below 50% of the local baseline, regardless of citizen votes.

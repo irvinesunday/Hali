@@ -27,7 +27,7 @@ public class ParticipationServiceTests
 		{
 			ContextEditWindowMinutes = 2,
 			RestorationRatio = 0.6,
-			MinRestorationAffectedVotes = 1
+			MinRestorationAffectedVotes = 2
 		};
 	}
 
