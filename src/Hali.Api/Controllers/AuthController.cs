@@ -25,7 +25,10 @@ public class AuthController : ControllerBase
 	[HttpPost("otp")]
 	public async Task<IActionResult> RequestOtp([FromBody] OtpRequestDto dto, CancellationToken ct)
 	{
-		if (!Enum.TryParse<AuthMethod>(dto.AuthMethod, ignoreCase: true, out var method))
+		// Normalise snake_case → PascalCase before parsing (phone_otp → PhoneOtp)
+        var normalisedMethod = System.Text.RegularExpressions.Regex.Replace(
+            dto.AuthMethod ?? "", @"_([a-z])", m => m.Groups[1].Value.ToUpper());
+        if (!Enum.TryParse<AuthMethod>(normalisedMethod, ignoreCase: true, out var method))
 		{
 			return BadRequest(new
 			{
