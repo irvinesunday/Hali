@@ -33,8 +33,9 @@ public class OfficialPostsController : ControllerBase
         // In MVP, institution_id is carried via a custom claim or query param.
         // Parse from "institution_id" claim, fallback to X-Institution-Id header.
         Guid institutionId;
-        var institutionClaim = User.FindFirstValue("institution_id")
-            ?? Request.Headers["X-Institution-Id"].ToString();
+        var institutionClaim = User.FindFirstValue("institution_id");
+        if (string.IsNullOrEmpty(institutionClaim))
+            return Forbid(); // institution_id must come from JWT — no header fallback
         if (!Guid.TryParse(institutionClaim, out institutionId))
         {
             return UnprocessableEntity(new { error = "Institution identity required.", code = "institution_required" });
