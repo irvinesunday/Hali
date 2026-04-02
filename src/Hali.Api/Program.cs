@@ -54,7 +54,15 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
 });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        opts.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter(
+                System.Text.Json.JsonNamingPolicy.SnakeCaseLower));
+        opts.JsonSerializerOptions.PropertyNamingPolicy =
+            System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddOpenApi();
 
 // OpenTelemetry — enabled when OTEL_EXPORTER_OTLP_ENDPOINT is configured
