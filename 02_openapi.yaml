@@ -15,7 +15,7 @@ tags:
   - name: OfficialPosts
   - name: Admin
 paths:
-  /v1/auth/request-otp:
+  /v1/auth/otp:
     post:
       tags: [Auth]
       summary: Request phone or email OTP
@@ -25,13 +25,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [method, destination]
+              required: [authMethod, destination]
               properties:
-                method: { type: string, enum: [phone_otp, email_otp, magic_link] }
+                authMethod: { type: string, enum: [phone_otp, email_otp, magic_link] }
                 destination: { type: string }
       responses:
-        '202':
-          description: Challenge created
+        '200':
+          description: OTP sent
   /v1/auth/verify-otp:
     post:
       tags: [Auth]

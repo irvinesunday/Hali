@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
 using Hali.Contracts.Auth;
-using Hali.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hali.Api.Controllers;
@@ -25,19 +24,9 @@ public class AuthController : ControllerBase
 	[HttpPost("otp")]
 	public async Task<IActionResult> RequestOtp([FromBody] OtpRequestDto dto, CancellationToken ct)
 	{
-		// Normalise snake_case → PascalCase before parsing (phone_otp → PhoneOtp)
-        var normalisedMethod = System.Text.RegularExpressions.Regex.Replace(
-            dto.AuthMethod ?? "", @"_([a-z])", m => m.Groups[1].Value.ToUpper());
-        if (!Enum.TryParse<AuthMethod>(normalisedMethod, ignoreCase: true, out var method))
-		{
-			return BadRequest(new
-			{
-				error = "Invalid auth_method."
-			});
-		}
 		try
 		{
-			await _otpService.RequestOtpAsync(dto.Destination, method, ct);
+			await _otpService.RequestOtpAsync(dto.Destination, dto.AuthMethod, ct);
 			return Ok(new
 			{
 				message = "OTP sent"
