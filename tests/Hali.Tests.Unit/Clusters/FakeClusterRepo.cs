@@ -67,6 +67,19 @@ internal sealed class FakeClusterRepo : IClusterRepository
 		return Task.CompletedTask;
 	}
 
+	public Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
+		=> Task.FromResult((IReadOnlyList<OutboxEvent>)OutboxEvents.FindAll(e => e.PublishedAt == null));
+
+	public Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct)
+	{
+		foreach (var id in ids)
+		{
+			var ev = OutboxEvents.Find(e => e.Id == id);
+			if (ev != null) ev.PublishedAt = DateTime.UtcNow;
+		}
+		return Task.CompletedTask;
+	}
+
 	public Task<IReadOnlyList<SignalCluster>> FindCandidateClustersAsync(IEnumerable<string> spatialCells, CivicCategory category, CancellationToken ct)
 	{
 		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());

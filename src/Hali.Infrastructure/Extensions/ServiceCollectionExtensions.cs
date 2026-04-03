@@ -83,6 +83,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IClusterRepository, ClusterRepository>();
 		services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
 		services.AddScoped<IClusteringService, ClusteringService>();
+		services.AddScoped<IOutboxRelayService, OutboxRelayService>();
 		services.Configure<CivisOptions>(config.GetSection("Civis"));
 		services.AddScoped<IParticipationRepository, ParticipationRepository>();
 		services.AddDbContext<AdvisoriesDbContext>(delegate(DbContextOptionsBuilder opts)
