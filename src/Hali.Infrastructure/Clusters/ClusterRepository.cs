@@ -133,4 +133,36 @@ public class ClusterRepository : IClusterRepository
 			.OrderByDescending(c => c.ActivatedAt)
 			.ToListAsync(ct);
 	}
+
+	public async Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(
+		IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		var ids = localityIds.ToList();
+		var q = _db.SignalClusters
+			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1);
+
+		if (recurringOnly == true)
+			q = q.Where(c => c.TemporalType == "recurring");
+		else if (recurringOnly == false)
+			q = q.Where(c => c.TemporalType != "recurring");
+
+		if (cursorBefore.HasValue)
+			q = q.Where(c => c.ActivatedAt < cursorBefore.Value);
+
+		return await q.OrderByDescending(c => c.ActivatedAt).Take(limit).ToListAsync(ct);
+	}
+
+	public async Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(
+		IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		var excludeIds = excludeLocalityIds.ToList();
+		var q = _db.SignalClusters
+			.Where(c => (int)c.State == 1 &&
+			            (c.LocalityId == null || !excludeIds.Contains(c.LocalityId.Value)));
+
+		if (cursorBefore.HasValue)
+			q = q.Where(c => c.ActivatedAt < cursorBefore.Value);
+
+		return await q.OrderByDescending(c => c.ActivatedAt).Take(limit).ToListAsync(ct);
+	}
 }

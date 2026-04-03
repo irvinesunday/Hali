@@ -13,6 +13,7 @@ tags:
   - name: Clusters
   - name: Participations
   - name: OfficialPosts
+  - name: Home
   - name: Admin
 paths:
   /v1/auth/request-otp:
@@ -157,6 +158,38 @@ paths:
               $ref: '#/components/schemas/OfficialPostCreateRequest'
       responses:
         '201': { description: Created }
+  /v1/home:
+    get:
+      tags: [Home]
+      summary: Get paginated home feed
+      description: |
+        Returns four sections. Without `section` or `cursor`, returns first page of all sections.
+        Section limits: active_now=20, official_updates=5, recurring_at_this_time=10, other_active_signals=10.
+        First page (unauthenticated or empty follows) is cached in Redis for 30 seconds.
+      security: []
+      parameters:
+        - name: section
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active_now, official_updates, recurring_at_this_time, other_active_signals]
+          description: When set, returns only this section (paginated)
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque pagination cursor from a previous response's nextCursor
+      responses:
+        '200':
+          description: Home feed (all sections or single section depending on query params)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeResponse'
+        '400':
+          description: Unknown section name
   /v1/admin/orphaned-signals:
     get:
       tags: [Admin]
@@ -240,3 +273,35 @@ components:
             properties:
               localityId: { type: string, format: uuid, nullable: true }
               corridorName: { type: string, nullable: true }
+    PagedSection:
+      type: object
+      description: A paginated section of home feed items
+      properties:
+        items:
+          type: array
+          items: {}
+        nextCursor:
+          type: string
+          nullable: true
+          description: Opaque base64-encoded cursor; null means no more pages
+        totalCount:
+          type: integer
+    HomeResponse:
+      type: object
+      properties:
+        activeNow:
+          allOf:
+            - $ref: '#/components/schemas/PagedSection'
+          description: Non-recurring active clusters in followed localities (max 20)
+        officialUpdates:
+          allOf:
+            - $ref: '#/components/schemas/PagedSection'
+          description: Official posts for followed localities (max 5)
+        recurringAtThisTime:
+          allOf:
+            - $ref: '#/components/schemas/PagedSection'
+          description: Recurring clusters in followed localities (max 10)
+        otherActiveSignals:
+          allOf:
+            - $ref: '#/components/schemas/PagedSection'
+          description: Active clusters outside followed localities (max 10)
