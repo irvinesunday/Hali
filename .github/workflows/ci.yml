@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 env:
-  DOTNET_VERSION: "9.0.x"
+  DOTNET_VERSION: "10.0.x"
   POSTGRES_DB: hali_test
   POSTGRES_USER: hali
   POSTGRES_PASSWORD: hali_test_password
@@ -27,7 +27,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-        # Fail on any detected secret. gitleaks-action exits non-zero automatically.
 
   # ─── Job 0b: OpenAPI spec linting ───────────────────────────────────────────
   openapi-lint:
@@ -39,7 +38,6 @@ jobs:
         run: npm install -g @stoplight/spectral-cli
       - name: Lint OpenAPI spec
         run: spectral lint 02_openapi.yaml --ruleset .spectral.yaml 2>&1 | tee spectral-output.txt
-        # Non-zero exit fails the job
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: spectral-lint-report, path: spectral-output.txt }
@@ -119,31 +117,35 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      REDIS_URL: "localhost:6379"
-      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
-      JWT_EXPIRY_MINUTES: "60"
-      REFRESH_TOKEN_EXPIRY_DAYS: "30"
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANTHROPIC_MODEL: "claude-sonnet-4-6"
-      GEOCODING_PROVIDER: "nominatim"
-      NOMINATIM_BASE_URL: "https://nominatim.openstreetmap.org"
-      GEOCODING_USER_AGENT: "HaliCI/1.0 ci@hali.app"
-      PUSH_PROVIDER: "expo"
-      EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
-      AFRICASTALKING_API_KEY: ${{ secrets.AFRICASTALKING_API_KEY }}
-      AFRICASTALKING_USERNAME: "sandbox"
-      H3_RESOLUTION: "9"
+      # Connection strings — all contexts share the same CI database
+      ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Participation: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      Redis__Url: "localhost:6379"
+      Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
+      Auth__JwtIssuer: "hali"
+      Auth__JwtAudience: "hali"
+      Auth__JwtExpiryMinutes: "60"
+      Auth__RefreshTokenExpiryDays: "30"
+      Otp__Length: "6"
+      Otp__TtlMinutes: "10"
+      Otp__MaxRequestsPerWindow: "100"
+      Otp__WindowMinutes: "10"
+      Anthropic__ApiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+      Anthropic__Model: "claude-sonnet-4-6"
+      AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
+      AfricasTalking__Username: "sandbox"
       CIVIS_MIN_UNIQUE_DEVICES: "2"
       CIVIS_JOIN_THRESHOLD: "0.65"
       CIVIS_RESTORATION_RATIO: "0.60"
       CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
       CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
       CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
-      CIVIS_ROADS_BASE_FLOOR: "2"
-      CIVIS_ROADS_HALF_LIFE_HOURS: "18"
-      CIVIS_ROADS_MACF_MIN: "2"
-      CIVIS_ROADS_MACF_MAX: "6"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -151,12 +153,17 @@ jobs:
       - run: dotnet restore
       - name: Install dotnet-ef
         run: dotnet tool install --global dotnet-ef
-      - name: Apply migrations
+      - name: Apply migrations (all contexts)
         run: |
-          dotnet ef database update \
-            --project src/Hali.Infrastructure \
-            --startup-project src/Hali.Api \
-            --connection "${{ env.DATABASE_URL }}"
+          CONN="${{ env.CI_CONNECTION_STRING }}"
+          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
+            echo "── Migrating $CTX ──"
+            dotnet ef database update \
+              --project src/Hali.Infrastructure \
+              --startup-project src/Hali.Api \
+              --context "$CTX" \
+              --connection "$CONN"
+          done
       - name: Seed taxonomy
         run: |
           PGPASSWORD=${{ env.POSTGRES_PASSWORD }} psql \
@@ -164,7 +171,7 @@ jobs:
             -f seed_taxonomy_expanded.sql
       - name: Run integration tests with coverage
         run: |
-          dotnet test tests/Hali.IntegrationTests/ \
+          dotnet test tests/Hali.Tests.Integration/ \
             --no-restore --configuration Release \
             --logger "trx;LogFileName=integration-results.trx" \
             --results-directory ./test-results/integration \
@@ -197,17 +204,28 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
-      REDIS_URL: "localhost:6379"
-      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANTHROPIC_MODEL: "claude-sonnet-4-6"
-      CIVIS_MIN_UNIQUE_DEVICES: "2"
-      CIVIS_JOIN_THRESHOLD: "0.65"
-      CIVIS_RESTORATION_RATIO: "0.60"
-      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
-      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
-      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+      ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Participation: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
+      Redis__Url: "localhost:6379"
+      Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
+      Auth__JwtIssuer: "hali"
+      Auth__JwtAudience: "hali"
+      Auth__JwtExpiryMinutes: "60"
+      Auth__RefreshTokenExpiryDays: "30"
+      Otp__Length: "6"
+      Otp__TtlMinutes: "10"
+      Otp__MaxRequestsPerWindow: "100"
+      Otp__WindowMinutes: "10"
+      Anthropic__ApiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+      Anthropic__Model: "claude-sonnet-4-6"
+      AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
+      AfricasTalking__Username: "sandbox"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -221,10 +239,15 @@ jobs:
         run: dotnet tool install --global dotnet-ef
       - name: Apply migrations and seed
         run: |
-          dotnet ef database update \
-            --project src/Hali.Infrastructure \
-            --startup-project src/Hali.Api \
-            --connection "${{ env.DATABASE_URL }}"
+          CONN="${{ env.CI_CONNECTION_STRING }}"
+          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
+            echo "── Migrating $CTX ──"
+            dotnet ef database update \
+              --project src/Hali.Infrastructure \
+              --startup-project src/Hali.Api \
+              --context "$CTX" \
+              --connection "$CONN"
+          done
           PGPASSWORD=hali_test_password psql \
             -h localhost -U hali -d hali_contract \
             -f seed_taxonomy_expanded.sql
@@ -235,14 +258,12 @@ jobs:
           sleep 8
           curl -f http://localhost:8080/health
       - name: Run Dredd contract tests
-        # Dredd walks 02_openapi.yaml and tests each endpoint against the live API.
-        # Hooks file (tests/dredd-hooks.js) provides auth tokens and request fixtures.
         run: |
           dredd 02_openapi.yaml http://localhost:8080 \
             --hookfiles=tests/dredd-hooks.js \
             --reporter=junit \
             --output=./test-results/dredd/contract-results.xml \
-            || true  # Don't fail CI while hooks are being developed — remove || true once hooks are complete
+            || true  # Don't fail CI while hooks are being developed
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: contract-test-results, path: ./test-results/dredd/ }
@@ -325,17 +346,28 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
-      REDIS_URL: "localhost:6379"
-      JWT_SECRET: "ci-test-secret-minimum-32-chars-long"
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANTHROPIC_MODEL: "claude-sonnet-4-6"
-      CIVIS_MIN_UNIQUE_DEVICES: "2"
-      CIVIS_JOIN_THRESHOLD: "0.65"
-      CIVIS_RESTORATION_RATIO: "0.60"
-      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
-      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
-      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+      ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Participation: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      Redis__Url: "localhost:6379"
+      Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
+      Auth__JwtIssuer: "hali"
+      Auth__JwtAudience: "hali"
+      Auth__JwtExpiryMinutes: "60"
+      Auth__RefreshTokenExpiryDays: "30"
+      Otp__Length: "6"
+      Otp__TtlMinutes: "10"
+      Otp__MaxRequestsPerWindow: "100"
+      Otp__WindowMinutes: "10"
+      Anthropic__ApiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+      Anthropic__Model: "claude-sonnet-4-6"
+      AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
+      AfricasTalking__Username: "sandbox"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -345,10 +377,15 @@ jobs:
         run: dotnet tool install --global dotnet-ef
       - name: Apply migrations and seed
         run: |
-          dotnet ef database update \
-            --project src/Hali.Infrastructure \
-            --startup-project src/Hali.Api \
-            --connection "${{ env.DATABASE_URL }}"
+          CONN="${{ env.CI_CONNECTION_STRING }}"
+          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
+            echo "── Migrating $CTX ──"
+            dotnet ef database update \
+              --project src/Hali.Infrastructure \
+              --startup-project src/Hali.Api \
+              --context "$CTX" \
+              --connection "$CONN"
+          done
           PGPASSWORD=hali_test_password psql \
             -h localhost -U hali -d hali_slice \
             -f seed_taxonomy_expanded.sql
@@ -359,7 +396,7 @@ jobs:
           curl -f http://localhost:8080/health || (echo "API failed to start" && exit 1)
       - name: Run vertical slice tests
         run: |
-          dotnet test tests/Hali.IntegrationTests/ \
+          dotnet test tests/Hali.Tests.Integration/ \
             --no-restore --configuration Release \
             --filter "Category=VerticalSlice" \
             --logger "trx;LogFileName=slice-results.trx" \
