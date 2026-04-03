@@ -28,6 +28,7 @@ builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IInstitutionService, InstitutionService>();
 builder.Services.AddScoped<ISignalIngestionService, SignalIngestionService>();
 builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();

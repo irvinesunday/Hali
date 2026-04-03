@@ -33,10 +33,26 @@ internal class AuthDbContextModelSnapshot : ModelSnapshot
 				.HasColumnName("status");
 			b.Property<DateTime>("UpdatedAt").HasColumnType("timestamp with time zone").HasColumnName("updated_at");
 			b.Property<string?>("NotificationSettings").HasColumnType("jsonb").HasColumnName("notification_settings");
+			b.Property<Guid?>("InstitutionId").HasColumnType("uuid").HasColumnName("institution_id");
+			b.Property<bool>("IsBlocked").HasColumnType("boolean").HasColumnName("is_blocked");
 			b.HasKey("Id");
 			b.HasIndex("Email").IsUnique().HasDatabaseName("uq_accounts_email");
 			b.HasIndex("PhoneE164").IsUnique().HasDatabaseName("uq_accounts_phone");
 			b.ToTable("accounts", (string?)null);
+		});
+		modelBuilder.Entity("Hali.Domain.Entities.Auth.InstitutionInvite", delegate(EntityTypeBuilder b)
+		{
+			b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid").HasColumnName("id");
+			b.Property<Guid>("InstitutionId").HasColumnType("uuid").HasColumnName("institution_id");
+			b.Property<string>("InviteTokenHash").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("invite_token_hash");
+			b.Property<Guid>("InvitedByAccountId").HasColumnType("uuid").HasColumnName("invited_by_account_id");
+			b.Property<DateTime>("ExpiresAt").HasColumnType("timestamp with time zone").HasColumnName("expires_at");
+			b.Property<DateTime?>("AcceptedAt").HasColumnType("timestamp with time zone").HasColumnName("accepted_at");
+			b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone").HasColumnName("created_at");
+			b.HasKey("Id");
+			b.HasIndex("InviteTokenHash").IsUnique().HasDatabaseName("ix_institution_invites_token");
+			b.HasIndex("InstitutionId").HasDatabaseName("ix_institution_invites_institution");
+			b.ToTable("institution_invites", (string?)null);
 		});
 		modelBuilder.Entity("Hali.Domain.Entities.Auth.Device", delegate(EntityTypeBuilder b)
 		{
