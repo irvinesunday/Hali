@@ -30,19 +30,34 @@ public sealed class HaliWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Set connection strings as environment variables so that
+        // builder.Configuration in Program.cs sees them immediately.
+        // AddInMemoryCollection via ConfigureAppConfiguration doesn't
+        // reliably override values read during Program.cs service
+        // registration in the minimal hosting model.
+        var connStr = TestConstants.ConnectionString;
+        Environment.SetEnvironmentVariable("ConnectionStrings__Auth", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Signals", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Clusters", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Participation", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Advisories", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Notifications", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Admin", connStr);
+        Environment.SetEnvironmentVariable("Redis__Url", TestConstants.RedisUrl);
+
         builder.UseEnvironment("Testing");
 
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:Auth"]          = TestConstants.ConnectionString,
-                ["ConnectionStrings:Signals"]        = TestConstants.ConnectionString,
-                ["ConnectionStrings:Clusters"]       = TestConstants.ConnectionString,
-                ["ConnectionStrings:Participation"]  = TestConstants.ConnectionString,
-                ["ConnectionStrings:Advisories"]     = TestConstants.ConnectionString,
-                ["ConnectionStrings:Notifications"]  = TestConstants.ConnectionString,
-                ["ConnectionStrings:Admin"]          = TestConstants.ConnectionString,
+                ["ConnectionStrings:Auth"]          = connStr,
+                ["ConnectionStrings:Signals"]        = connStr,
+                ["ConnectionStrings:Clusters"]       = connStr,
+                ["ConnectionStrings:Participation"]  = connStr,
+                ["ConnectionStrings:Advisories"]     = connStr,
+                ["ConnectionStrings:Notifications"]  = connStr,
+                ["ConnectionStrings:Admin"]          = connStr,
                 ["Redis:Url"]                        = TestConstants.RedisUrl,
                 ["Auth:JwtSecret"]                   = TestConstants.JwtSecret,
                 ["Auth:JwtIssuer"]                   = TestConstants.JwtIssuer,
