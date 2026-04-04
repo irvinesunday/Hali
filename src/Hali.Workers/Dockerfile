@@ -4,7 +4,7 @@
 # Shares the same base image as the API for layer cache efficiency
 # =============================================================================
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
 WORKDIR /src
 
 COPY ["src/Hali.Workers/Hali.Workers.csproj",        "src/Hali.Workers/"]
@@ -29,7 +29,7 @@ RUN dotnet publish "src/Hali.Workers/Hali.Workers.csproj" \
     --output /app/publish \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 RUN addgroup --system --gid 1001 hali \
  && adduser  --system --uid 1001 --ingroup hali hali

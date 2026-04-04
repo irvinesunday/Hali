@@ -5,7 +5,7 @@
 # =============================================================================
 
 # ── Stage 1: Restore dependencies ────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
 WORKDIR /src
 
 # Copy solution and project files first (layer caching — only re-runs on .csproj changes)
@@ -35,7 +35,7 @@ RUN dotnet publish "src/Hali.Api/Hali.Api.csproj" \
     /p:UseAppHost=false
 
 # ── Stage 4: Runtime (minimal image, non-root) ────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # Security: run as non-root
 RUN addgroup --system --gid 1001 hali \

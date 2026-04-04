@@ -83,8 +83,8 @@ public class AnthropicNlpExtractionService : INlpExtractionService
 
     private string BuildUserPrompt(NlpExtractionRequest req) => $"""
         free_text: {req.Text}
-        user_latitude: {req.UserLatitude?.ToString() ?? "null"}
-        user_longitude: {req.UserLongitude?.ToString() ?? "null"}
+        user_latitude: {(req.UserLatitude.HasValue ? req.UserLatitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture) : "null")}
+        user_longitude: {(req.UserLongitude.HasValue ? req.UserLongitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture) : "null")}
         selected_ward: {req.SelectedWard ?? "null"}
         locale: {req.Locale ?? "en"}
         current_time_utc: {req.CurrentTimeUtc:O}

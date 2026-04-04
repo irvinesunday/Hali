@@ -130,19 +130,21 @@ interface OfflineQueueItem {
     createdAt: string;
 }
 
-export async function enqueueOrSubmit(endpoint: string, body: object): Promise<void> {
+export async function enqueueOrSubmit(endpoint: string, body: Record<string, unknown>): Promise<void> {
+    const idempotencyKey = generateIdempotencyKey();
+    const requestBody = { ...body, idempotencyKey };
     const online = await NetInfo.fetch().then(s => s.isConnected);
     
     if (online) {
-        await api.post(endpoint, body);
+        await api.post(endpoint, requestBody);
         return;
     }
     
     // Queue locally
     const item: OfflineQueueItem = {
-        id: generateIdempotencyKey(),
+        id: idempotencyKey,
         endpoint,
-        body,
+        body: requestBody,
         createdAt: new Date().toISOString()
     };
     
@@ -196,7 +198,7 @@ Read paths must serve cached last response when offline:
 
 ```
 Screen rules:
-- Single text input, multiline, max 500 chars
+- Single text input, multiline, max 150 chars
 - Character counter visible
 - Location section below: shows current coarse location or "Set location"
 - If location permission denied: show "Search for a place" input instead

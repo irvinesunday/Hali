@@ -839,7 +839,7 @@ The following is the complete list of changes needed to `02_openapi.yaml` before
 4. Add `POST /v1/auth/logout`
 5. Rename `POST /v1/signals` → `POST /v1/signals/submit`
 6. Add `GET /v1/home`
-7. Add `GET /v1/clusters/{id}/context` (POST)
+7. Add `POST /v1/clusters/{id}/context`
 8. Add `POST /v1/clusters/{id}/restoration-response`
 9. Add `PUT /v1/localities/followed`
 10. Add `POST /v1/devices/push-token`

@@ -72,18 +72,18 @@ cd hali-mvp/
 unzip -o Hali_Consolidated_Pack.zip -d hali-mvp/
 ```
 
-The `-o` flag overwrites. The files in this zip that conflict with the Agent Framework:
-- `CLAUDE.md` (new unified file) → overwrites the old `claude.md`
+The `-o` flag overwrites matching paths. This pack provides the canonical top-level guide file:
+- `CLAUDE.md` (new unified file) → this is the only filename that should remain after consolidation
 
 All other files in this zip are new additions, not overwrites.
 
-### Step 3 — Delete the old claude.md
+### Step 3 — Remove the old `claude.md` so only `CLAUDE.md` remains
 
 The agent framework zip has `claude.md` (lowercase). The consolidated pack has `CLAUDE.md` (uppercase).
-On case-insensitive filesystems (Windows, macOS default) these are the same file — Step 2 handles it.
-On Linux (case-sensitive), delete the old one explicitly:
+On case-insensitive filesystems (Windows, macOS default) these collapse to the same path, so after Step 2 you should have a single `CLAUDE.md`.
+On Linux and other case-sensitive filesystems, remove the old lowercase file explicitly so the repo has one canonical filename:
 ```bash
-rm claude.md   # if it exists separately from CLAUDE.md
+rm claude.md   # if it exists separately; keep CLAUDE.md
 ```
 
 ### Step 4 — Prepend addendums to agent prompts

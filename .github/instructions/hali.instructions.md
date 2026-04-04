@@ -1,4 +1,4 @@
-Hali is a neutral civic signal platform — a "civic weather system". It is a modular monolith built in C#/.NET 9 with PostgreSQL/PostGIS, Redis, React Native/Expo, and the Anthropic Claude API for NLP extraction.
+Hali is a neutral civic signal platform — a "civic weather system". It is a modular monolith built in C#/.NET 10 with PostgreSQL/PostGIS, Redis, React Native/Expo, and the Anthropic Claude API for NLP extraction.
 
 Review all code against the rules below. Flag violations clearly. Do not suggest changes that contradict these rules.
 
@@ -44,7 +44,7 @@ Review all code against the rules below. Flag violations clearly. Do not suggest
 - JWT tokens use HS256. Access token expiry is 60 minutes. Refresh token expiry is 30 days.
 - JWT audience must support multiple surfaces (not hardcoded to `hali-mobile`).
 - Refresh tokens are stored server-side as hashes (never plaintext) in a `refresh_tokens` table with `token_hash`, `account_id`, `device_id`, `expires_at`, `revoked_at`, `created_at`.
-- Do not suggest storing refresh tokens in cookies, localStorage, or any client-side store.
+- For web surfaces, follow `docs/arch/07_auth_implementation.md`: refresh tokens may be carried in secure `httpOnly` cookies. Do not suggest `localStorage`, readable JavaScript-managed storage, or any other client-side persistence that contradicts the documented auth implementation.
 
 ---
 

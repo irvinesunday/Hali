@@ -572,21 +572,22 @@ If a matching signal exists:
   - I'm observing (only for observational signal types; see §7.5)
 - allow "Create new signal instead"
 
-After joining an existing signal via either I'm Affected or I'm Observing:
+After joining an existing signal via I'm Affected:
 - show lightweight confirmation
 - reveal **Add Further Context** (see §10.7)
 
+After joining via I'm Observing:
+- show lightweight confirmation only (no further context option)
+
 ### 10.7 Add Further Context
 
-After joining an existing signal (via I'm Affected or I'm Observing) or after creating a new signal, the user may optionally add more detail.
+After joining an existing signal via I'm Affected or after creating a new signal, the user may optionally add more detail. This option is **not** available after I'm Observing — only affected participants may add context.
 
 This is:
 - optional
 - short
 - capped at 150 chars (enforced at both the frontend for UX and the database level via `context_text varchar(150)` schema constraint)
-- available after both I'm Affected and I'm Observing actions
-
-Note: The internal weight of context contributions may differ based on participation type (context from an Affected participant carries higher CIVIS weight), but the UI must offer this option equally to both.
+- available only after I'm Affected, within the 2-minute edit window
 
 Useful quick suggestions may be shown, e.g.:
 - Started recently

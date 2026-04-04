@@ -429,7 +429,7 @@ When resolving GitHub Copilot review comments on pull requests, follow the workf
 
 - Always read the current file at HEAD before applying a fix — comment line numbers may be stale
 - Search the full PR diff for other instances of the same problem before committing
-- Never apply a fix that conflicts with locked decisions (`claude.md`, `mvp_locked_decisions.md`)
+- Never apply a fix that conflicts with locked decisions (`CLAUDE.md` as the authoritative master brief, `mvp_locked_decisions.md`)
 - Fix all instances of a pattern bug, not just the one the comment points to
 
 ---
