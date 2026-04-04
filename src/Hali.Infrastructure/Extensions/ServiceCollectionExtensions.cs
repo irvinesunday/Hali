@@ -72,6 +72,7 @@ public static class ServiceCollectionExtensions
 		services.AddHttpClient<AfricasTalkingSmsProvider>();
 		services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
 		services.AddScoped<IAuthRepository, AuthRepository>();
+		services.AddScoped<IInstitutionRepository, InstitutionRepository>();
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();
@@ -83,6 +84,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IClusterRepository, ClusterRepository>();
 		services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
 		services.AddScoped<IClusteringService, ClusteringService>();
+		services.AddScoped<IOutboxRelayService, OutboxRelayService>();
 		services.Configure<CivisOptions>(config.GetSection("Civis"));
 		services.AddScoped<IParticipationRepository, ParticipationRepository>();
 		services.AddDbContext<AdvisoriesDbContext>(delegate(DbContextOptionsBuilder opts)

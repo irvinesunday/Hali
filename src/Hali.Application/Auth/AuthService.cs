@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -7,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Contracts.Auth;
 using Hali.Domain.Entities.Auth;
+using Hali.Domain.Enums;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -76,22 +78,32 @@ public class AuthService : IAuthService
 
 	private async Task<TokenResponseDto> IssueTokenPairAsync(Guid accountId, Guid deviceId, DateTime now, CancellationToken ct)
 	{
-		string accessToken = IssueAccessToken(accountId, now);
+		Account? account = await _repo.FindAccountByIdAsync(accountId, ct);
+		string accessToken = IssueAccessToken(accountId, account?.AccountType ?? AccountType.Citizen, account?.InstitutionId, now);
 		var (plainRefreshToken, refreshEntity) = CreateRefreshToken(accountId, deviceId, now);
 		await _repo.SaveRefreshTokenAsync(refreshEntity, ct);
 		return new TokenResponseDto(accessToken, plainRefreshToken, _opts.JwtExpiryMinutes * 60);
 	}
 
-	private string IssueAccessToken(Guid accountId, DateTime now)
+	private string IssueAccessToken(Guid accountId, AccountType accountType, Guid? institutionId, DateTime now)
 	{
 		SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opts.JwtSecret));
 		SigningCredentials signingCredentials = new SigningCredentials(key, "HS256");
-		Claim[] claims = new Claim[3]
+		string role = accountType switch
+		{
+			AccountType.InstitutionUser => "institution",
+			AccountType.Admin => "admin",
+			_ => "citizen"
+		};
+		var claims = new List<Claim>
 		{
 			new Claim("sub", accountId.ToString()),
 			new Claim("jti", Guid.NewGuid().ToString()),
-			new Claim("iat", new DateTimeOffset(now).ToUnixTimeSeconds().ToString(), "http://www.w3.org/2001/XMLSchema#integer64")
+			new Claim("iat", new DateTimeOffset(now).ToUnixTimeSeconds().ToString(), "http://www.w3.org/2001/XMLSchema#integer64"),
+			new Claim(ClaimTypes.Role, role)
 		};
+		if (institutionId.HasValue)
+			claims.Add(new Claim("institution_id", institutionId.Value.ToString()));
 		JwtSecurityToken token = new JwtSecurityToken(_opts.JwtIssuer, _opts.JwtAudience, claims, now, now.AddMinutes(_opts.JwtExpiryMinutes), signingCredentials);
 		return new JwtSecurityTokenHandler().WriteToken(token);
 	}

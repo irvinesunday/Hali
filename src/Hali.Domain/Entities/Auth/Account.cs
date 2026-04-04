@@ -27,4 +27,9 @@ public class Account
 
 	/// <summary>JSON object: { "cluster_activated": true, "restoration_prompt": true, "cluster_resolved": true }</summary>
 	public string? NotificationSettings { get; set; }
+
+	/// <summary>Set for institution accounts; null for citizen and admin accounts.</summary>
+	public Guid? InstitutionId { get; set; }
+
+	public bool IsBlocked { get; set; }
 }

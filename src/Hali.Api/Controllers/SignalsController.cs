@@ -9,6 +9,8 @@ using Hali.Domain.Entities.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using StackExchange.Redis;
+
 namespace Hali.Api.Controllers;
 
 [ApiController]
@@ -27,8 +29,16 @@ public class SignalsController : ControllerBase
 
 	[HttpPost("preview")]
 	[AllowAnonymous]
-	public async Task<IActionResult> Preview([FromBody] SignalPreviewRequestDto dto, CancellationToken ct)
+	public async Task<IActionResult> Preview([FromBody] SignalPreviewRequestDto dto, CancellationToken ct, [FromServices] IConnectionMultiplexer redis)
 	{
+        // BLOCKING-4 fix: rate limit anonymous NLP previews (10/IP/10min)
+        var _previewIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var _previewKey = $"rl:signal-preview:{_previewIp}";
+        var _previewDb = redis.GetDatabase();
+        var _previewCount = await _previewDb.StringIncrementAsync(_previewKey);
+        if (_previewCount == 1) await _previewDb.KeyExpireAsync(_previewKey, TimeSpan.FromMinutes(10));
+        if (_previewCount > 10) return StatusCode(429, new { code = "rate_limited", message = "Too many preview requests." });
+        
 		if (string.IsNullOrWhiteSpace(dto.FreeText))
 		{
 			return BadRequest(new

@@ -1,0 +1,22 @@
+dry-run: null
+hookfiles: ./tests/dredd-hooks.js
+language: nodejs
+sandbox: false
+server: dotnet run --project src/Hali.Api/Hali.Api.csproj --urls=http://0.0.0.0:8080
+server-wait: 10
+init: false
+custom: {}
+blueprint: 02_openapi.yaml
+endpoint: http://localhost:8080
+reporter: []
+header: []
+sorted: false
+user: null
+inline-errors: false
+details: false
+method: []
+color: true
+level: info
+timestamp: false
+silent: false
+path: []
