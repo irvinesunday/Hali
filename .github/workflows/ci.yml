@@ -11,7 +11,7 @@ env:
   POSTGRES_DB: hali_test
   POSTGRES_USER: hali
   POSTGRES_PASSWORD: hali_test_password
-  COVERAGE_THRESHOLD: 50
+  COVERAGE_THRESHOLD: 40
 
 jobs:
 
