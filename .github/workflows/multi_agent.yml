@@ -64,7 +64,7 @@ jobs:
           python3 scripts/orchestrate.py --session ${{ steps.detect-session.outputs.session }}
 
       - name: Upload agent outputs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-outputs-session-${{ steps.detect-session.outputs.session }}
