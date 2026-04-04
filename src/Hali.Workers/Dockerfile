@@ -31,12 +31,10 @@ RUN dotnet publish "src/Hali.Workers/Hali.Workers.csproj" \
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-RUN addgroup --system --gid 1001 hali \
- && adduser  --system --uid 1001 --ingroup hali hali
-
+# .NET 10 images include a non-root 'app' user (UID 1654)
 WORKDIR /app
-COPY --from=publish --chown=hali:hali /app/publish .
-USER hali
+COPY --from=publish /app/publish .
+USER $APP_UID
 
 # Workers don't expose HTTP but should respond to a process health signal.
 # docker-compose and Kubernetes can check process liveness instead.
