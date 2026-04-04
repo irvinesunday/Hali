@@ -85,7 +85,7 @@ def run():
 
     test_summary  = read_trx_summary("ci-artifacts/**/*.trx")
     cov_summary   = read_coverage_summary()
-    claude_md     = read_file("claude.md")[:3000]
+    claude_md     = read_file("CLAUDE.md")[:3000]
     locked        = read_file("mvp_locked_decisions.md")[:2000]
 
     system = """You are Agent C (Spec Verifier), operating post-CI.
@@ -122,7 +122,7 @@ Run URL: {CI_RUN_URL}
 {cov_summary}
 
 ## Project context
-### claude.md (excerpt)
+### CLAUDE.md (excerpt)
 {claude_md}
 
 ### mvp_locked_decisions.md (excerpt)

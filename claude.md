@@ -286,7 +286,7 @@ Do not couple domain logic to vendor-specific response shapes.
 
 When documents in this pack conflict, the following hierarchy applies:
 
-1. `claude.md` (this file) — implementation authority
+1. `CLAUDE.md` (this file) — implementation authority
 2. `mvp_locked_decisions.md` — locked decisions authority
 3. `mobile_screen_inventory.md` — frontend authority
 4. `openapi_patch_checklist.md` — API contract authority
@@ -294,16 +294,16 @@ When documents in this pack conflict, the following hierarchy applies:
 
 **The following files are reference context only — not implementation authority:**
 - `Claude.md` (uppercase — old version, superseded by this file)
-- `Claude_Seed_Prompt.md` (old paths, superseded by claude.md)
-- `Hali_MVP_Claude_Execution_Pack.docx` (old paths, superseded by claude.md)
-- `09_claude.md` (earlier version, superseded by this file)
+- `Claude_Seed_Prompt.md` (old paths, superseded by CLAUDE.md)
+- `Hali_MVP_Claude_Execution_Pack.docx` (old paths, superseded by CLAUDE.md)
+- `09_CLAUDE.md` (earlier version, superseded by this file)
 - `10_repository_structure.md` (proposes a different module-per-domain layout; superseded by Folder_Structure.md and the Architecture section of this file)
 
 All spec files (`mvp_locked_decisions.md`, `mobile_screen_inventory.md`, `nlp_extraction_prompt.md`,
 `openapi_patch_checklist.md`, `schema_patch_notes.md`, `seed_taxonomy_expanded.sql`) live at
 the **project root**, not in a `docs/` subfolder.
 
-Where any older files conflict with claude.md or locked_decisions, **claude.md wins**.
+Where any older files conflict with CLAUDE.md or locked_decisions, **CLAUDE.md wins**.
 
 ---
 
@@ -311,7 +311,7 @@ Where any older files conflict with claude.md or locked_decisions, **claude.md w
 
 Before writing any code, read these files in this order:
 
-1. `claude.md` — this file (you are reading it)
+1. `CLAUDE.md` — this file (you are reading it)
 2. `mvp_locked_decisions.md` — all locked implementation decisions
 3. `01_postgres_schema.sql` — canonical schema DDL
 4. `mobile_screen_inventory.md` — before any frontend work

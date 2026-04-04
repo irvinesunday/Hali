@@ -71,7 +71,7 @@ Commit between every session: `git commit -m "build: session N complete"`
 ## How to start each session
 
 Paste the contents of the session file as your first message to Claude Code.
-`claude.md` is auto-read — do not paste it separately.
+`CLAUDE.md` is auto-read — do not paste it separately.
 
 For sessions after 01, prepend one line:
 > "Sessions 00–N are complete (commit: `<hash>`). Begin Session N+1."
@@ -121,7 +121,7 @@ You are the only required approver (enforced by `CODEOWNERS` + branch protection
 
 | File | Purpose |
 |---|---|
-| `claude.md` | Master authority — Claude Code reads this first |
+| `CLAUDE.md` | Master authority — Claude Code reads this first |
 | `mvp_locked_decisions.md` | All locked implementation decisions |
 | `02_openapi.yaml` | API contract — authority for all endpoint paths |
 | `nlp_extraction_prompt.md` | NLP extraction contract |

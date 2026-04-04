@@ -58,7 +58,7 @@ Fix **all instances**, not just the one the comment points to.
 
 Before applying a fix, verify it does not conflict with:
 
-- `claude.md` — implementation authority
+- `CLAUDE.md` — implementation authority
 - `mvp_locked_decisions.md` — locked decisions authority
 - CIVIS constants and thresholds
 - Schema naming conventions

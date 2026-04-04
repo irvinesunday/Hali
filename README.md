@@ -77,7 +77,7 @@ docs/
 ## Architecture
 
 See the following key documents:
-- `claude.md` — engineering doctrine and implementation authority
+- `CLAUDE.md` — engineering doctrine and implementation authority
 - `mvp_locked_decisions.md` — all locked product and technical decisions
 - `02_openapi.yaml` — API contract (source of truth for all endpoint paths)
 - `mobile_screen_inventory.md` — mobile screen specs and API dependencies

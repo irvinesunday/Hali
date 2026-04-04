@@ -75,7 +75,7 @@ def build_context(depth: str = "standard") -> tuple[str, str]:
 
     # ── Spec docs ──────────────────────────────────────────────────────────────
     spec_docs = {
-        "claude.md (engineering doctrine)":         ROOT / "claude.md",
+        "CLAUDE.md (engineering doctrine)":         ROOT / "CLAUDE.md",
         "mvp_locked_decisions.md":                  ROOT / "mvp_locked_decisions.md",
         "02_openapi.yaml":                          ROOT / "02_openapi.yaml",
         "01_postgres_schema.sql":                   ROOT / "01_postgres_schema.sql",
@@ -229,7 +229,7 @@ List every blocking issue with:
 List every warning (non-blocking but should be addressed).
 
 ## SPEC DRIFT
-Any implementation that diverges from claude.md, mvp_locked_decisions.md, or OpenAPI spec.
+Any implementation that diverges from CLAUDE.md, mvp_locked_decisions.md, or OpenAPI spec.
 
 ## OUT-OF-SCOPE ITEMS
 Anything built that wasn't in the MVP scope.

@@ -15,11 +15,11 @@ Your two outputs are: (1) a VALIDATION_REPORT and (2) a LESSONS block for Agent 
 - [ ] Every "Tests required" item has a corresponding test in B
 - [ ] The "Done when" criteria are all met
 
-### Against claude.md
+### Against CLAUDE.md
 - [ ] Application-Layer Business Rules enforced in service code
 - [ ] No hardcoded CIVIS constants (all from IConfiguration)
 - [ ] All state changes emit outbox_events in same transaction
-- [ ] Error codes match claude.md exactly
+- [ ] Error codes match CLAUDE.md exactly
 - [ ] No features outside MVP scope introduced
 
 ### Against mvp_locked_decisions.md

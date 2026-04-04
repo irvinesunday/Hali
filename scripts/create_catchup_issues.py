@@ -60,7 +60,7 @@ COMPLETED_ISSUES = [
             "- PostGIS extension enabled\n"
             "- Docker Compose: api, worker, db (postgis/postgis:16-3.4), redis:7, otel-collector\n"
             "- `.env.example` with all CIVIS constants externalised\n"
-            "- `claude.md` engineering seed\n\n"
+            "- `CLAUDE.md` engineering seed\n\n"
             "### Status\n"
             "✅ Merged to main | Tests: 15/15 green"
         ),

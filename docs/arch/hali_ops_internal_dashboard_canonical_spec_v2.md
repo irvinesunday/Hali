@@ -30,7 +30,7 @@ during Phase 1 or Phase 2. References to "MVP" within this document mean the MVP
 Cross-reference points:
 - Citizen mobile architecture: `mobile_screen_inventory.md`
 - Institution dashboard architecture: separate canonical spec (Phase 2)
-- Engineering conventions: `claude.md` and `Hali_05_Repository_Engineering_Conventions_Claude_Seed.docx`
+- Engineering conventions: `CLAUDE.md` and `Hali_05_Repository_Engineering_Conventions_Claude_Seed.docx`
 
 ---
 
@@ -463,7 +463,7 @@ this document point here).
 
 > **Outbox mandate:** Every operator action in this panel that changes cluster state, routing,
 > or suppression status must: (1) write to `admin_audit_logs`, and (2) emit an outbox event
-> via the outbox pattern as mandated by `claude.md` engineering rules. Actions that only mark
+> via the outbox pattern as mandated by `CLAUDE.md` engineering rules. Actions that only mark
 > reviewed without changing state still write an audit entry but do not need to emit an
 > outbox event.
 

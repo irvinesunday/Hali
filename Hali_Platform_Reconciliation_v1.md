@@ -16,13 +16,13 @@ Sections are ordered by severity: conflicts first, then schema gaps, then surfac
 
 ### 1.1 Phase Boundary Declaration
 
-**The conflict:** `claude.md` and `mvp_locked_decisions.md` both mark the admin portal and institution dashboards as out of scope for Phase 1. The dashboard architecture pack introduces all three web dashboards as locked production surfaces with no phase assignment.
+**The conflict:** `CLAUDE.md` and `mvp_locked_decisions.md` both mark the admin portal and institution dashboards as out of scope for Phase 1. The dashboard architecture pack introduces all three web dashboards as locked production surfaces with no phase assignment.
 
 **Resolution — locked:**
 
 | Phase | Scope |
 |---|---|
-| **Phase 1** | Citizen mobile app (React Native + Expo). All items in `claude.md` Phase 1 scope. |
+| **Phase 1** | Citizen mobile app (React Native + Expo). All items in `CLAUDE.md` Phase 1 scope. |
 | **Phase 2** | Institution Operations Dashboard + Institution Admin Dashboard (Next.js). Backend institution and institution-admin route families. Institution role model and schema. |
 | **Phase 3** | Hali Ops Admin Dashboard (Next.js). Ops route family. Trust/integrity surfaces. Advanced analytics. |
 
@@ -30,13 +30,13 @@ Phase 1 must reach a shippable, tested state before Phase 2 begins. Phase 2 must
 
 The dashboard architecture pack defines the **target architecture** for Phases 2 and 3. It is not Phase 1 scope. All document references in the pack are valid and frozen — they just have a phase gate.
 
-`claude.md` remains the Phase 1 implementation authority. The dashboard pack is the Phase 2–3 implementation authority.
+`CLAUDE.md` remains the Phase 1 implementation authority. The dashboard pack is the Phase 2–3 implementation authority.
 
 ---
 
 ### 1.2 Auth Route Names — Canonical Resolution
 
-**The conflict:** `02_openapi.yaml` defines `/v1/auth/request-otp` and `/v1/auth/verify-otp`. Every other document (`claude.md`, `openapi_patch_checklist.md`, `mobile_screen_inventory.md`, `mvp_locked_decisions.md`) uses `/v1/auth/otp` and `/v1/auth/verify`.
+**The conflict:** `02_openapi.yaml` defines `/v1/auth/request-otp` and `/v1/auth/verify-otp`. Every other document (`CLAUDE.md`, `openapi_patch_checklist.md`, `mobile_screen_inventory.md`, `mvp_locked_decisions.md`) uses `/v1/auth/otp` and `/v1/auth/verify`.
 
 **Resolution — locked:**
 
@@ -71,7 +71,7 @@ All admin routes from the original OpenAPI spec are replaced by the `/v1/ops/*` 
 
 ### 1.4 Signal Submit Route — Canonical Resolution
 
-**The conflict:** `02_openapi.yaml` defines `POST /v1/signals` for submit. `claude.md`, `openapi_patch_checklist.md`, and `mobile_screen_inventory.md` all expect `POST /v1/signals/submit`.
+**The conflict:** `02_openapi.yaml` defines `POST /v1/signals` for submit. `CLAUDE.md`, `openapi_patch_checklist.md`, and `mobile_screen_inventory.md` all expect `POST /v1/signals/submit`.
 
 **Resolution — locked:**
 
@@ -130,11 +130,11 @@ Surface identity is established by the authenticated role and account type, not 
 
 ## Part 2 — Schema Gaps
 
-The following tables and columns are missing from `01_postgres_schema.sql`. Each must be added via EF Core migration, not by editing the reference SQL file directly (per the migration rules in `claude.md`). The SQL below is DDL reference for migration authors.
+The following tables and columns are missing from `01_postgres_schema.sql`. Each must be added via EF Core migration, not by editing the reference SQL file directly (per the migration rules in `CLAUDE.md`). The SQL below is DDL reference for migration authors.
 
 ### 2.1 refresh_tokens (Critical — Phase 1)
 
-Referenced in `claude.md`, `mvp_locked_decisions.md`, and `schema_patch_notes.md` but absent from the schema.
+Referenced in `CLAUDE.md`, `mvp_locked_decisions.md`, and `schema_patch_notes.md` but absent from the schema.
 
 ```sql
 create table if not exists refresh_tokens (
