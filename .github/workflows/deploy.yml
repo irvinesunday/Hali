@@ -95,10 +95,15 @@ jobs:
           dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet restore src/Hali.Api/Hali.Api.csproj
-          dotnet ef database update \
-            --project src/Hali.Infrastructure \
-            --startup-project src/Hali.Api \
-            --connection "${{ secrets.STAGING_DATABASE_URL }}"
+          CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
+          for ctx in $CONTEXTS; do
+            echo "--- Applying migrations for $ctx ---"
+            dotnet ef database update \
+              --project src/Hali.Infrastructure \
+              --startup-project src/Hali.Api \
+              --context "$ctx" \
+              --connection "${{ secrets.STAGING_DATABASE_URL }}"
+          done
 
       - name: Seed taxonomy — staging (idempotent)
         run: |
@@ -156,10 +161,15 @@ jobs:
           dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet restore src/Hali.Api/Hali.Api.csproj
-          dotnet ef database update \
-            --project src/Hali.Infrastructure \
-            --startup-project src/Hali.Api \
-            --connection "${{ secrets.PRODUCTION_DATABASE_URL }}"
+          CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
+          for ctx in $CONTEXTS; do
+            echo "--- Applying migrations for $ctx ---"
+            dotnet ef database update \
+              --project src/Hali.Infrastructure \
+              --startup-project src/Hali.Api \
+              --context "$ctx" \
+              --connection "${{ secrets.PRODUCTION_DATABASE_URL }}"
+          done
 
       - name: Deploy API to production
         run: |
