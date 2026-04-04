@@ -40,7 +40,7 @@ You are implementing a production-grade modular monolith. The product doctrine i
 
 ### In scope
 - Citizen mobile app (React Native + Expo)
-- Backend API (.NET 9) + background workers
+- Backend API (.NET 10) + background workers
 - Signal creation (NLP-first via CSI-NLP)
 - Signal clustering + CIVIS activation logic
 - Participation (I'm Affected / I'm Observing)
@@ -116,7 +116,7 @@ If any of these seem necessary: stop and ask before building.
 ## Technology stack (mandatory — do not change)
 
 ### Backend
-- Language: C# / .NET 9
+- Language: C# / .NET 10
 - Framework: ASP.NET Core Web API
 - Architecture: Modular monolith
 - ORM: Entity Framework Core (code-first migrations = schema source of truth)
@@ -202,7 +202,7 @@ If any of these seem necessary: stop and ask before building.
 - Contract first — update OpenAPI before diverging frontend/backend
 - UTC everywhere — stored and transmitted UTC, rendered in local time client-side
 - Outbox pattern — every state-changing write emits an outbox_events row in the same transaction
-- Idempotency — all mutation endpoints accept Idempotency-Key header; all workers are replay-safe
+- Idempotency — all mutation endpoints require `idempotencyKey` in the request body; do not use an `Idempotency-Key` header; all workers are replay-safe
 - Audit trail — every privileged action writes structured log + audit entry
 - No magic state changes — every cluster transition emits a domain event with a reason code
 - Server-side enforcement — all role/scope checks are server-side; frontend hiding is not security

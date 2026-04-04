@@ -1,480 +1,499 @@
-# Hali — Claude Code Master Brief
-**This file is read automatically at every session start. It is your complete operating contract.**
+# Hali MVP – Claude Engineering Guide (Phase 1 Locked, Implementation Update v2)
 
-There are two things this file does:
-1. **Architecture authority** — what to build, how it works, what the rules are
-2. **Session execution** — how to run the build, session sequence, gates, agent model
+## Project Identity
 
-Read both parts. Neither overrides the other.
+Hali is a civic communication convergence system — a neutral “civic weather system” that helps people understand what is happening in a locality through structured citizen signals and official updates.
 
----
+Hali is NOT:
+- a social network
+- a complaint forum
+- a political platform
+- a ranking system
 
-# PART 1 — ARCHITECTURE AUTHORITY
-
----
-
-## What Hali is
-
-Hali is a neutral civic signal platform — a "civic weather system" that aggregates citizen observations and official institution updates into structured, real-time locality insights. It is civic infrastructure, not a social network.
-
-You are implementing a production-grade modular monolith. The product doctrine is frozen. Do not invent features. Do not simplify CIVIS logic. When uncertain, stop and ask.
+It is infrastructure for civic visibility and coordination.
 
 ---
 
-## Platform surfaces and phases
+## Phase 1 MVP Scope (STRICT)
 
-| Surface | Stack | Phase |
-|---|---|---|
-| Citizen Mobile App | React Native + Expo + TypeScript | Phase 1 |
-| Institution Operations Dashboard | Next.js + TypeScript + Tailwind + shadcn/ui | Phase 2 |
-| Institution Admin Dashboard | Next.js + TypeScript + Tailwind + shadcn/ui | Phase 2 |
-| Hali Ops Admin Dashboard | Next.js + TypeScript + Tailwind + shadcn/ui | Phase 3 |
-| Backend API | C# ASP.NET Core, Modular Monolith | All phases |
-| Background Workers | C# .NET Workers | All phases |
+This phase includes ONLY:
 
-**Phase 1 is the entire scope of sessions 00–07. Do not build Phase 2 or 3 surfaces during Phase 1.**
-
----
-
-## Phase 1 scope (STRICT)
-
-### In scope
+### In Scope
 - Citizen mobile app (React Native + Expo)
-- Backend API (.NET 10) + background workers
-- Signal creation (NLP-first via CSI-NLP)
-- Signal clustering + CIVIS activation logic
-- Participation (I'm Affected / I'm Observing)
-- Signal lifecycle: Unconfirmed → Active → Possible Restoration → Resolved
-- Official updates (Live Update, Scheduled Disruption, Advisory/Public Notice)
-- Ward following (max 5 per account)
-- Push notifications (restoration prompts, new clusters in followed wards)
-- Core infrastructure (PostgreSQL + PostGIS + Redis)
+- Backend API (.NET)
+- Core civic signal system:
+  - Signal creation (NLP-first)
+  - Signal clustering
+  - Participation (“I’m Affected” / “I’m Observing”)
+  - CIVIS activation logic
+  - Signal lifecycle (Unconfirmed → Active → Possible Restoration → Resolved)
+- Official updates (basic support)
+- Location resolution
+- Ward following (max 5)
+- Basic notifications
+- Core infrastructure (PostgreSQL + Redis)
 
-### Out of scope — DO NOT BUILD
-- Admin portal, institution dashboards (Phase 2–3)
-- Comments, replies, discussion threads of any kind
-- Likes, reactions, or any engagement mechanics
-- Messaging or chat
+### Out of Scope (DO NOT BUILD)
+- Admin portal
+- Institution dashboards
+- Comments / replies
+- Likes / reactions
+- Messaging / chat
 - Media uploads
-- Social profiles or follower graphs
-- Gamification or rankings
+- Social profiles / followers
+- Gamification
+- Ranking systems
+- Advanced analytics dashboards
+- AI features beyond CSI-NLP extraction
+- Multi-provider auth abstractions beyond what is needed for SMS OTP
 - Microservices
-- Anything not in the in-scope list
+- Complex real-time sockets unless explicitly needed later
 
-If any of these seem necessary: stop and ask before building.
-
----
-
-## Monorepo structure
-
-```
-/hali
-  /apps
-    /citizen-mobile            # React Native + Expo (Phase 1)
-    /institution-web           # Phase 2
-    /institution-admin-web     # Phase 2
-    /hali-ops-web              # Phase 3
-    /api                       # ASP.NET Core Web API
-    /workers                   # .NET Background Workers
-
-  /packages
-    /contracts                 # Framework-agnostic TypeScript types (all surfaces)
-    /taxonomy                  # Category/subcategory/condition constants (all surfaces)
-    /config                    # Non-secret app constants (all surfaces)
-    /design-system             # Tailwind + shadcn/ui — WEB ONLY, never in citizen-mobile
-
-  /src                         # C# modular monolith
-    /Hali.Api
-    /Hali.Workers
-    /Hali.Domain
-    /Hali.Application
-    /Hali.Infrastructure
-    /Hali.Contracts
-    /Hali.Modules.Auth
-    /Hali.Modules.Signals
-    /Hali.Modules.Clusters
-    /Hali.Modules.Participation
-    /Hali.Modules.Advisories
-    /Hali.Modules.Institutions
-    /Hali.Modules.Admin
-    /Hali.Modules.Civis
-    /Hali.Modules.Nlp
-    /Hali.Modules.Notifications
-    /Hali.Modules.Metrics
-
-  /tests
-  /docs/arch       # Architecture reference — read before each implementation area
-  /scripts
-  /agent_prompts
-  /session_prompts
-  /agent_outputs
-  .github/workflows
-```
+If any of these appear necessary:
+→ STOP and ask before implementing.
 
 ---
 
-## Technology stack (mandatory — do not change)
+## Technology Stack (MANDATORY)
 
 ### Backend
-- Language: C# / .NET 10
-- Framework: ASP.NET Core Web API
-- Architecture: Modular monolith
-- ORM: Entity Framework Core (code-first migrations = schema source of truth)
-- Database: PostgreSQL 16 + PostGIS
-- Spatial: H3.net at resolution 9
-- Cache / Queue: Redis 7
-- NLP: Anthropic Claude API (Claude Sonnet), structured JSON only
-- SMS / OTP: Africa's Talking via ISmsProvider
-- Push: Expo Push API via IPushNotificationService
-- Geocoding: Nominatim / OpenStreetMap via IGeocodingService
+- Language: C#
+- Framework: .NET (ASP.NET Core Web API)
+- Architecture: Modular Monolith
 
-### Citizen frontend
-- React Native + Expo (latest stable SDK)
-- TypeScript strict mode
-- Expo Router (file-based routing)
-- Expo SecureStore (token storage — not AsyncStorage)
+### Database
+- PostgreSQL
 
-### Monorepo
-- pnpm workspaces + Turborepo
+### Spatial
+- PostGIS extension enabled in PostgreSQL
+- H3 for spatial_cell_id
+- Use H3 resolution 9 for MVP
+- Use H3.net library
+
+### Caching / Background Jobs
+- Redis
+- .NET Hosted Services / Workers for background processing
+
+### Citizen Frontend
+- React Native (Expo)
+- TypeScript
+- Use Expo Router (file-based routing). Do not use React Navigation.
+
+### API Style
+- REST (OpenAPI aligned)
+- Use `/v1/*` versioned routes
+
+### Data Access
+- Entity Framework Core
+
+### SMS / OTP
+- Africa’s Talking SMS API
+
+### CSI-NLP
+- Anthropic Claude API (Claude Sonnet)
+- Structured JSON extraction only
+
+### Push Notifications
+- Expo Notifications
+- Expo Push Tokens stored per device
+- Backend uses Expo Push API
+
+### Geocoding
+- Nominatim / OpenStreetMap for MVP
+- Must be wrapped behind an interface so it can be swapped later
+
+### Local Development
+- Docker + Docker Compose
 
 ---
 
-## Stack rules (violations block merge)
+## Stack Rules
 
-- Do NOT introduce Node.js or Python as backend runtime
+- Do NOT introduce Node.js or Python as backend services
 - Do NOT introduce microservices
-- Do NOT replace PostgreSQL or Redis
+- Do NOT replace PostgreSQL
 - Do NOT replace H3 with geohash or custom spatial bucketing
-- Do NOT build direct FCM/APNs — use Expo Push
-- Do NOT build a separate NLP microservice
-- Do NOT import /packages/design-system into citizen-mobile
-- Do NOT use localStorage for tokens on web surfaces (httpOnly cookies)
+- Do NOT introduce Firebase as the primary backend
+- Do NOT build direct FCM/APNs integration in MVP
+- Do NOT build a separate NLP microservice for MVP
+- Python is only allowed later for offline experimentation, not for MVP runtime backend
 
 ---
 
-## Auth rules
+## Auth Rules
 
-- Citizens: SMS OTP via Africa's Talking → JWT (60 min) + refresh token (30 days)
-- Refresh tokens stored as SHA-256 hashes — never plaintext
-- Refresh token record shape: token_hash, account_id, device_id, expires_at, revoked_at, replaced_by_token_hash
-- Token rotation is required. replaced_by_token_hash enables theft detection: re-presenting a rotated token revokes the entire token family
-- JWT audience: hali-platform (not hali-mobile)
-- Phase 2 web surfaces: email magic link + mandatory TOTP 2FA + httpOnly cookies
+- Use Africa’s Talking SMS API for OTP delivery
+- `OtpRequestDto.AuthMethod` is typed as `AuthMethod` enum (not raw string).
+  Accepts `phone_otp`, `email_otp`, `magic_link` via `JsonStringEnumConverter(SnakeCaseLower)`.
+  Backend normalises snake_case → PascalCase before enum parse.
+- OTP verification issues:
+  - short-lived access token (default 60 min)
+  - 30-day refresh token
+- `POST /v1/auth/verify` is the canonical verify route (not `/v1/auth/verify-otp`)
+- `POST /v1/auth/refresh` exchanges a refresh token for a new token pair
+- Refresh tokens must be stored server-side as hashes, not plaintext
+- Persist refresh token records with:
+  - token_hash
+  - account_id
+  - device_id
+  - expires_at
+  - revoked_at
+  - created_at
+- Refresh token rotation: old token revoked on each refresh, new pair issued
+- Add `REFRESH_TOKEN_EXPIRY_DAYS=30` to environment configuration
 
----
+### Institution Auth (Invite-Based Flow)
 
-## Migration rules
+Institutions authenticate via a controlled onboarding path:
+1. Admin creates an institution via `POST /v1/admin/institutions` (requires `role: admin` JWT)
+2. System generates a one-time setup link (Base64 token, SHA-256 hash stored, 72-hour expiry)
+3. Institution representative opens link, registers phone via `POST /v1/auth/institution/setup`
+4. System sends OTP to that phone; representative verifies via standard `POST /v1/auth/verify`
+5. JWT issued with `role: institution` and `institution_id: <uuid>` claims
 
-- EF Core code-first migrations are the schema source of truth
-- Reference DDL is in docs/arch/01_schema_reference.md — do not apply it directly
-- Each module owns its own migration set
-- Do NOT replicate broken constraints from the original 01_postgres_schema.sql
-  The corrected versions are in docs/arch/01_schema_reference.md
+This keeps a single auth mechanism (OTP) while giving institutions a controlled path.
 
----
-
-## Non-negotiable product doctrine
-
-1. **Neutrality** — No rankings, no blame, no political interpretation.
-2. **Dual visibility** — Citizen signals and official updates coexist. Neither overrides the other.
-3. **Cluster-first public reality** — Raw SignalEvent rows are internal. Public sees SignalCluster objects only.
-4. **Signals, not speech** — No comments or threads. Structured civic input only.
-5. **Anonymous participation** — Citizen identity never exposed on public surfaces.
-6. **CIVIS is internal** — civis_score, wrab, sds, macf, reason codes never leave trusted surfaces.
-7. **Restoration requires confirmation** — Official claims → possible_restoration only. Citizen threshold (≥60%, ≥2 affected votes) required for resolved.
-8. **NLP-first** — Text in, structured candidate out, user confirms before submit.
-9. **Join over create** — Prefer joining existing clusters over creating duplicates.
-
----
-
-## UX rules
-
-- Home is list-first — no map in Phase 1
-- Calm state shows "Currently calm in [ward name]" with timestamp — not a generic empty illustration
-- Persistent Report FAB throughout the app
-- Add Further Context only appears after I'm Affected, only within 2-minute window
-- Offline: write paths queue locally, read paths serve cached response with freshness timestamp
+Admin can revoke all institution access via `DELETE /v1/admin/institutions/{id}/access`,
+which blocks all linked accounts and revokes their active refresh tokens.
+Institution posts remain visible (history preserved per neutrality doctrine).
 
 ---
 
-## Engineering rules
+## Migration Rules
 
-- Contract first — update OpenAPI before diverging frontend/backend
-- UTC everywhere — stored and transmitted UTC, rendered in local time client-side
-- Outbox pattern — every state-changing write emits an outbox_events row in the same transaction
-- Idempotency — all mutation endpoints require `idempotencyKey` in the request body; do not use an `Idempotency-Key` header; all workers are replay-safe
-- Audit trail — every privileged action writes structured log + audit entry
-- No magic state changes — every cluster transition emits a domain event with a reason code
-- Server-side enforcement — all role/scope checks are server-side; frontend hiding is not security
+Use EF Core code-first migrations.
+The provided SQL DDL in `01_postgres_schema.sql` is the reference, but migrations are the source of truth for schema management.
+Each module owns its own migration set.
+Do not apply the raw SQL file directly as the operational migration system.
 
 ---
 
-## Layering rules
+## Core Product Doctrine
+
+### 1. Neutrality
+- No blame
+- No ranking
+- No arbitration
+
+### 2. Dual Visibility
+- Citizen signals and official updates coexist
+- Neither overrides the other
+
+### 3. Signals, Not Speech
+- No comments
+- No discussion threads
+- No civic “wall”
+- Structured civic input only
+
+### 4. Participation Over Posting
+Primary actions:
+- “I’m Affected”
+- “I’m Observing”
+
+### 5. Resolution Requires Confirmation
+- Signals do NOT auto-resolve from official updates alone
+- Citizen confirmation is required for final resolution
+
+### 6. Cluster-First Public Reality
+- Raw contributions are stored as SignalEvents
+- Public-facing civic reality is represented by SignalClusters
+- Do NOT make the public feed raw event spam
+
+---
+
+## UX Principles
+
+### List-Led Experience
+- Home is list-first, not map-first
+
+### Calm Civic Tone
+- Neutral, factual, non-alarmist language
+
+### Location Clarity
+Use:
+- road + landmark + area, where applicable
+- area-level only for experiential utility issues when road-level specificity is not appropriate
+
+### Report Button
+- Persistent report button is available throughout the app
+- It does not become a social “post” action
+
+---
+
+## Architecture (Modular Monolith)
+
+src/
+- Hali.Api
+- Hali.Application
+- Hali.Domain
+- Hali.Infrastructure
+- Hali.Workers
+- Hali.Contracts
+
+tests/
+scripts/
+docs/
+
+---
+
+## Domain Concepts
+
+- SignalEvent → raw user contribution
+- SignalCluster → public representation of a civic condition
+- Participation → “Affected” / “Observing” state on a cluster
+- OfficialUpdate → structured institution-originated update
+- CIVIS → internal trust and validation engine
+- CSI-NLP → free text to structured candidate signal extraction
+- TDA → time behavior and recurrence classification
+- Device → installation/device integrity anchor
+- WardFollow → user followed ward relationship
+- RefreshToken → server-side persisted hashed refresh token record tied to account + device
+
+---
+
+## Locked Implementation Decisions
+
+### CSI-NLP MVP Decision
+Use the Anthropic Claude API (Claude Sonnet) as the MVP extraction engine.
+The NLP layer must return structured JSON only.
+Do not introduce a separate Python NLP service.
+All extraction outputs must be validated against the canonical Hali taxonomy before persistence.
+
+### Auth Provider
+Use Africa’s Talking SMS API for OTP delivery.
+Implement the provider behind an abstraction interface.
+Do not build a custom telecom integration.
+
+### Spatial Indexing
+Use H3 for spatial_cell_id.
+Use H3 resolution 9 for MVP.
+Use H3 as a candidate-bucketing/indexing mechanism, then apply exact clustering rules using distance, time, and category compatibility.
+Store latitude and longitude separately in addition to spatial_cell_id.
+
+### Push Notifications
+Use Expo Notifications for the React Native MVP.
+Use Expo Push Tokens for device registration and Expo Push API for backend delivery.
+Do not build direct FCM/APNs integration in MVP.
+
+### Geocoding
+Use Nominatim / OpenStreetMap for MVP behind an IGeocodingService interface.
+Cache reverse geocoding results.
+Do not couple domain logic to vendor-specific response shapes.
+
+---
+
+## Document Authority
+
+When documents in this pack conflict, the following hierarchy applies:
+
+1. `CLAUDE.md` (this file) — implementation authority
+2. `mvp_locked_decisions.md` — locked decisions authority
+3. `mobile_screen_inventory.md` — frontend authority
+4. `openapi_patch_checklist.md` — API contract authority
+5. `01_postgres_schema.sql` — schema reference
+
+**The following files are reference context only — not implementation authority:**
+- `Claude.md` (uppercase — old version, superseded by this file)
+- `Claude_Seed_Prompt.md` (old paths, superseded by CLAUDE.md)
+- `Hali_MVP_Claude_Execution_Pack.docx` (old paths, superseded by CLAUDE.md)
+- `09_CLAUDE.md` (earlier version, superseded by this file)
+- `10_repository_structure.md` (proposes a different module-per-domain layout; superseded by Folder_Structure.md and the Architecture section of this file)
+
+All spec files (`mvp_locked_decisions.md`, `mobile_screen_inventory.md`, `nlp_extraction_prompt.md`,
+`openapi_patch_checklist.md`, `schema_patch_notes.md`, `seed_taxonomy_expanded.sql`) live at
+the **project root**, not in a `docs/` subfolder.
+
+Where any older files conflict with CLAUDE.md or locked_decisions, **CLAUDE.md wins**.
+
+---
+
+## Working Protocol
+
+Before writing any code, read these files in this order:
+
+1. `CLAUDE.md` — this file (you are reading it)
+2. `mvp_locked_decisions.md` — all locked implementation decisions
+3. `01_postgres_schema.sql` — canonical schema DDL
+4. `mobile_screen_inventory.md` — before any frontend work
+5. `nlp_extraction_prompt.md` — before NLP integration (Phase 5)
+6. `openapi_patch_checklist.md` — before implementing any endpoint
+7. `schema_patch_notes.md` — before generating EF Core migrations
+8. `seed_taxonomy_expanded.sql` — before seeding the database
+9. `.env.example` — before configuring any service
+
+When uncertain about a decision: stop and ask. Do not guess and proceed.
+Show structure before implementation at each phase.
+Call out assumptions explicitly before acting on them.
+
+---
+
+## Build Sequence (MANDATORY — do not skip ahead)
+
+Claude Code must build in this order. Do not start a phase until the prior phase is
+committed and confirmed working. Show structure before writing implementation code.
+
+1. **Repo structure** — scaffold solution, projects, module folders, test projects
+2. **Core schema** — EF Core migrations per module derived from 01_postgres_schema.sql
+3. **Auth** — OTP flow, JWT issuance, refresh token store, device registration
+4. **Signal ingestion** — SignalEvent persistence, idempotency, rate limiting
+5. **CSI-NLP integration** — INlpExtractionService, prompt call, DTO mapping, validation
+6. **Geocoding integration** — IGeocodingService, Nominatim, reverse geocoding cache
+7. **Clustering** — H3 candidate search, join-score, cluster create/join, outbox emit
+8. **CIVIS logic** — WRAB, SDS, MACF, activation gate, decay worker, civis_decisions
+9. **Participation** — affected/observing/no_longer_affected, one-type-per-device rule
+10. **Official updates** — institution posts, geo-scope enforcement, dual-visibility
+11. **Restoration** — restoration-response endpoint, threshold evaluation, state transition
+12. **Notifications** — push token registration, Expo Push API delivery, restoration prompts
+
+If any phase reveals a conflict with earlier phases, stop and surface it rather than
+patching forward silently.
+
+---
+
+## API Path Authority
+
+Treat the OpenAPI spec (patched per `openapi_patch_checklist.md`) as the authority for route naming and versioning.
+Frontend screen inventory must match the OpenAPI spec exactly.
+
+Implemented endpoints (source of truth — matches running code):
+
+**Auth:**
+- `POST /v1/auth/otp` — request OTP
+- `POST /v1/auth/verify` — verify OTP, issue JWT + refresh token
+- `POST /v1/auth/refresh` — exchange refresh token for new pair
+- `POST /v1/auth/logout` — revoke refresh token
+- `POST /v1/auth/institution/setup` — accept invite, register phone, send OTP
+
+**Home & Feed:**
+- `GET /v1/home` — paginated home feed (`section`, `cursor` query params)
+
+**Signals:**
+- `POST /v1/signals/preview` — NLP extraction + existing cluster candidates
+- `POST /v1/signals/submit` — submit confirmed signal event
+
+**Clusters:**
+- `GET /v1/clusters/{id}` — cluster detail with official updates
+- `POST /v1/clusters/{id}/participation` — affected / observing / no_longer_affected
+- `POST /v1/clusters/{id}/context` — add further context (requires affected)
+- `POST /v1/clusters/{id}/restoration-response` — restoration vote
+
+**Localities:**
+- `GET /v1/localities/followed` — list followed wards
+- `PUT /v1/localities/followed` — set followed wards (max 5)
+
+**Official Posts:**
+- `POST /v1/official-posts` — create geo-scoped institution post (role=institution)
+
+**Users & Devices:**
+- `GET /v1/users/me` — current user profile
+- `PUT /v1/users/me/notification-settings` — update notification prefs
+- `POST /v1/devices/push-token` — register/update expo push token
+
+**Admin:**
+- `POST /v1/admin/institutions` — create institution + issue invite (role=admin)
+- `DELETE /v1/admin/institutions/{id}/access` — revoke institution access (role=admin)
+
+---
+
+## Application-Layer Business Rules
+
+The following rules must be enforced in service code, not only database constraints.
+
+### Participation — one type per device per cluster
+A device may only hold one active participation type per cluster at a time.
+Before inserting a new participation row, the service must cancel or replace any
+existing participation row for that (cluster_id, device_id) pair.
+The DB constraint alone does not enforce this.
+
+### Ward following — max 5 per account
+The followed-wards service must reject a PUT /v1/localities/followed request that
+would result in more than 5 followed localities for the account.
+Return HTTP 422 with code `max_followed_localities_exceeded`.
+
+### Add Further Context — only after "I'm Affected"
+POST /v1/clusters/{id}/context must be rejected if the requesting device does not
+have an active `affected` participation record on that cluster.
+Return HTTP 422 with code `context_requires_affected_participation`.
+
+### Context edit window
+Context edits are only accepted within CIVIS_CONTEXT_EDIT_WINDOW_MINUTES of the
+original affected participation. After the window, return HTTP 422 with code
+`context_edit_window_expired`.
+
+---
+
+## Copilot Review Comments
+
+When resolving GitHub Copilot review comments on pull requests, follow the workflow defined in
+`docs/arch/COPILOT_RESOLUTION_SKILL.md`. Key rules:
+
+- Always read the current file at HEAD before applying a fix — comment line numbers may be stale
+- Search the full PR diff for other instances of the same problem before committing
+- Never apply a fix that conflicts with locked decisions (`CLAUDE.md` as the authoritative master brief, `mvp_locked_decisions.md`)
+- Fix all instances of a pattern bug, not just the one the comment points to
+
+---
+
+## Final Reminder
+
+Hali is not a social app.
+
+Build it as a calm, trustworthy civic infrastructure system that helps people understand and navigate real-world conditions.
+
+---
+
+## PR Description Rules (MANDATORY)
+
+When creating a pull request via `gh pr create` or any GitHub API call, you MUST populate the PR body fully. Never submit a PR with empty template fields.
+
+Before creating any PR, construct the full body by filling in every section of the template:
 
 ```
-Domain     → civic vocabulary, invariants, pure domain services. No HTTP, no DB, no queue.
-Application → use cases, commands, queries, DTOs. No UI policy, no raw SQL.
-Infrastructure → EF Core, Redis, adapters, external integrations.
-API/Workers → composition roots. Wire dependencies here only.
+## Summary
+One or two sentences describing what this PR does and why.
+
+## Session / Phase
+Session: [e.g. Session 04 — Clustering & CIVIS]
+Phase: [e.g. Phase 1 — Citizen Mobile]
+
+## Agent C Verdict
+Verdict: [PASS / PASS_WITH_NOTES / FAIL — or PENDING if not yet run]
+Approved to merge: [Yes / No / Pending]
+
+## Coverage
+Line coverage: [e.g. 91.4% — or PENDING if CI hasn't run]
+Gate status: [PASS / INFORMATIONAL / PENDING]
+
+## Changes made
+- [Bullet 1: specific thing implemented]
+- [Bullet 2: specific thing implemented]
+
+## How to test
+1. [Step 1]
+2. [Step 2]
+
+## Checklist
+- [ ] All 6 CI jobs are green
+- [ ] Coverage gate >= 95%
+- [ ] Agent C validation report reviewed
+- [ ] No hardcoded secrets or API keys
+- [ ] No .env files committed
+- [ ] EF Core migrations are reversible
+- [ ] Outbox events written in same transaction as state changes
+- [ ] No features outside MVP scope introduced
 ```
 
----
-
-## Domain concepts glossary
-
-| Term | Meaning |
-|---|---|
-| SignalEvent | Raw user contribution — single report from a single device |
-| SignalCluster | Public civic condition object — aggregates signal events |
-| Participation | Affected / Observing / No Longer Affected action on a cluster |
-| OfficialUpdate | Institution-authored live update / scheduled disruption / advisory |
-| CIVIS | Internal trust engine — computes WRAB, SDS, MACF |
-| CSI-NLP | Free text → structured civic signal via Anthropic API |
-| TDA | Temporal Distribution Aggregator — recurrence and pattern classification |
-| Device | Installation anchor for CIVIS diversity checks |
-| WardFollow | User followed ward — max 5 per account |
-| RefreshToken | Server-side hashed refresh token tied to account + device |
-| WRAB | Weighted Rolling Active Baseline — expected activity pressure |
-| SDS | Signal Density Score — current activity vs baseline |
-| MACF | Minimum Absolute Confirmation Floor — activation participation threshold |
+Pass this entire string as the `--body` argument when creating the PR.
+Do NOT use `--body-file` pointing to the raw template — always construct the populated version inline.
+If Agent C has not run yet, mark Verdict and coverage as PENDING rather than leaving blank.
 
 ---
 
-## Locked implementation decisions
+## Branching Strategy
 
-| Decision | Value |
-|---|---|
-| NLP provider | Anthropic Claude Sonnet, JSON output only |
-| Auth (citizens) | Africa's Talking SMS OTP |
-| Auth (web Phase 2) | Email magic link + TOTP |
-| Spatial indexing | H3.net resolution 9 |
-| Push notifications | Expo Push API |
-| Geocoding | Nominatim / OSM (cached) |
-| Schema management | EF Core code-first migrations |
-| Join score formula | 0.40×category + 0.25×distance + 0.20×time + 0.15×condition |
-| Join threshold | 0.65 |
-| Restoration threshold | ≥60% ratio + ≥2 distinct affected device votes |
-| Context edit window | 2 minutes post I'm Affected |
-| Refresh token expiry | 30 days |
-| JWT audience | hali-platform |
-
----
-
-## Canonical Phase 1 API paths
-
-```
-POST /v1/auth/otp
-POST /v1/auth/verify
-POST /v1/auth/refresh
-POST /v1/auth/logout
-GET  /v1/home
-POST /v1/signals/preview
-POST /v1/signals/submit
-GET  /v1/clusters/{id}
-POST /v1/clusters/{id}/participation
-POST /v1/clusters/{id}/context
-POST /v1/clusters/{id}/restoration-response
-GET  /v1/localities/followed
-PUT  /v1/localities/followed
-POST /v1/devices/push-token
-PUT  /v1/users/me/notification-settings
-GET  /v1/users/me
-```
-
-Phase 2 adds /v1/institution/* and /v1/institution-admin/*
-Phase 3 adds /v1/ops/*
-
----
-
-## Architecture reference documents
-
-Read the relevant file before implementing each area. These are your implementation contracts.
-
-| File | When to read |
-|---|---|
-| docs/arch/01_schema_reference.md | Before any DB migration — canonical DDL with all patches |
-| docs/arch/02_api_contracts.md | Before any endpoint — all routes, shapes, error model |
-| docs/arch/03_phase1_backend.md | Phase 1 backend — build gates, patterns, checklist |
-| docs/arch/04_phase1_mobile.md | Phase 1 mobile — screens, navigation, offline queue |
-| docs/arch/05_civis_engine.md | CIVIS, clustering, lifecycle — formulas in C# |
-| docs/arch/06_worker_pipelines.md | All background workers and queue routing |
-| docs/arch/07_auth_implementation.md | Auth for all surfaces, token rotation |
-| docs/arch/08_phase2_institution.md | Institution dashboard surfaces (Phase 2) |
-| docs/arch/09_nlp_integration.md | Anthropic API integration, validation, fallback |
-| docs/arch/10_testing_strategy.md | Required unit, integration, and contract tests |
-
-The Hali_Platform_Reconciliation_v1.md at repo root resolves all conflicts between earlier docs.
-It supersedes any conflicting guidance in older files.
-
----
-
-## Definition of done for every PR
-
-- [ ] OpenAPI spec updated if any endpoint changed
-- [ ] Unit tests cover all new domain rules and CIVIS logic
-- [ ] Integration test covers the happy path for any new flow
-- [ ] Structured log added for every operationally meaningful state change
-- [ ] Audit entry written for every privileged action
-- [ ] Outbox event emitted for every state-changing write
-- [ ] No CIVIS internals (civis_score, wrab, sds, macf, raw_confirmation_count) in any public response
-- [ ] No account_id or device_id in citizen-facing cluster responses
-- [ ] No feature from the Phase 1 out-of-scope list
-
----
-
-## What you must never do
-
-- Add comments, likes, replies, chat, or messaging
-- Expose raw signal_events on public feeds
-- Expose civis_score, wrab, sds, macf, or reason codes in citizen or institution responses
-- Allow an institution to suppress or remove a citizen cluster
-- Allow final cluster resolution without citizen confirmation threshold
-- Store refresh tokens as plaintext
-- Store web session tokens in localStorage
-- Import /packages/design-system into citizen-mobile
-- Build microservices
-- Replace H3 with geohash
-- Skip outbox emission on any state-changing write
-
----
-
-
----
-
-# PART 2 — BUILD STATE & ONGOING ENGINEERING
-
----
-
-## Current build state
-
-Phase 1 (Citizen Mobile MVP) backend is **complete**.
-
-| Session | What was built | State |
-|---|---|---|
-| 00 | OpenAPI patched, EF Core migrations scaffolded, taxonomy seeded | ✅ Done |
-| 01 | Repo structure, solution, all module projects, EF Core wiring | ✅ Done |
-| 02 | Auth — SMS OTP, JWT, refresh tokens, device registration | ✅ Done |
-| 03 | Signal intake, CSI-NLP extraction, geocoding, H3 spatial indexing | ✅ Done |
-| 04 | Clustering, CIVIS engine (WRAB/SDS/MACF), activation gate, decay | ✅ Done |
-| 05 | Participation, context window, vertical slice test (13 steps) | ✅ Done |
-| 06 | Official updates, dual visibility, restoration lifecycle | ✅ Done |
-| 07 | Push notifications, observability, integration polish | ✅ Done |
-
-Post-build Agent C full-codebase validation: **PASS_WITH_NOTES** — all blocking issues resolved.
-139 unit tests passing. Codebase on `main`.
-
-**PR #28 merged:** Institution auth (B-5), OpenAPI v0.3.0 docs sync, SLOs (12 definitions), alert rules (14, P1–P4), runbook stubs (12), Dredd contract test hooks. 18/18 CI checks passed.
-
-Repo location on WSL2: `/home/irvine/projects/halicity/hali`
-
----
-
-## Agent C blocking issue status
-
-| Issue | Description | Status |
-|---|---|---|
-| BLOCKING-1 | Integration tests — WebApplicationFactory + Testcontainers PostgreSQL | ⏳ Own session |
-| BLOCKING-2 | Institution header bypass security fix | ✅ Done |
-| BLOCKING-3 | Governance CIVIS constants | ✅ Done |
-| BLOCKING-4 | Redis rate limiting on preview endpoint | ✅ Done |
-| BLOCKING-5 | MinRestorationAffectedVotes corrected to 2 | ✅ Done |
-| BLOCKING-6 | DeactivationThreshold documented | ✅ Done |
-| BLOCKING-7 | Structured logging verified live | ✅ Done |
-
-Integration tests (BLOCKING-1) are the only remaining backend item. Run as a parallel session alongside mobile app work.
-
----
-
-## What is not yet built
-
-| Item | Phase | Notes |
-|---|---|---|
-| Integration tests | Phase 1 | Separate session — can run in parallel with mobile |
-| React Native mobile app (citizen-mobile) | Phase 1 | Agent D — highest priority |
-| Institution Operations Dashboard | Phase 2 | Backend auth foundation (B-5) already done |
-| Institution Admin Dashboard | Phase 2 | |
-| Hali Ops Admin Dashboard | Phase 3 | |
-
-The mobile app is the highest priority remaining Phase 1 item. Start with Agent D.
-
----
-
-## How to work on the existing codebase
-
-### Starting a new backend session
-
-You do not run session prompts sequentially anymore — those are complete. For targeted backend work:
-
-1. Read this file (auto-loaded)
-2. Read the relevant `docs/arch/` file for the area you're working on
-3. Read `docs/arch/00_session_patch_notes.md` for reconciliation context
-4. State what you're changing and why before touching code
-5. Run `dotnet test` before and after — must stay at 0 failures
-6. Commit with a clear message referencing the issue or fix
-
-### Starting a mobile app session (Agent D)
-
-The React Native app is a greenfield build on top of the completed backend.
-Before starting, read:
-- `docs/arch/04_phase1_mobile.md` — full screen inventory and rules
-- `docs/arch/02_api_contracts.md` — all Phase 1 endpoints the app calls
-- `docs/arch/07_auth_implementation.md` — SMS OTP flow and token storage
-- `agent_prompts/agent_d_mobile.md` — Agent D system prompt
-
-The backend API is running at `http://localhost:8080` for local development.
-Start with auth flow (phone entry → OTP → verify → home feed) and work screen by screen.
-
-### Starting a Phase 2 session (institution dashboards)
-
-Do not start Phase 2 until the mobile app is in pilot state.
-When ready, read `docs/arch/08_phase2_institution.md` before anything else.
-Phase 2 requires schema migrations for: `institution_memberships`, `institution_user_scopes`, `official_update_templates`, `institution_notification_recipients`.
-
----
-
-## Multi-agent model (for ongoing sessions)
-
-The agent orchestration framework is still intact and should be used for significant new workstreams.
-
-| Agent | Use for |
-|---|---|
-| A | Backend feature work, bug fixes, new modules |
-| B | Unit tests (runs independently from contracts, not from A's code) |
-| C | Validation — run after any significant change set |
-| D | React Native mobile app build |
-
-Run agents via:
-```bash
-cd /home/irvine/projects/halicity/hali
-python3 scripts/orchestrate.py --session mobile-01 --dry-run   # cost estimate first
-python3 scripts/orchestrate.py --session mobile-01
-```
-
-Or trigger from GitHub Actions → Multi-Agent Orchestration.
-
-Cost tracking: `agent_outputs/.spend.json` — reset at start of each billing month.
-
----
-
-## PR workflow
-
-Every significant change goes through a PR:
-1. CI pipeline must be green (all jobs)
-2. Agent C validation report in PR body
-3. Test coverage ≥ 95% for domain + CIVIS modules
-4. `irvinesunday` is the only reviewer (CODEOWNERS enforced)
-5. Squash and merge
-
----
-
-## Authority hierarchy (conflict resolution)
-
-When any two documents conflict, this is the resolution order:
-
-1. This file (CLAUDE.md)
-2. Hali_Platform_Reconciliation_v1.md
-3. docs/arch/00_session_patch_notes.md
-4. docs/arch/* files by topic
-5. 02_openapi.yaml for route names
-6. Everything else (older .docx files, earlier .md files) — reference only
-
+- Base branch for all feature/fix/chore branches: `develop`
+- All PRs from feature branches must target `develop`, never `main`
+- `main` is updated only via a release PR from `develop`
+- When creating a branch, always branch off the latest `develop`:
+  `git checkout develop && git pull && git checkout -b <branch-name>`
+- Never use `--base main` in `gh pr create`
