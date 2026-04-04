@@ -1,5 +1,5 @@
 # Agent D — Mobile Architecture Addendum
-**Prepend this to your agent_d_mobile.md system prompt.**
+**Consolidated architecture guidance for Agent D (mobile).**
 
 ---
 

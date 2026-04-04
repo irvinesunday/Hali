@@ -193,7 +193,7 @@ migrationBuilder.Sql(@"
 migrationBuilder.Sql(@"
     CREATE UNIQUE INDEX ix_participations_device_cluster_type
     ON participations(cluster_id, device_id, participation_type)
-    WHERE idempotency_key IS NOT NULL;
+    WHERE device_id IS NOT NULL;
 
     CREATE UNIQUE INDEX ix_participations_idempotency
     ON participations(idempotency_key)
@@ -260,7 +260,7 @@ public class AfricasTalkingSmsProvider : ISmsProvider { ... }
 
 ```
 POST /v1/auth/otp          → 3 requests per 10 min per destination
-POST /v1/auth/verify       → 5 attempts per challenge (enforced per challengeId)
+POST /v1/auth/verify       → 3 attempts per challenge (enforced per challengeId; challenge invalidated after 3 failed attempts)
 POST /v1/signals/preview   → 20 per min per device
 POST /v1/signals/submit    → 5 per 5 min per device
 POST /v1/clusters/*/participation → 10 per min per device
@@ -277,7 +277,7 @@ See `docs/arch/09_nlp_integration.md` for the full NLP implementation guide.
 ```
 POST /v1/signals/preview
   1. Validate request shape
-  2. Rate limit check (Redis key: rl:signal-submit:{deviceHash})
+  2. Rate limit check (Redis key: rl:signal-preview:{deviceHash})
   3. Coarse location resolution (H3 cell from lat/lng if provided)
   4. Call INlpExtractionService.ExtractAsync(text, context)
   5. Validate extraction output against canonical taxonomy

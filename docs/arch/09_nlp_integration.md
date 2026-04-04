@@ -113,7 +113,7 @@ public class AnthropicNlpExtractionService : INlpExtractionService
     "landmark_name": "CFAO Mobility",
     "facility_name": null,
     "location_label": "Potholes near CFAO Mobility at Lusaka Road / Uhuru Highway, Nairobi West",
-    "location_precision_type": "road_landmark",
+    "location_precision_type": "landmark",
     "location_confidence": 0.82,
     "location_source": "nlp"
   },
@@ -151,7 +151,7 @@ private NlpExtractionResult ParseAndValidate(string jsonText)
         throw new NlpExtractionException($"Unknown subcategory: {raw.Subcategory} for {category}");
 
     // Clamp confidences
-    var condConf = Math.Clamp(raw.ConditionConfidence, 0.0m, 1.0m);
+    var condConf = Math.Clamp(raw.ConditionConfidence, 0.0m, 0.95m);
     var locConf  = Math.Clamp(raw.Location.LocationConfidence, 0.0m, 1.0m);
 
     return new NlpExtractionResult(category, raw.Subcategory, raw.ConditionLevel,

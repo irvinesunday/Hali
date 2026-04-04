@@ -77,7 +77,7 @@ private decimal ComputeTemporalDecay(
     DateTimeOffset evaluationTime,
     CivicConfig config)
 {
-    var halfLifeHours = config.GetHalfLifeHours(category);
+    var halfLifeHours = config.GetHalfLifeHours(e.Category);
     var lambda = Math.Log(2) / halfLifeHours;
     var deltaHours = (evaluationTime - e.OccurredAt).TotalHours;
     return (decimal)Math.Exp(-lambda * deltaHours);
@@ -106,6 +106,7 @@ SDS measures how unusual current activity is vs the baseline.
 ```csharp
 public decimal ComputeSds(
     Guid clusterId,
+    string category,
     decimal effectiveWrab,
     DateTimeOffset evaluationTime,
     CivicConfig config)

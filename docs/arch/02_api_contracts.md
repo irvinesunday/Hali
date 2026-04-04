@@ -9,7 +9,7 @@ This file is the companion to `02_openapi.yaml`. When there is a conflict, this 
 
 - All routes versioned under `/v1/`
 - All timestamps ISO 8601 UTC
-- All mutation endpoints accept `Idempotency-Key` header
+- All mutation endpoints use `idempotencyKey` in the request body for idempotency; request bodies must not use a separate header
 - Cursor-based pagination on all list endpoints
 - Public responses never expose CIVIS internals, device data, or account PII
 - Every write returns the updated object and its stable ID
@@ -195,7 +195,7 @@ Response 200:
       "neutralSummary": "Potholes affecting road near National Oil, Nairobi West.",
       "locationLabel": "Lusaka Road near National Oil, Nairobi West",
       "locationConfidence": 0.82,
-      "locationPrecisionType": "road_landmark",
+      "locationPrecisionType": "landmark",
       "temporalType": "episodic_unknown",
       "temporalConfidence": 0.64,
       "shouldSuggestJoin": true

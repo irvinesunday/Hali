@@ -351,10 +351,10 @@ create table if not exists participations (
 );
 
 -- Deduplication gate: one participation type per device per cluster
--- (partial index — only applies where idempotency_key is not null)
+-- (partial index — only applies where device_id is not null)
 create unique index if not exists ix_participations_device_cluster_type
     on participations(cluster_id, device_id, participation_type)
-    where idempotency_key is not null;
+    where device_id is not null;
 
 -- Idempotency replay guard (separate from above)
 create unique index if not exists ix_participations_idempotency

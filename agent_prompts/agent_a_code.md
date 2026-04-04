@@ -1,5 +1,5 @@
 # Agent A — Architecture Addendum
-**Prepend this to your agent_a_code.md system prompt. It updates Agent A's knowledge with the consolidated architecture.**
+**Consolidated architecture guidance for Agent A.**
 
 ---
 
@@ -45,7 +45,7 @@ USE instead:
 ```sql
 CREATE UNIQUE INDEX ix_participations_device_cluster_type
     ON participations(cluster_id, device_id, participation_type)
-    WHERE idempotency_key IS NOT NULL;
+    WHERE device_id IS NOT NULL;
 
 CREATE UNIQUE INDEX ix_participations_idempotency
     ON participations(idempotency_key)

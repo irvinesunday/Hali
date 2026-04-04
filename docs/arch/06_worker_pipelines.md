@@ -49,6 +49,7 @@ cluster.participation_recorded    → queue:civis-scoring
 cluster.created                   → queue:civis-scoring
 cluster.state_changed             → queue:notifications (conditional on state)
 official_post.published           → queue:official-post-projection
+signal.nlp_enriched               → queue:cluster-linking
 notification.requested            → queue:notifications
 ```
 

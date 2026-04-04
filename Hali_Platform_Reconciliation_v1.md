@@ -317,7 +317,7 @@ Two constraints are needed:
 -- Then add:
 create unique index if not exists ix_participations_device_cluster_type
     on participations(cluster_id, device_id, participation_type)
-    where idempotency_key is not null;
+    where device_id is not null;
 
 -- Idempotency replay guard (separate)
 create unique index if not exists ix_participations_idempotency
@@ -630,7 +630,7 @@ Rationale:
 4. User clicks link → GET /v1/auth/magic?token={token}
 5. Backend validates token, checks 2FA enrollment
 6. If 2FA enrolled: redirect to TOTP entry screen
-7. POST /v1/auth/verify-totp with {challengeId, totpCode}
+7. POST /v1/auth/totp/verify with {challengeId, totpCode}
 8. If 2FA not enrolled (first login): redirect to 2FA setup screen
 9. Session established → access token + refresh token issued
 ```

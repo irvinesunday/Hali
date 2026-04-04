@@ -40,7 +40,7 @@ CORRECT → partial unique index on (locality_id, category, spatial_cell_id)
 
 WRONG  → unique(cluster_id, device_id, participation_type, idempotency_key)  on participations
 CORRECT → two separate partial indexes:
-          ix_participations_device_cluster_type ON (cluster_id, device_id, participation_type) WHERE idempotency_key IS NOT NULL
+          ix_participations_device_cluster_type ON (cluster_id, device_id, participation_type) WHERE device_id IS NOT NULL
           ix_participations_idempotency ON (idempotency_key) WHERE idempotency_key IS NOT NULL
 ```
 
