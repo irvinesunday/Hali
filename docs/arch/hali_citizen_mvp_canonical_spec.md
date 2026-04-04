@@ -3,7 +3,7 @@
 **Status:** Locked for MVP prototype and engineering alignment
 **Scope:** Citizen mobile app only
 **Purpose:** Consolidated canonical specification for the Hali citizen experience, merging original architecture doctrine with lessons validated through v0 MVP prototyping.
-**Supersedes:** `hali_citizen_mvp_canonical_spec-1.md` (v1.0)
+**Supersedes:** v1.0 of this canonical spec
 
 **Changelog from v1.0:**
 - §10.3: Character limit clarified as frontend validation only; DB schema must not hardcode this value.
@@ -450,6 +450,8 @@ These are the authoritative states persisted and managed by the backend:
 
 These are the only values the backend stores in `signal_clusters.state`.
 
+> **Note:** The backend `SignalState` enum may include additional values (e.g. `expired`, `suppressed`) used for internal processing. The table above documents only the citizen-app-relevant subset of states that drive UI presentation.
+
 #### Layer B — UI Presentation States (frontend-derived)
 
 These are display-layer labels derived from backend data at render time. They are never stored as domain state:
@@ -581,7 +583,7 @@ After joining an existing signal (via I'm Affected or I'm Observing) or after cr
 This is:
 - optional
 - short
-- capped at 150 chars (same frontend-only limit as the main composer)
+- capped at 150 chars (enforced at both the frontend for UX and the database level via `context_text varchar(150)` schema constraint)
 - available after both I'm Affected and I'm Observing actions
 
 Note: The internal weight of context contributions may differ based on participation type (context from an Affected participant carries higher CIVIS weight), but the UI must offer this option equally to both.
@@ -1107,7 +1109,7 @@ Triggered by the FAB (+) button from anywhere in the app.
 - "FOLLOWED AREAS" section (same structure)
 - "SETTINGS" section: "Preferences" row with chevron
 - "DEMO CONTROLS" section: "Reset demo data" row with "Clear all signals and start fresh" subtitle
-- Footer: "Hali v1.0 — Civic awareness for your locality" in centered small gray text
+- Footer: "Hali v1.1 — Civic awareness for your locality" in centered small gray text
 
 ### 20.8 Color System (Prototype-Validated)
 
