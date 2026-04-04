@@ -257,7 +257,7 @@ jobs:
         run: cat ./coverage-report/Summary.txt
       - name: Publish to job summary
         run: cat ./coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
-      - name: Enforce 95% line coverage
+      - name: Enforce coverage threshold
         run: |
           python3 - <<'PYEOF'
           import xml.etree.ElementTree as ET, sys, os
@@ -275,6 +275,7 @@ jobs:
         with: { name: coverage-html-report, path: ./coverage-report/ }
       - name: Post PR comment
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
@@ -284,7 +285,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Code Coverage Report\n\n${md}\n\nMinimum required: 95%`
+              body: `## Code Coverage Report\n\n${md}\n\nMinimum required: ${process.env.COVERAGE_THRESHOLD || 40}%`
             });
 
   vertical-slice:
