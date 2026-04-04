@@ -33,6 +33,12 @@ public interface IClusterRepository
 
 	Task WriteOutboxEventAsync(OutboxEvent outboxEvent, CancellationToken ct);
 
+	/// <summary>Returns unpublished outbox events (published_at IS NULL), up to <paramref name="limit"/>.</summary>
+	Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct);
+
+	/// <summary>Stamps published_at on the given outbox event rows.</summary>
+	Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct);
+
 	Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct);
 
 	/// <summary>Returns active clusters for the specified localities.</summary>

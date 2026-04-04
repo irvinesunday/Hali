@@ -27,6 +27,26 @@ public class OfficialPostRepository : IOfficialPostRepository
         return post;
     }
 
+    public async Task<bool> CheckJurisdictionForLocalityAsync(Guid institutionId, Guid? localityId, CancellationToken ct)
+    {
+        bool hasJurisdiction = await _db.InstitutionJurisdictions
+            .AnyAsync(j => j.InstitutionId == institutionId, ct);
+
+        if (!hasJurisdiction)
+            return true; // No jurisdiction rows → institution is unrestricted
+
+        // Allow when: the institution has a jurisdiction row targeting this locality,
+        // OR the jurisdiction row has no geometry constraint (geom IS NULL).
+        var count = await _db.Database.SqlQueryRaw<int>(
+            @"SELECT COUNT(*)::int AS ""Value""
+              FROM institution_jurisdictions ij
+              WHERE ij.institution_id = {0}
+                AND (ij.geom IS NULL OR ij.locality_id = {1})",
+            institutionId, localityId).FirstOrDefaultAsync(ct);
+
+        return count > 0;
+    }
+
     public async Task<bool> JurisdictionIntersectsScopeAsync(Guid institutionId, Guid postId, CancellationToken ct)
     {
         // Use raw SQL with ST_Intersects to check geo-scope against institution jurisdiction

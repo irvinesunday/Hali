@@ -34,6 +34,11 @@ public class OfficialPostsService : IOfficialPostsService
         if (!Enum.TryParse<CivicCategory>(dto.Category.Replace("_", ""), ignoreCase: true, out var category))
             throw new ArgumentException("INVALID_CATEGORY");
 
+        // Geo-scope enforcement BEFORE insert — no out-of-jurisdiction row ever lands in the DB
+        bool allowed = await _repo.CheckJurisdictionForLocalityAsync(institutionId, dto.LocalityId, ct);
+        if (!allowed)
+            throw new InvalidOperationException("OUTSIDE_JURISDICTION");
+
         var post = new OfficialPost
         {
             Id = Guid.NewGuid(),
@@ -61,11 +66,6 @@ public class OfficialPostsService : IOfficialPostsService
         };
 
         var created = await _repo.CreateAsync(post, scope, ct);
-
-        // Geo-scope enforcement: post scope must intersect institution jurisdiction
-        bool intersects = await _repo.JurisdictionIntersectsScopeAsync(institutionId, created.Id, ct);
-        if (!intersects)
-            throw new InvalidOperationException("OUTSIDE_JURISDICTION");
 
         // Phase 11 trigger: live_update + is_restoration_claim → possible_restoration
         if (post.Type == OfficialPostType.LiveUpdate && post.IsRestorationClaim && post.RelatedClusterId.HasValue)
