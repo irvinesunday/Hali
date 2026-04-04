@@ -389,3 +389,50 @@ original affected participation. After the window, return HTTP 422 with code
 Hali is not a social app.
 
 Build it as a calm, trustworthy civic infrastructure system that helps people understand and navigate real-world conditions.
+
+---
+
+## PR Description Rules (MANDATORY)
+
+When creating a pull request via `gh pr create` or any GitHub API call, you MUST populate the PR body fully. Never submit a PR with empty template fields.
+
+Before creating any PR, construct the full body by filling in every section of the template:
+
+```
+## Summary
+One or two sentences describing what this PR does and why.
+
+## Session / Phase
+Session: [e.g. Session 04 — Clustering & CIVIS]
+Phase: [e.g. Phase 1 — Citizen Mobile]
+
+## Agent C Verdict
+Verdict: [PASS / PASS_WITH_NOTES / FAIL — or PENDING if not yet run]
+Approved to merge: [Yes / No / Pending]
+
+## Coverage
+Line coverage: [e.g. 91.4% — or PENDING if CI hasn't run]
+Gate status: [PASS / INFORMATIONAL / PENDING]
+
+## Changes made
+- [Bullet 1: specific thing implemented]
+- [Bullet 2: specific thing implemented]
+
+## How to test
+1. [Step 1]
+2. [Step 2]
+
+## Checklist
+- [ ] All 6 CI jobs are green
+- [ ] Coverage gate >= 95%
+- [ ] Agent C validation report reviewed
+- [ ] No hardcoded secrets or API keys
+- [ ] No .env files committed
+- [ ] EF Core migrations are reversible
+- [ ] Outbox events written in same transaction as state changes
+- [ ] No features outside MVP scope introduced
+```
+
+Pass this entire string as the `--body` argument when creating the PR.
+Do NOT use `--body-file` pointing to the raw template — always construct the populated version inline.
+If Agent C has not run yet, mark Verdict and coverage as PENDING rather than leaving blank.
