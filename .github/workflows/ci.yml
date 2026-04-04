@@ -196,7 +196,6 @@ jobs:
         with: { node-version: "22" }
       - run: npm install -g dredd
       - run: dotnet restore
-      - run: dotnet build --no-restore --configuration Release
       - name: Create schema and seed
         run: |
           PGPASSWORD=hali_test_password psql \
@@ -208,7 +207,7 @@ jobs:
       - name: Start API
         run: |
           dotnet run --project src/Hali.Api/Hali.Api.csproj \
-            --no-build --configuration Release \
+            --no-restore \
             --urls http://localhost:8080 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/health && break
@@ -335,7 +334,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
-      - run: dotnet build --no-restore --configuration Release
       - name: Create schema and seed
         run: |
           PGPASSWORD=hali_test_password psql \
@@ -347,7 +345,7 @@ jobs:
       - name: Start API
         run: |
           dotnet run --project src/Hali.Api/Hali.Api.csproj \
-            --no-build --configuration Release \
+            --no-restore \
             --urls http://localhost:8080 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/health && break
