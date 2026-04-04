@@ -27,6 +27,9 @@ public class OfficialPostsServiceTests
             return Task.FromResult(post);
         }
 
+        public Task<bool> CheckJurisdictionForLocalityAsync(Guid institutionId, Guid? localityId, CancellationToken ct)
+            => Task.FromResult(IntersectsResult);
+
         public Task<bool> JurisdictionIntersectsScopeAsync(Guid institutionId, Guid postId, CancellationToken ct)
             => Task.FromResult(IntersectsResult);
 
@@ -60,6 +63,12 @@ public class OfficialPostsServiceTests
         public Task WriteOutboxEventAsync(OutboxEvent e, CancellationToken ct)
         { OutboxEvents.Add(e); return Task.CompletedTask; }
 
+        public Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<OutboxEvent>)new List<OutboxEvent>());
+
+        public Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct)
+            => Task.CompletedTask;
+
         public Task<IReadOnlyList<SignalCluster>> FindCandidateClustersAsync(IEnumerable<string> s, CivicCategory c, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
 
@@ -82,6 +91,8 @@ public class OfficialPostsServiceTests
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        public Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -123,6 +134,20 @@ public class OfficialPostsServiceTests
             () => svc.CreatePostAsync(Guid.NewGuid(), null, ValidDto(), CancellationToken.None));
 
         Assert.Equal("OUTSIDE_JURISDICTION", ex.Message);
+    }
+
+    // B-4: Jurisdiction check must run BEFORE the DB insert.
+    // When outside jurisdiction, repo.Created must remain null.
+    [Fact]
+    public async Task CreatePost_OutsideJurisdiction_NoRowInserted()
+    {
+        var repo = new FakeOfficialPostRepo { IntersectsResult = false };
+        var svc = new OfficialPostsService(repo, new FakeClusterRepo());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => svc.CreatePostAsync(Guid.NewGuid(), null, ValidDto(), CancellationToken.None));
+
+        Assert.Null(repo.Created); // CreateAsync was never called — no row in DB
     }
 
     [Fact]

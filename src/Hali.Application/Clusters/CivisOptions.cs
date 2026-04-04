@@ -22,7 +22,7 @@ public class CivisOptions
 
 	public double RestorationRatio { get; set; } = 0.6;
 
-	public int MinRestorationAffectedVotes { get; set; } = 1;
+	public int MinRestorationAffectedVotes { get; set; } = 2;
 
 	public CivisCategoryOptions Roads { get; set; } = new CivisCategoryOptions
 	{
