@@ -1,0 +1,122 @@
+# Hali SLO Definitions
+# Review and tune these values after 30 days of production traffic.
+
+version: "1.0"
+service: hali-api
+environment: production
+
+slos:
+
+  # -- Availability --------------------------------------------------------
+  - id: api_availability
+    description: Overall API availability (non-5xx responses)
+    target: 99.5%
+    window: 30d
+    indicator:
+      type: availability
+      good_requests: http_requests_total{status!~"5.."}
+      total_requests: http_requests_total
+
+  # -- Latency -------------------------------------------------------------
+  - id: signal_preview_latency
+    description: POST /v1/signals/preview p95 latency (includes NLP call)
+    target: 95% of requests under 3000ms
+    window: 7d
+    indicator:
+      type: latency
+      percentile: p95
+      threshold_ms: 3000
+      metric: http_request_duration_ms{route="/v1/signals/preview"}
+    notes: NLP extraction via Anthropic API dominates this -- 3s is conservative MVP target
+
+  - id: signal_submit_latency
+    description: POST /v1/signals/submit p95 latency
+    target: 95% of requests under 800ms
+    window: 7d
+    indicator:
+      type: latency
+      percentile: p95
+      threshold_ms: 800
+      metric: http_request_duration_ms{route="/v1/signals/submit"}
+
+  - id: auth_latency
+    description: POST /v1/auth/otp and /v1/auth/verify p95 latency
+    target: 95% of requests under 500ms
+    window: 7d
+    indicator:
+      type: latency
+      percentile: p95
+      threshold_ms: 500
+      metric: http_request_duration_ms{route=~"/v1/auth/.*"}
+    notes: OTP delivery latency is external (Africa's Talking) -- not included here
+
+  - id: home_feed_latency
+    description: GET /v1/home p95 latency
+    target: 95% of requests under 600ms
+    window: 7d
+    indicator:
+      type: latency
+      percentile: p95
+      threshold_ms: 600
+      metric: http_request_duration_ms{route="/v1/home"}
+
+  - id: cluster_detail_latency
+    description: GET /v1/clusters/{id} p95 latency
+    target: 95% of requests under 400ms
+    window: 7d
+    indicator:
+      type: latency
+      percentile: p95
+      threshold_ms: 400
+      metric: http_request_duration_ms{route="/v1/clusters/{id}"}
+
+  # -- Worker Pipeline -----------------------------------------------------
+  - id: nlp_worker_lag
+    description: NLP extraction worker queue depth stays low
+    target: queue depth < 50 for 99% of time
+    window: 1h
+    indicator:
+      type: queue_depth
+      metric: hali_queue_depth{queue="ingestion-normalize"}
+      threshold: 50
+
+  - id: civis_worker_lag
+    description: CIVIS scoring worker queue depth stays low
+    target: queue depth < 100 for 99% of time
+    window: 1h
+    indicator:
+      type: queue_depth
+      metric: hali_queue_depth{queue="civis-scoring"}
+      threshold: 100
+
+  - id: notification_delivery_rate
+    description: Push notification delivery success rate
+    target: 95% of notifications delivered within 60 seconds
+    window: 24h
+    indicator:
+      type: availability
+      good_requests: hali_notifications_delivered_total
+      total_requests: hali_notifications_attempted_total
+
+  # -- Business KPIs -------------------------------------------------------
+  - id: loop_closure_rate
+    description: Percentage of active clusters that reach resolved state within 72h
+    target: ">= 40% within MVP launch period (tune after real data)"
+    window: 7d
+    indicator:
+      type: business
+      metric: hali_loop_closure_rate
+      threshold: 0.40
+    notes: >
+      LCR is the core Hali KPI. 40% is a conservative MVP floor.
+      Expect to tune upward after observing real institutional response patterns.
+
+  - id: cluster_activation_rate
+    description: Percentage of submitted signals that result in cluster activation
+    target: ">= 30%"
+    window: 24h
+    indicator:
+      type: business
+      metric: hali_cluster_activation_rate
+      threshold: 0.30
+    notes: Low activation rate may indicate CIVIS thresholds are too strict for local density.

@@ -71,14 +71,19 @@ Response expectations:
 Purpose:
 Primary civic pulse surface.
 
-Sections:
-1. Active now
-2. Official updates
-3. Recurring at this time
-4. Other active signals
+Sections (with locked per-page limits):
+1. Active now (max 20)
+2. Official updates (max 5)
+3. Recurring at this time (max 10)
+4. Other active signals (max 10)
+
+Pagination:
+- Cursor-based per section (`nextCursor` token)
+- Use `useInfiniteQuery` per section for progressive loading
+- First page cached server-side in Redis (30s TTL)
 
 API dependencies:
-- `GET /v1/home`
+- `GET /v1/home` (supports `section` and `cursor` query params)
 - `GET /v1/localities/followed`
 
 ---
@@ -87,7 +92,7 @@ API dependencies:
 
 API dependencies:
 - `GET /v1/clusters/{id}`
-- `POST /v1/clusters/{id}/participation`
+- `POST /v1/clusters/{id}/participation` (singular)
 - `POST /v1/clusters/{id}/context`
 - `POST /v1/clusters/{id}/restoration-response`
 
@@ -122,6 +127,8 @@ API dependencies:
 Notes:
 - server may internally interpret join-vs-create mode from payload
 - do not introduce divergent frontend routes if unified submit endpoint exists
+- `existingClusterCandidates` from preview response are wired here — user picks a cluster to join or creates new
+- Use `ComposerContext` as shared state across all 3 composer steps
 
 ---
 
@@ -140,6 +147,8 @@ Rules:
 API dependencies:
 - `GET /v1/localities/followed`
 - `PUT /v1/localities/followed`
+
+Note: Institution auth is handled via a separate web invite flow, not the mobile OTP screens.
 
 ---
 
