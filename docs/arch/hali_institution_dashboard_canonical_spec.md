@@ -34,7 +34,7 @@ The institution dashboard is **Phase 2** in the Hali three-phase development str
 
 The institution dashboard is a **web application** (desktop-primary). It is not part of the React Native app.
 
-Technology decision: the institution dashboard is a web surface. Implementation may use React / Next.js or any framework consistent with the monorepo conventions in `Hali_05_Repository_Engineering_Conventions_Claude_Seed.docx`. The frontend is separate from the citizen app and the admin portal.
+Technology decision: the institution dashboard is a web surface. Implementation may use React / Next.js or any framework consistent with the monorepo conventions defined in `CLAUDE.md` and `docs/arch/mvp_locked_decisions.md`. The frontend is separate from the citizen app and the admin portal.
 
 ---
 
@@ -53,7 +53,7 @@ It defines:
 - Real-time simulation behavior for demo mode
 - Visual and UI conventions validated through v0
 
-Claude, engineers, designers, and future product contributors should treat this file as the source of truth when implementing or modifying the Hali institution dashboard.
+Claude, engineers, designers, and future product contributors should treat this file as the primary reference for institution dashboard design and behavior. It operates within the document authority hierarchy defined in `CLAUDE.md`; where conflicts arise, `CLAUDE.md` and `docs/arch/mvp_locked_decisions.md` take precedence.
 
 This document is intentionally focused on the **institution dashboard only**.  
 Citizen mobile app architecture is specified separately in `mobile_screen_inventory.md`.
@@ -165,8 +165,8 @@ Institution dashboard access requires an institution user account (`account_type
 
 Rules:
 
-- Institution users must complete **mandatory 2FA** before accessing the dashboard.
-- Institution users are bound to a specific institution at account creation time via the `institution_memberships` relationship.
+- 2FA for institution users is **deferred post-MVP** per `docs/arch/mvp_locked_decisions.md`. MVP auth uses email magic link / OTP only.
+- Institution users are bound to a specific institution at account creation time via `accounts.institution_id`. The JWT issued on login carries an `institution_id` scope claim.
 - Institution users may only see signals, clusters, and metrics within their institution's authorized jurisdiction.
 - Jurisdiction scope is enforced server-side. The frontend should not present out-of-scope actions or data, but the API enforces it regardless.
 - JWT tokens issued to institution users carry institution scope claims; the API rejects requests where the token scope does not match the requested institution resource.
@@ -175,8 +175,8 @@ Rules:
 Auth flow:
 
 1. Institution user logs in via email magic link or email OTP.
-2. 2FA challenge (TOTP or equivalent) must be satisfied before dashboard access is granted.
-3. Access token issued on success. Refresh token rotation applies per the locked auth strategy.
+2. Access token issued on success. Refresh token rotation applies per the locked auth strategy.
+3. _(Post-MVP) 2FA challenge (TOTP or equivalent) will be required before dashboard access is granted._
 
 ---
 
@@ -464,6 +464,8 @@ Bad example:
 | Scoped cluster list for activity feed | `GET /v1/institutions/dashboard/clusters` |
 | Area locality options | Derived from institution jurisdiction metadata |
 
+> **Contract note:** The dashboard endpoints listed above (`/v1/institutions/dashboard/*`) are **proposed endpoints** — they are not yet defined in `docs/arch/02_openapi.yaml`. They must be added to the OpenAPI contract before implementation begins. See `docs/arch/openapi_patch_checklist.md` for the process.
+
 Query parameters for summary endpoint: `institutionId`, `localityId` (optional area filter), `since` (time window for "today" metrics).
 
 ---
@@ -672,12 +674,13 @@ without navigating away into complex admin workflows.
 | Purpose | Endpoint |
 |---|---|
 | Read cluster detail | `GET /v1/clusters/{clusterId}` |
-| Post response action (auto-post) | `POST /v1/institutions/updates` with `responseStage` field |
-| Post custom update | `POST /v1/institutions/updates` with `postType = live_update` |
-| Post restoration claim | `POST /v1/institutions/updates/{id}/restore` |
-| Link update to cluster | `POST /v1/institutions/updates/{id}/link-cluster` |
+| Post official update (existing contract) | `POST /v1/official-posts` per `docs/arch/02_openapi.yaml` |
+| Post restoration claim _(proposed)_ | `POST /v1/institutions/updates/{id}/restore` — not yet in OpenAPI contract |
+| Link update to cluster _(proposed)_ | `POST /v1/institutions/updates/{id}/link-cluster` — not yet in OpenAPI contract |
 
-All POST mutations must include an `Idempotency-Key` header.
+> **Contract note:** `POST /v1/official-posts` is the existing contract endpoint for creating official posts. The `/v1/institutions/updates/*` mutation paths above are proposed and must be added to `docs/arch/02_openapi.yaml` before implementation. See `docs/arch/openapi_patch_checklist.md` for the process.
+
+All POST mutations must include an `idempotencyKey` field in the request body (consistent with the existing API convention; do not use an `Idempotency-Key` header).
 
 ---
 
@@ -790,7 +793,7 @@ Rules:
 - The API must validate stage progression — a post cannot regress to an earlier stage for the same cluster.
 - The `GET /v1/institutions/dashboard/clusters` response should include a `latestResponseStage` derived field per cluster (the `response_stage` of the most recent linked `official_post`).
 
-**Migration:** Add this as a new EF Core migration in `Hali.Modules.Advisories` (or the Institutions module, whichever owns the `official_posts` table).
+**Migration:** Add this as a new EF Core migration under `src/Hali.Infrastructure/Data/Advisories/Migrations` (or the Institutions module path, whichever owns the `official_posts` table).
 
 ---
 
@@ -830,7 +833,7 @@ Badge count should reflect unacknowledged notification volume. Clicking the bell
 
 ### 12.5 API Dependency — Notifications
 
-An institution alerts endpoint is needed. This is not currently specified in the institution API surface in `Hali_03_API_Contracts_Client_Interaction_Spec.docx`.
+An institution alerts endpoint is needed. This is not currently specified in the institution API surface in `docs/arch/02_openapi.yaml`. See `docs/arch/openapi_patch_checklist.md` for the contract addition process.
 
 **Required addition to the institution API surface:**
 
@@ -920,7 +923,7 @@ Include:
 - Busiest Area
 - Top Category
 
-> **Derivation note for "Avg First Response":** This is a **derived/computed metric**, not a stored column. It is computed from: `MIN(official_posts.created_at) - signal_clusters.activated_at` for clusters that have at least one official post linked via `official_post_scopes` or `related_cluster_id`. This computation must happen in the analytics pipeline (`ProjectMetricsJob`) and be surfaced via `GET /v1/institutions/dashboard/summary`. Do not attempt to compute this in the frontend.
+> **Derivation note for "Avg First Response":** This is a **derived/computed metric**, not a stored column. It is computed from: `MIN(official_posts.created_at) - signal_clusters.activated_at` for clusters that have at least one official post linked via `official_post_scopes` or `related_cluster_id`. This computation must happen in the analytics pipeline (`ProjectMetricsJob` — planned placeholder name, not yet implemented) and be surfaced via `GET /v1/institutions/dashboard/summary`. Do not attempt to compute this in the frontend.
 
 ### 14.4 Charts / Distribution Views
 
@@ -1138,7 +1141,7 @@ The following are explicitly locked based on institution dashboard prototype lea
 - Metrics failing to update when institution or area changes
 - Cross-scope live activity pollution
 - Mobile distortions taking priority over desktop polish in MVP
-- Institution operator bypassing 2FA to reach the dashboard
+- _(Post-MVP)_ Institution operator bypassing 2FA to reach the dashboard
 - Response stage regression (e.g., posting `Teams dispatched` after `Service restored`)
 - Demo simulation code bleeding into production API call paths
 
@@ -1155,7 +1158,7 @@ The institution dashboard MVP is successful if:
 5. Overview, Live Signals, Areas, and Metrics feel connected
 6. The dashboard feels alive within 60 seconds
 7. The UI looks like a modern public operations console, not a clunky enterprise admin tool
-8. Auth (including 2FA) works correctly and institution scope is enforced server-side
+8. Auth works correctly and institution scope is enforced server-side (2FA deferred post-MVP)
 
 ---
 
