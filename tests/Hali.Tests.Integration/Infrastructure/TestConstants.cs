@@ -13,6 +13,10 @@ internal static class TestConstants
         Environment.GetEnvironmentVariable("TEST_MAINTENANCE_CONNECTION_STRING")
         ?? "Host=localhost;Port=5432;Database=postgres;Username=hali;Password=changeme";
 
+    internal static string RedisUrl =>
+        Environment.GetEnvironmentVariable("TEST_REDIS_URL")
+        ?? "localhost:6379";
+
     internal const string JwtSecret   = "integration-test-secret-must-be-at-least-32-chars!!";
     internal const string JwtIssuer   = "hali-test";
     internal const string JwtAudience = "hali-test";

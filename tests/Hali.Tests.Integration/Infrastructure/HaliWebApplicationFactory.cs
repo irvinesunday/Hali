@@ -43,7 +43,7 @@ public sealed class HaliWebApplicationFactory
                 ["ConnectionStrings:Advisories"]     = TestConstants.ConnectionString,
                 ["ConnectionStrings:Notifications"]  = TestConstants.ConnectionString,
                 ["ConnectionStrings:Admin"]          = TestConstants.ConnectionString,
-                ["Redis:Url"]                        = "localhost:6379",
+                ["Redis:Url"]                        = TestConstants.RedisUrl,
                 ["Auth:JwtSecret"]                   = TestConstants.JwtSecret,
                 ["Auth:JwtIssuer"]                   = TestConstants.JwtIssuer,
                 ["Auth:JwtAudience"]                 = TestConstants.JwtAudience,
