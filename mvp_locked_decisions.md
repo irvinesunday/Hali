@@ -18,6 +18,12 @@ Rules:
 Interface:
 - INlpExtractionService
 
+Preview response shape:
+- `POST /v1/signals/preview` returns `candidates[]` (structured extractions)
+  and `existingClusterCandidates[]` (nearby clusters the signal could join).
+- Each existing cluster candidate: `clusterId`, `summary`, `locationLabel`, `rawConfirmationCount`
+- The earlier design (`shouldSuggestJoin: bool`) is superseded by this array-based approach.
+
 ---
 
 ## 2. Mobile App Scope
@@ -38,9 +44,30 @@ Rules:
 - server generates OTP
 - server verifies OTP
 - provider wrapped behind abstraction
+- `OtpRequestDto.AuthMethod` typed as `AuthMethod` enum, accepting `phone_otp` / `email_otp` / `magic_link`
+  via `JsonStringEnumConverter(SnakeCaseLower)` — backend normalises snake_case → PascalCase before parse
+- `/v1/auth/verify` is the canonical verify route (not `/v1/auth/verify-otp`)
 
 Interface:
 - ISmsProvider
+
+### Institution Auth
+Decision:
+Invite-based institution onboarding under admin oversight.
+
+Flow:
+1. Admin creates institution via `POST /v1/admin/institutions` → returns invite link
+2. Institution rep opens link, registers phone via `POST /v1/auth/institution/setup` → OTP sent
+3. Rep verifies via standard `POST /v1/auth/verify` → JWT with `role: institution`, `institution_id`
+4. Admin can revoke via `DELETE /v1/admin/institutions/{id}/access` → blocks accounts, revokes tokens
+
+Tables:
+- `institution_invites` (invite_token_hash, institution_id, expires_at, accepted_at)
+- `accounts.institution_id` (nullable FK), `accounts.is_blocked`
+
+Roles in JWT:
+- `citizen` (default), `institution`, `admin`
+- `institution_id` claim present only for institution accounts
 
 ---
 
@@ -211,3 +238,53 @@ Do not casually change them during coding.
 
 This threshold is separate from the restoration vote threshold. Decay-based resolution
 fires when activity falls below 50% of the local baseline, regardless of citizen votes.
+Must be lower than the activation threshold to prevent cluster state flicker.
+
+---
+
+## 13. Home Feed Pagination
+
+### Per-Section Limits (Locked)
+| Section | Max items per page |
+|---|---:|
+| `active_now` | 20 |
+| `official_updates` | 5 |
+| `recurring_at_this_time` | 10 |
+| `other_active_signals` | 10 |
+
+### Pagination
+- Cursor-based: each section returns `nextCursor` (opaque base64 token); null = no more pages
+- `GET /v1/home?section=active_now&cursor=<token>` fetches a specific section page
+- First page (no cursor) cached in Redis per locality set, TTL 30 seconds
+- Subsequent pages fetched live (no cache)
+
+---
+
+## 14. Official Posts — Jurisdiction Check
+
+- Jurisdiction check runs BEFORE DB insert — no out-of-scope post can ever
+  exist in the database even transiently
+- `CreateOfficialPostRequestDto` uses `OfficialPostType` field (matching OpenAPI spec enum)
+- Official post endpoints require `[Authorize(Roles = "institution")]`
+- `institution_id` JWT claim flows into the jurisdiction check end-to-end
+
+---
+
+## 15. Outbox Relay Worker
+
+- Polling interval: every 5 seconds
+- Up to 100 events per cycle
+- Health indicator: rows older than 60 seconds trigger warning log
+- Relay registered as hosted service in `Program.cs`
+
+---
+
+## Post-MVP Backlog (intentionally deferred)
+
+- Institution 2FA hardening (mandatory second factor for institution accounts)
+- Admin dashboard UI
+- Map-based browsing (react-native-maps)
+- Media / photo uploads on signals
+- Ward-level analytics dashboard for institutions
+- Dredd contract test integration (ops/slos session)
+- SLO alert wiring to Grafana / PagerDuty
