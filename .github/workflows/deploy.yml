@@ -85,15 +85,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
       - name: Apply migrations — staging
         run: |
           dotnet tool install --global dotnet-ef
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet restore src/Hali.Api/Hali.Api.csproj
           dotnet ef database update \
             --project src/Hali.Infrastructure \
             --startup-project src/Hali.Api \
             --connection "${{ secrets.STAGING_DATABASE_URL }}"
-        env:
-          DOTNET_VERSION: ${{ env.DOTNET_VERSION }}
 
       - name: Seed taxonomy — staging (idempotent)
         run: |
@@ -138,18 +143,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
       - name: Apply migrations — production
         # Migrations run BEFORE the new image is deployed.
         # This ensures the DB is ready before traffic hits new code.
         # All migrations must be backward-compatible with the previous API version.
         run: |
           dotnet tool install --global dotnet-ef
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet restore src/Hali.Api/Hali.Api.csproj
           dotnet ef database update \
             --project src/Hali.Infrastructure \
             --startup-project src/Hali.Api \
             --connection "${{ secrets.PRODUCTION_DATABASE_URL }}"
-        env:
-          DOTNET_VERSION: ${{ env.DOTNET_VERSION }}
 
       - name: Deploy API to production
         run: |
