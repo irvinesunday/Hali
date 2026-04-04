@@ -436,3 +436,14 @@ Gate status: [PASS / INFORMATIONAL / PENDING]
 Pass this entire string as the `--body` argument when creating the PR.
 Do NOT use `--body-file` pointing to the raw template — always construct the populated version inline.
 If Agent C has not run yet, mark Verdict and coverage as PENDING rather than leaving blank.
+
+---
+
+## Branching Strategy
+
+- Base branch for all feature/fix/chore branches: `develop`
+- All PRs from feature branches must target `develop`, never `main`
+- `main` is updated only via a release PR from `develop`
+- When creating a branch, always branch off the latest `develop`:
+  `git checkout develop && git pull && git checkout -b <branch-name>`
+- Never use `--base main` in `gh pr create`
