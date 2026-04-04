@@ -21,7 +21,7 @@ public class OfficialPostsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize]
+    [Authorize(Roles = "institution")]
     public async Task<IActionResult> CreatePost([FromBody] CreateOfficialPostRequestDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.Type) || string.IsNullOrWhiteSpace(dto.Category)

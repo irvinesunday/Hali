@@ -123,10 +123,14 @@ If any of these appear necessary:
 ## Auth Rules
 
 - Use Africa’s Talking SMS API for OTP delivery
+- `OtpRequestDto.AuthMethod` is typed as `AuthMethod` enum (not raw string).
+  Accepts `phone_otp`, `email_otp`, `magic_link` via `JsonStringEnumConverter(SnakeCaseLower)`.
+  Backend normalises snake_case → PascalCase before enum parse.
 - OTP verification issues:
-  - short-lived access token
+  - short-lived access token (default 60 min)
   - 30-day refresh token
-- Add `POST /v1/auth/refresh`
+- `POST /v1/auth/verify` is the canonical verify route (not `/v1/auth/verify-otp`)
+- `POST /v1/auth/refresh` exchanges a refresh token for a new token pair
 - Refresh tokens must be stored server-side as hashes, not plaintext
 - Persist refresh token records with:
   - token_hash
@@ -135,8 +139,23 @@ If any of these appear necessary:
   - expires_at
   - revoked_at
   - created_at
-- Refresh token rotation is preferred for MVP if straightforward; otherwise single valid active token per device is acceptable
+- Refresh token rotation: old token revoked on each refresh, new pair issued
 - Add `REFRESH_TOKEN_EXPIRY_DAYS=30` to environment configuration
+
+### Institution Auth (Invite-Based Flow)
+
+Institutions authenticate via a controlled onboarding path:
+1. Admin creates an institution via `POST /v1/admin/institutions` (requires `role: admin` JWT)
+2. System generates a one-time setup link (Base64 token, SHA-256 hash stored, 72-hour expiry)
+3. Institution representative opens link, registers phone via `POST /v1/auth/institution/setup`
+4. System sends OTP to that phone; representative verifies via standard `POST /v1/auth/verify`
+5. JWT issued with `role: institution` and `institution_id: <uuid>` claims
+
+This keeps a single auth mechanism (OTP) while giving institutions a controlled path.
+
+Admin can revoke all institution access via `DELETE /v1/admin/institutions/{id}/access`,
+which blocks all linked accounts and revokes their active refresh tokens.
+Institution posts remain visible (history preserved per neutrality doctrine).
 
 ---
 
@@ -336,24 +355,43 @@ patching forward silently.
 Treat the OpenAPI spec (patched per `openapi_patch_checklist.md`) as the authority for route naming and versioning.
 Frontend screen inventory must match the OpenAPI spec exactly.
 
-Minimum required aligned endpoints:
-- `POST /v1/auth/otp`
-- `POST /v1/auth/verify`
-- `POST /v1/auth/refresh`
-- `POST /v1/auth/logout`
-- `GET /v1/home`
-- `GET /v1/users/me`
-- `POST /v1/signals/preview`
-- `POST /v1/signals/submit`
-- `GET /v1/clusters` (query params: localityId, state, category)
-- `GET /v1/clusters/{id}`
-- `POST /v1/clusters/{id}/participation`
-- `POST /v1/clusters/{id}/context`
-- `POST /v1/clusters/{id}/restoration-response`
-- `GET /v1/localities/followed`
-- `PUT /v1/localities/followed`
-- `POST /v1/devices/push-token`
-- `PUT /v1/users/me/notification-settings`
+Implemented endpoints (source of truth — matches running code):
+
+**Auth:**
+- `POST /v1/auth/otp` — request OTP
+- `POST /v1/auth/verify` — verify OTP, issue JWT + refresh token
+- `POST /v1/auth/refresh` — exchange refresh token for new pair
+- `POST /v1/auth/logout` — revoke refresh token
+- `POST /v1/auth/institution/setup` — accept invite, register phone, send OTP
+
+**Home & Feed:**
+- `GET /v1/home` — paginated home feed (`section`, `cursor` query params)
+
+**Signals:**
+- `POST /v1/signals/preview` — NLP extraction + existing cluster candidates
+- `POST /v1/signals/submit` — submit confirmed signal event
+
+**Clusters:**
+- `GET /v1/clusters/{id}` — cluster detail with official updates
+- `POST /v1/clusters/{id}/participation` — affected / observing / no_longer_affected
+- `POST /v1/clusters/{id}/context` — add further context (requires affected)
+- `POST /v1/clusters/{id}/restoration-response` — restoration vote
+
+**Localities:**
+- `GET /v1/localities/followed` — list followed wards
+- `PUT /v1/localities/followed` — set followed wards (max 5)
+
+**Official Posts:**
+- `POST /v1/official-posts` — create geo-scoped institution post (role=institution)
+
+**Users & Devices:**
+- `GET /v1/users/me` — current user profile
+- `PUT /v1/users/me/notification-settings` — update notification prefs
+- `POST /v1/devices/push-token` — register/update expo push token
+
+**Admin:**
+- `POST /v1/admin/institutions` — create institution + issue invite (role=admin)
+- `DELETE /v1/admin/institutions/{id}/access` — revoke institution access (role=admin)
 
 ---
 

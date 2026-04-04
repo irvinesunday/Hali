@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: Hali API
-  version: 0.2.0
+  version: 0.3.0
   summary: Civic signal and official update API for the Hali MVP
 servers:
   - url: http://localhost:8080
@@ -11,11 +11,14 @@ tags:
   - name: Localities
   - name: Signals
   - name: Clusters
-  - name: Participations
+  - name: Participation
   - name: OfficialPosts
   - name: Home
+  - name: Users
+  - name: Devices
   - name: Admin
 paths:
+  # ── Auth ────────────────────────────────────────────────────────────
   /v1/auth/otp:
     post:
       tags: [Auth]
@@ -28,53 +31,141 @@ paths:
               type: object
               required: [authMethod, destination]
               properties:
-                authMethod: { type: string, enum: [phone_otp, email_otp, magic_link] }
+                authMethod:
+                  type: string
+                  enum: [phone_otp, email_otp, magic_link]
+                  description: Accepts snake_case; backend normalises to PascalCase AuthMethod enum
                 destination: { type: string }
       responses:
         '200':
           description: OTP sent
-  /v1/auth/verify-otp:
+  /v1/auth/verify:
     post:
       tags: [Auth]
-      summary: Verify OTP and return access tokens
+      summary: Verify OTP and return access + refresh tokens
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [challengeId, otpCode, deviceFingerprint]
+              required: [destination, otp, deviceFingerprintHash]
               properties:
-                challengeId: { type: string, format: uuid }
-                otpCode: { type: string }
-                deviceFingerprint: { type: string }
+                destination: { type: string }
+                otp: { type: string }
+                deviceFingerprintHash: { type: string }
+                platform: { type: string, nullable: true }
+                appVersion: { type: string, nullable: true }
+                expoPushToken: { type: string, nullable: true }
       responses:
         '200':
-          description: Verified
+          description: Verified — returns JWT access token and refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid or expired OTP
+  /v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange refresh token for new token pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '204':
+          description: Logged out
+  /v1/auth/institution/setup:
+    post:
+      tags: [Auth]
+      summary: Accept institution invite and register phone number
+      description: |
+        Validates the invite token, creates an institution account (or upgrades an existing
+        citizen account), and sends an OTP to the provided phone number. The representative
+        then verifies via the standard POST /v1/auth/verify endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteToken, phoneNumber]
+              properties:
+                inviteToken: { type: string }
+                phoneNumber: { type: string }
+      responses:
+        '202': { description: OTP sent to phone }
+        '400': { description: Invalid, expired, or already-accepted invite }
+
+  # ── Localities ──────────────────────────────────────────────────────
   /v1/localities/followed:
     get:
       tags: [Localities]
       summary: List current user's followed wards
+      security:
+        - bearerAuth: []
       responses:
         '200': { description: OK }
-    post:
+    put:
       tags: [Localities]
-      summary: Follow a ward
+      summary: Set followed wards (max 5)
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [localityId]
+              required: [localityIds]
               properties:
-                localityId: { type: string, format: uuid }
+                localityIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                  maxItems: 5
       responses:
-        '201': { description: Created }
+        '200': { description: Updated }
+        '422': { description: max_followed_localities_exceeded }
+
+  # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:
     post:
       tags: [Signals]
-      summary: NLP-first preview that extracts candidate structured civic signals
+      summary: NLP-first preview — extracts candidate structured civic signals
+      description: |
+        Returns candidates[] (structured extractions from free text) and
+        existingClusterCandidates[] (nearby clusters the signal could join).
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -88,10 +179,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalPreviewResponse'
-  /v1/signals:
+  /v1/signals/submit:
     post:
       tags: [Signals]
       summary: Submit a civic signal event after preview confirmation
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -101,41 +194,28 @@ paths:
       responses:
         '201':
           description: Submitted
-  /v1/clusters:
-    get:
-      tags: [Clusters]
-      summary: Browse clusters for a locality
-      parameters:
-        - in: query
-          name: localityId
-          required: true
-          schema: { type: string, format: uuid }
-        - in: query
-          name: state
-          schema: { type: string, enum: [active, possible_restoration, unconfirmed] }
-        - in: query
-          name: category
-          schema: { type: string }
-      responses:
-        '200': { description: OK }
-  /v1/clusters/{clusterId}:
+
+  # ── Clusters ────────────────────────────────────────────────────────
+  /v1/clusters/{id}:
     get:
       tags: [Clusters]
       summary: Get cluster detail with official updates side by side
       parameters:
         - in: path
-          name: clusterId
+          name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
         '200': { description: OK }
-  /v1/clusters/{clusterId}/participations:
+  /v1/clusters/{id}/participation:
     post:
-      tags: [Participations]
-      summary: Add Affected, Observing, No Longer Affected, or restoration response
+      tags: [Participation]
+      summary: Add Affected, Observing, or No Longer Affected participation
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
-          name: clusterId
+          name: id
           required: true
           schema: { type: string, format: uuid }
       requestBody:
@@ -146,10 +226,60 @@ paths:
               $ref: '#/components/schemas/ParticipationRequest'
       responses:
         '202': { description: Accepted }
+  /v1/clusters/{id}/context:
+    post:
+      tags: [Participation]
+      summary: Add further context (requires prior "affected" participation)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contextText: { type: string, maxLength: 150 }
+      responses:
+        '202': { description: Accepted }
+        '422': { description: context_requires_affected_participation or context_edit_window_expired }
+  /v1/clusters/{id}/restoration-response:
+    post:
+      tags: [Participation]
+      summary: Cast a restoration vote (yes/no/unsure)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  enum: [restoration_yes, restoration_no, restoration_unsure]
+      responses:
+        '202': { description: Accepted }
+
+  # ── Official Posts ──────────────────────────────────────────────────
   /v1/official-posts:
     post:
       tags: [OfficialPosts]
-      summary: Create geo-scoped institution post
+      summary: Create geo-scoped institution post (requires role=institution)
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -158,6 +288,9 @@ paths:
               $ref: '#/components/schemas/OfficialPostCreateRequest'
       responses:
         '201': { description: Created }
+        '403': { description: Outside institution jurisdiction }
+
+  # ── Home Feed ───────────────────────────────────────────────────────
   /v1/home:
     get:
       tags: [Home]
@@ -166,6 +299,7 @@ paths:
         Returns four sections. Without `section` or `cursor`, returns first page of all sections.
         Section limits: active_now=20, official_updates=5, recurring_at_this_time=10, other_active_signals=10.
         First page (unauthenticated or empty follows) is cached in Redis for 30 seconds.
+        Subsequent pages are fetched live (no cache).
       security: []
       parameters:
         - name: section
@@ -190,14 +324,127 @@ paths:
                 $ref: '#/components/schemas/HomeResponse'
         '400':
           description: Unknown section name
+
+  # ── Users ───────────────────────────────────────────────────────────
+  /v1/users/me:
+    get:
+      tags: [Users]
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: OK }
+  /v1/users/me/notification-settings:
+    put:
+      tags: [Users]
+      summary: Update notification preferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clusterActivated: { type: boolean }
+                restorationPrompt: { type: boolean }
+                clusterResolved: { type: boolean }
+      responses:
+        '200': { description: Updated }
+
+  # ── Devices ─────────────────────────────────────────────────────────
+  /v1/devices/push-token:
+    post:
+      tags: [Devices]
+      summary: Register or update Expo push token for a device
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceFingerprintHash, expoPushToken]
+              properties:
+                deviceFingerprintHash: { type: string }
+                expoPushToken: { type: string }
+      responses:
+        '200': { description: Updated }
+
+  # ── Admin ───────────────────────────────────────────────────────────
+  /v1/admin/institutions:
+    post:
+      tags: [Admin]
+      summary: Create institution and issue invite link
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                jurisdictionLocalityIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                contactEmail: { type: string, format: email }
+      responses:
+        '201':
+          description: Institution created with invite link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  institutionId: { type: string, format: uuid }
+                  inviteLink: { type: string, format: uri }
+                  inviteExpiresAt: { type: string, format: date-time }
+  /v1/admin/institutions/{id}/access:
+    delete:
+      tags: [Admin]
+      summary: Revoke all institution account access
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Access revoked }
   /v1/admin/orphaned-signals:
     get:
       tags: [Admin]
       summary: View unowned categories and orphaned civic clusters
+      security:
+        - bearerAuth: []
       responses:
         '200': { description: OK }
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT claims:
+          - sub (account UUID)
+          - role (citizen | institution | admin)
+          - institution_id (UUID, present only for institution accounts)
+          - jti, iat (standard)
   schemas:
+    TokenResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: Access token TTL in seconds }
     SignalPreviewRequest:
       type: object
       required: [text, sourceLanguage]

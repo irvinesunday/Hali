@@ -15,6 +15,8 @@ public class AuthDbContext : DbContext
 
 	public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+	public DbSet<InstitutionInvite> InstitutionInvites => Set<InstitutionInvite>();
+
 	public AuthDbContext(DbContextOptions<AuthDbContext> options)
 		: base(options)
 	{
@@ -39,8 +41,24 @@ public class AuthDbContext : DbContext
 			e.Property((Account x) => x.CreatedAt).HasColumnName("created_at");
 			e.Property((Account x) => x.UpdatedAt).HasColumnName("updated_at");
 			e.Property((Account x) => x.NotificationSettings).HasColumnName("notification_settings").HasColumnType("jsonb");
+			e.Property((Account x) => x.InstitutionId).HasColumnName("institution_id");
+			e.Property((Account x) => x.IsBlocked).HasColumnName("is_blocked");
 			e.HasIndex((Account x) => x.Email).IsUnique().HasDatabaseName("uq_accounts_email");
 			e.HasIndex((Account x) => x.PhoneE164).IsUnique().HasDatabaseName("uq_accounts_phone");
+		});
+		modelBuilder.Entity(delegate(EntityTypeBuilder<InstitutionInvite> e)
+		{
+			e.ToTable("institution_invites");
+			e.HasKey((InstitutionInvite x) => x.Id);
+			e.Property((InstitutionInvite x) => x.Id).HasColumnName("id");
+			e.Property((InstitutionInvite x) => x.InstitutionId).HasColumnName("institution_id");
+			e.Property((InstitutionInvite x) => x.InviteTokenHash).HasColumnName("invite_token_hash").HasMaxLength(64);
+			e.Property((InstitutionInvite x) => x.InvitedByAccountId).HasColumnName("invited_by_account_id");
+			e.Property((InstitutionInvite x) => x.ExpiresAt).HasColumnName("expires_at");
+			e.Property((InstitutionInvite x) => x.AcceptedAt).HasColumnName("accepted_at");
+			e.Property((InstitutionInvite x) => x.CreatedAt).HasColumnName("created_at");
+			e.HasIndex((InstitutionInvite x) => x.InviteTokenHash).IsUnique().HasDatabaseName("ix_institution_invites_token");
+			e.HasIndex((InstitutionInvite x) => x.InstitutionId).HasDatabaseName("ix_institution_invites_institution");
 		});
 		modelBuilder.Entity(delegate(EntityTypeBuilder<Device> e)
 		{
