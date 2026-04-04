@@ -25,6 +25,7 @@ builder.Services.AddHostedService<DecayActiveClustersJob>();
 builder.Services.AddHostedService<ExpireOfficialPostsJob>();
 builder.Services.AddHostedService<EvaluatePossibleRestorationJob>();
 builder.Services.AddHostedService<SendPushNotificationsJob>();
+builder.Services.AddHostedService<OutboxRelayJob>();
 
 var host = builder.Build();
 host.Run();

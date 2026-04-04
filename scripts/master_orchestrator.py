@@ -94,6 +94,7 @@ SESSIONS = {
     "05": ("session_05_participation_slice.md",  "participation"),
     "06": ("session_06_updates_restoration.md",  "updates-restoration"),
     "07": ("session_07_notifications_polish.md", "notifications"),
+    "08": ("session_08_integration_tests.md", "integration-tests"),
 }
 
 
