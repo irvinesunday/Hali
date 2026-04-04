@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
 using Hali.Contracts.Auth;
-using Hali.Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hali.Api.Controllers;
@@ -16,25 +15,21 @@ public class AuthController : ControllerBase
 
 	private readonly IAuthService _authService;
 
-	public AuthController(IOtpService otpService, IAuthService authService)
+	private readonly IInstitutionService _institutionService;
+
+	public AuthController(IOtpService otpService, IAuthService authService, IInstitutionService institutionService)
 	{
 		_otpService = otpService;
 		_authService = authService;
+		_institutionService = institutionService;
 	}
 
 	[HttpPost("otp")]
 	public async Task<IActionResult> RequestOtp([FromBody] OtpRequestDto dto, CancellationToken ct)
 	{
-		if (!Enum.TryParse<AuthMethod>(dto.AuthMethod, ignoreCase: true, out var method))
-		{
-			return BadRequest(new
-			{
-				error = "Invalid auth_method."
-			});
-		}
 		try
 		{
-			await _otpService.RequestOtpAsync(dto.Destination, method, ct);
+			await _otpService.RequestOtpAsync(dto.Destination, dto.AuthMethod, ct);
 			return Ok(new
 			{
 				message = "OTP sent"
@@ -86,5 +81,31 @@ public class AuthController : ControllerBase
 	{
 		await _authService.RevokeAsync(dto.RefreshToken, ct);
 		return NoContent();
+	}
+
+	[HttpPost("institution/setup")]
+	public async Task<IActionResult> InstitutionSetup([FromBody] InstitutionSetupRequestDto dto, CancellationToken ct)
+	{
+		try
+		{
+			await _institutionService.SetupInstitutionAccountAsync(dto, ct);
+			return Accepted();
+		}
+		catch (InvalidOperationException ex) when (ex.Message == "INVITE_INVALID")
+		{
+			return BadRequest(new { error = "Invalid invite token." });
+		}
+		catch (InvalidOperationException ex) when (ex.Message == "INVITE_EXPIRED")
+		{
+			return BadRequest(new { error = "Invite token has expired." });
+		}
+		catch (InvalidOperationException ex) when (ex.Message == "INVITE_ALREADY_ACCEPTED")
+		{
+			return BadRequest(new { error = "Invite has already been accepted." });
+		}
+		catch (InvalidOperationException ex) when (ex.Message == "OTP_RATE_LIMITED")
+		{
+			return StatusCode(429, new { error = "Too many OTP requests. Please try again later." });
+		}
 	}
 }

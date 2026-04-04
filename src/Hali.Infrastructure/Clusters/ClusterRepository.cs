@@ -113,6 +113,23 @@ public class ClusterRepository : IClusterRepository
 		await _db.SaveChangesAsync(ct);
 	}
 
+	public async Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
+	{
+		return await _db.OutboxEvents
+			.Where(e => e.PublishedAt == null)
+			.OrderBy(e => e.OccurredAt)
+			.Take(limit)
+			.ToListAsync(ct);
+	}
+
+	public async Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct)
+	{
+		var idList = ids.ToList();
+		await _db.OutboxEvents
+			.Where(e => idList.Contains(e.Id))
+			.ExecuteUpdateAsync(s => s.SetProperty(e => e.PublishedAt, DateTime.UtcNow), ct);
+	}
+
 	public async Task UpdateCountsAsync(Guid clusterId, int affectedCount, int observingCount, CancellationToken ct)
 	{
 		SignalCluster cluster = await _db.SignalClusters.FindAsync(new object[1] { clusterId }, ct);
@@ -132,5 +149,37 @@ public class ClusterRepository : IClusterRepository
 			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1)
 			.OrderByDescending(c => c.ActivatedAt)
 			.ToListAsync(ct);
+	}
+
+	public async Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(
+		IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		var ids = localityIds.ToList();
+		var q = _db.SignalClusters
+			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1);
+
+		if (recurringOnly == true)
+			q = q.Where(c => c.TemporalType == "recurring");
+		else if (recurringOnly == false)
+			q = q.Where(c => c.TemporalType != "recurring");
+
+		if (cursorBefore.HasValue)
+			q = q.Where(c => c.ActivatedAt < cursorBefore.Value);
+
+		return await q.OrderByDescending(c => c.ActivatedAt).Take(limit).ToListAsync(ct);
+	}
+
+	public async Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(
+		IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		var excludeIds = excludeLocalityIds.ToList();
+		var q = _db.SignalClusters
+			.Where(c => (int)c.State == 1 &&
+			            (c.LocalityId == null || !excludeIds.Contains(c.LocalityId.Value)));
+
+		if (cursorBefore.HasValue)
+			q = q.Where(c => c.ActivatedAt < cursorBefore.Value);
+
+		return await q.OrderByDescending(c => c.ActivatedAt).Take(limit).ToListAsync(ct);
 	}
 }

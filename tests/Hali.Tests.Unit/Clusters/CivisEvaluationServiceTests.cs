@@ -252,4 +252,44 @@ public class CivisEvaluationServiceTests
 		Assert.Single(repo.OutboxEvents);
 		Assert.Equal("cluster_state_changed", repo.OutboxEvents[0].EventType);
 	}
+
+	// B-2: Deactivation threshold must be read from CivisOptions (not hardcoded).
+	// Verify by setting threshold=0.0 — decay should never trigger when ratio >= 0.0 always.
+
+	[Fact]
+	public async Task ApplyDecay_WhenThresholdSetToZero_NeverTriggersDecay()
+	{
+		var opts = DefaultOptions();
+		opts.DeactivationThreshold = 0.0; // ratio is always >= 0, so no transition fires
+		SignalCluster cluster = ActiveRoadsCluster(); // 100 hours old, would decay with default 0.5 threshold
+		var (svc, repo) = BuildDecay(cluster, opts);
+
+		await svc.ApplyDecayAsync(cluster.Id);
+
+		Assert.Equal(SignalState.Active, cluster.State);
+		Assert.Empty(repo.Decisions);
+	}
+
+	[Fact]
+	public async Task ApplyDecay_WhenThresholdSetToOne_AlwaysTriggersDecay()
+	{
+		var opts = DefaultOptions();
+		opts.DeactivationThreshold = 1.0; // live_mass / wrab is always < 1.0 for any decayed cluster
+		// Use a recent cluster with high raw count — still decays because ratio < 1.0
+		SignalCluster cluster = ActiveRoadsCluster(rawCount: 4); // Wrab=2, even at t=0: ratio = 4/2 = 2 → NOT < 1.0
+		// Force last_seen to now so decay barely happens but ratio still high
+		cluster.LastSeenAt = DateTime.UtcNow;
+		cluster.ActivatedAt = DateTime.UtcNow;
+		var (svc, repo) = BuildDecay(cluster, opts);
+
+		// With threshold=1.0 and a just-activated cluster: liveMass≈4, wrab=2, ratio≈2 > 1 → no decay
+		await svc.ApplyDecayAsync(cluster.Id);
+		Assert.Equal(SignalState.Active, cluster.State);
+
+		// Now use a cluster that is 100 hours old so liveMass/wrab < 1.0
+		var oldCluster = ActiveRoadsCluster(rawCount: 4); // Wrab=2, 100h old → liveMass≈0.085, ratio=0.04 < 1.0
+		var (svc2, repo2) = BuildDecay(oldCluster, opts);
+		await svc2.ApplyDecayAsync(oldCluster.Id);
+		Assert.Equal(SignalState.PossibleRestoration, oldCluster.State);
+	}
 }

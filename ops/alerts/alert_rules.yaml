@@ -1,0 +1,125 @@
+# Hali Alert Rules
+# These map to the critical alerts listed in the ops runbook.
+
+version: "1.0"
+service: hali-api
+
+alerts:
+
+  # -- P1: Immediate response required -------------------------------------
+
+  - id: api_error_rate_high
+    severity: P1
+    description: API 5xx error rate exceeds 5% over 5 minutes
+    condition: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+    for: 5m
+    channels: [pagerduty, slack-ops]
+    runbook: docs/runbooks/api_error_rate_high.md
+
+  - id: database_connection_failure
+    severity: P1
+    description: API cannot reach PostgreSQL
+    condition: hali_db_health_check == 0
+    for: 1m
+    channels: [pagerduty, slack-ops]
+    runbook: docs/runbooks/database_connection_failure.md
+
+  - id: redis_connection_failure
+    severity: P1
+    description: API cannot reach Redis
+    condition: hali_redis_health_check == 0
+    for: 1m
+    channels: [pagerduty, slack-ops]
+    runbook: docs/runbooks/redis_connection_failure.md
+
+  # -- P2: Respond within 30 minutes --------------------------------------
+
+  - id: nlp_worker_lag_high
+    severity: P2
+    description: NLP ingestion queue depth above 50 for 10 minutes
+    condition: hali_queue_depth{queue="ingestion-normalize"} > 50
+    for: 10m
+    channels: [slack-ops]
+    runbook: docs/runbooks/worker_lag_high.md
+
+  - id: civis_worker_lag_high
+    severity: P2
+    description: CIVIS scoring queue depth above 100 for 10 minutes
+    condition: hali_queue_depth{queue="civis-scoring"} > 100
+    for: 10m
+    channels: [slack-ops]
+    runbook: docs/runbooks/worker_lag_high.md
+
+  - id: dead_letter_queue_non_empty
+    severity: P2
+    description: Messages in dead-letter queue -- replay required
+    condition: hali_dead_letter_queue_depth > 0
+    for: 5m
+    channels: [slack-ops]
+    runbook: docs/runbooks/dead_letter_replay.md
+
+  - id: notification_delivery_rate_low
+    severity: P2
+    description: Push notification delivery success rate below 90% over 15 minutes
+    condition: >
+      rate(hali_notifications_delivered_total[15m]) /
+      rate(hali_notifications_attempted_total[15m]) < 0.90
+    for: 15m
+    channels: [slack-ops]
+    runbook: docs/runbooks/notification_delivery_degraded.md
+
+  - id: otp_delivery_failure
+    severity: P2
+    description: SMS OTP delivery failure rate above 10% over 10 minutes
+    condition: >
+      rate(hali_otp_delivery_failed_total[10m]) /
+      rate(hali_otp_delivery_attempted_total[10m]) > 0.10
+    for: 10m
+    channels: [slack-ops]
+    runbook: docs/runbooks/otp_delivery_failure.md
+
+  # -- P3: Integrity / anomaly alerts --------------------------------------
+
+  - id: burst_anomaly_detected
+    severity: P3
+    description: >
+      Sudden burst of same-category signals from low-diversity devices in a narrow geo-cell.
+      Potential coordinated activity -- integrity review required.
+    condition: hali_burst_anomaly_score > 0.8
+    for: 2m
+    channels: [slack-integrity]
+    runbook: docs/runbooks/burst_anomaly_review.md
+
+  - id: out_of_jurisdiction_post_attempt
+    severity: P3
+    description: Institution attempted to publish outside its jurisdiction scope
+    condition: rate(hali_jurisdiction_violation_total[5m]) > 0
+    for: 1m
+    channels: [slack-integrity]
+    runbook: docs/runbooks/jurisdiction_violation.md
+
+  - id: projection_rebuild_mismatch
+    severity: P3
+    description: Event replay produced inconsistent cluster projection
+    condition: hali_projection_mismatch_total > 0
+    for: 1m
+    channels: [slack-ops]
+    runbook: docs/runbooks/projection_rebuild.md
+
+  # -- P4: Business health warnings ----------------------------------------
+
+  - id: loop_closure_rate_low
+    severity: P4
+    description: Loop closure rate dropped below 25% over 7 days
+    condition: hali_loop_closure_rate_7d < 0.25
+    for: 1h
+    channels: [slack-product]
+    runbook: docs/runbooks/lcr_low.md
+
+  - id: cluster_activation_rate_low
+    severity: P4
+    description: Cluster activation rate below 20% over 24h -- CIVIS may be too strict
+    condition: hali_cluster_activation_rate_24h < 0.20
+    for: 1h
+    channels: [slack-product]
+    runbook: docs/runbooks/activation_rate_low.md

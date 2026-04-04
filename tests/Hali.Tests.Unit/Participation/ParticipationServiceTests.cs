@@ -27,7 +27,7 @@ public class ParticipationServiceTests
 		{
 			ContextEditWindowMinutes = 2,
 			RestorationRatio = 0.6,
-			MinRestorationAffectedVotes = 1
+			MinRestorationAffectedVotes = 2
 		};
 	}
 
@@ -165,7 +165,9 @@ public class ParticipationServiceTests
 		(ParticipationService, FakeParticipationRepo, FakeClusterRepoForParticipation) tuple = Build(cluster);
 		var (svc, _, _) = tuple;
 		_ = tuple.Item3;
+		// Two votes needed (MinRestorationAffectedVotes=2)
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
+		await svc.RecordRestorationResponseAsync(ClusterId, DeviceB, null, "restored", default(CancellationToken));
 		Assert.Equal(SignalState.PossibleRestoration, cluster.State);
 		Assert.NotNull(cluster.PossibleRestorationAt);
 	}
@@ -175,7 +177,9 @@ public class ParticipationServiceTests
 	{
 		SignalCluster cluster = ActiveCluster();
 		var (svc, _, cRepo) = Build(cluster);
+		// Two votes needed (MinRestorationAffectedVotes=2)
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
+		await svc.RecordRestorationResponseAsync(ClusterId, DeviceB, null, "restored", default(CancellationToken));
 		Assert.Single(cRepo.Decisions);
 		Assert.Equal("possible_restoration", cRepo.Decisions[0].DecisionType);
 		Assert.Single(cRepo.OutboxEvents);

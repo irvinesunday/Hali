@@ -13,4 +13,6 @@ public class AuthOptions
 	public int JwtExpiryMinutes { get; set; } = 60;
 
 	public int RefreshTokenExpiryDays { get; set; } = 30;
+
+	public string AppBaseUrl { get; set; } = "https://app.gethali.app";
 }

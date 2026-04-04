@@ -103,4 +103,20 @@ internal sealed class FakeClusterRepoForParticipation : IClusterRepository
 	{
 		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
 	}
+
+	public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+	}
+
+	public Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct)
+	{
+		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+	}
+
+	public Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
+		=> Task.FromResult((IReadOnlyList<OutboxEvent>)Array.Empty<OutboxEvent>());
+
+	public Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct)
+		=> Task.CompletedTask;
 }

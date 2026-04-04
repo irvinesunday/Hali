@@ -2,6 +2,7 @@ using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using NetTopologySuite.Geometries;
 
 namespace Hali.Infrastructure.Data.Advisories;
 
@@ -44,7 +45,7 @@ public class AdvisoriesDbContext : DbContext
 			e.Property((InstitutionJurisdiction x) => x.LocalityId).HasColumnName("locality_id");
 			e.Property((InstitutionJurisdiction x) => x.CorridorName).HasColumnName("corridor_name").HasMaxLength(200);
 			e.Property((InstitutionJurisdiction x) => x.CreatedAt).HasColumnName("created_at");
-			e.Property<object>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
+			e.Property<Geometry?>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
 		});
 		modelBuilder.Entity(delegate(EntityTypeBuilder<OfficialPost> e)
 		{
@@ -73,7 +74,7 @@ public class AdvisoriesDbContext : DbContext
 			e.Property((OfficialPostScope x) => x.OfficialPostId).HasColumnName("official_post_id");
 			e.Property((OfficialPostScope x) => x.LocalityId).HasColumnName("locality_id");
 			e.Property((OfficialPostScope x) => x.CorridorName).HasColumnName("corridor_name").HasMaxLength(200);
-			e.Property<object>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
+			e.Property<Geometry?>("Geom").HasColumnName("geom").HasColumnType("geometry(MultiPolygon, 4326)");
 		});
 	}
 }
