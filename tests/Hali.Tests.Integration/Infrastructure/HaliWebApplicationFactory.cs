@@ -124,7 +124,7 @@ public sealed class HaliWebApplicationFactory
         // Order: most-dependent first to avoid FK violations
         string[] statements =
         {
-            "TRUNCATE refresh_tokens, otp_challenges, devices, accounts CASCADE",
+            "TRUNCATE institution_invites, refresh_tokens, otp_challenges, devices, accounts CASCADE",
             "TRUNCATE participations CASCADE",
             "TRUNCATE outbox_events, civis_decisions, cluster_event_links, signal_clusters CASCADE",
             "TRUNCATE signal_events CASCADE",
@@ -188,6 +188,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     is_email_verified boolean NOT NULL DEFAULT false,
     status varchar(20) NOT NULL DEFAULT 'active',
     notification_settings jsonb,
+    institution_id uuid NULL,
+    is_blocked boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_accounts_email UNIQUE (email),
@@ -231,6 +233,22 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_refresh_tokens_account ON refresh_tokens(account_id)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_refresh_tokens_device ON refresh_tokens(device_id)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_refresh_tokens_expires ON refresh_tokens(expires_at)");
+        // B5: institution auth columns (idempotent — adds only if missing)
+        await ExecAsync(conn, "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS institution_id uuid NULL");
+        await ExecAsync(conn, "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_blocked boolean NOT NULL DEFAULT false");
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS institution_invites (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    institution_id uuid NOT NULL,
+    invite_token_hash varchar(64) NOT NULL,
+    invited_by_account_id uuid NOT NULL REFERENCES accounts(id),
+    expires_at timestamptz NOT NULL,
+    accepted_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_institution_invites_token UNIQUE (invite_token_hash)
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_invites_token ON institution_invites(invite_token_hash)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_invites_institution ON institution_invites(institution_id)");
 
         // Signals tables
         await ExecAsync(conn, @"
