@@ -1,10 +1,10 @@
 /**
  * Hali — Dredd API Contract Test Hooks
  * Provides authentication tokens and request fixtures for each endpoint.
- * 
+ *
  * Dredd walks 02_openapi.yaml and hits each endpoint against the live API.
  * These hooks run before/after each transaction to set up auth, seed data, etc.
- * 
+ *
  * Docs: https://dredd.org/en/latest/hooks/
  */
 
@@ -15,20 +15,22 @@ const BASE = 'http://localhost:8080';
 let accessToken = '';
 let clusterId   = '';
 
-// ── Before all tests: authenticate and get a token ───────────────────────────
+// -- Before all tests: authenticate and get a token --------------------------
 hooks.beforeAll(async (transactions, done) => {
   try {
     // Step 1: Request OTP
     await axios.post(`${BASE}/v1/auth/otp`, {
-      method: 'phone_otp',
+      authMethod: 'phone_otp',
       destination: '+254700000000'
     });
 
     // Step 2: Verify OTP (test environment uses bypass code '000000')
     const res = await axios.post(`${BASE}/v1/auth/verify`, {
-      destination:       '+254700000000',
-      otpCode:           '000000',
-      deviceFingerprint: 'dredd-test-device-01',
+      destination:            '+254700000000',
+      otp:                    '000000',
+      deviceFingerprintHash:  'dredd-test-device-01',
+      platform:               'test',
+      appVersion:             '1.0.0',
     });
     accessToken = res.data.accessToken;
     console.log('Dredd: authenticated successfully');
@@ -38,7 +40,7 @@ hooks.beforeAll(async (transactions, done) => {
   done();
 });
 
-// ── Inject auth header into every request ────────────────────────────────────
+// -- Inject auth header into every request -----------------------------------
 hooks.beforeEach((transaction, done) => {
   if (accessToken) {
     transaction.request.headers['Authorization'] = `Bearer ${accessToken}`;
@@ -47,12 +49,18 @@ hooks.beforeEach((transaction, done) => {
   done();
 });
 
-// ── Skip endpoints that require pre-existing state Dredd can't create ────────
+// -- Skip endpoints that require pre-existing state Dredd can't create -------
 const SKIP = [
   '/v1/clusters/{id} > GET',
   '/v1/clusters/{id}/participation > POST',
   '/v1/clusters/{id}/context > POST',
   '/v1/clusters/{id}/restoration-response > POST',
+  // Admin routes need admin JWT — covered by integration tests
+  '/v1/admin/institutions > POST',
+  '/v1/admin/institutions/{id}/access > DELETE',
+  '/v1/admin/orphaned-signals > GET',
+  // Institution routes need institution JWT
+  '/v1/official-posts > POST',
 ];
 
 SKIP.forEach(name => {
@@ -62,7 +70,38 @@ SKIP.forEach(name => {
   });
 });
 
-// ── Provide a valid body for POST /v1/signals/preview ────────────────────────
+// -- Auth routes: no auth header needed --------------------------------------
+hooks.before('/v1/auth/otp > POST', (transaction, done) => {
+  delete transaction.request.headers['Authorization'];
+  transaction.request.body = JSON.stringify({
+    authMethod: 'phone_otp',
+    destination: '+254700000099'
+  });
+  done();
+});
+
+hooks.before('/v1/auth/verify > POST', (transaction, done) => {
+  delete transaction.request.headers['Authorization'];
+  done();
+});
+
+hooks.before('/v1/auth/institution/setup > POST', (transaction, done) => {
+  // Skip — needs a valid invite token created by admin
+  transaction.skip = true;
+  done();
+});
+
+hooks.before('/v1/auth/refresh > POST', (transaction, done) => {
+  delete transaction.request.headers['Authorization'];
+  done();
+});
+
+hooks.before('/v1/auth/logout > POST', (transaction, done) => {
+  delete transaction.request.headers['Authorization'];
+  done();
+});
+
+// -- Provide a valid body for POST /v1/signals/preview -----------------------
 hooks.before('/v1/signals/preview > POST', (transaction, done) => {
   transaction.request.body = JSON.stringify({
     text: 'Big potholes near National Oil in Nairobi West',
@@ -72,11 +111,17 @@ hooks.before('/v1/signals/preview > POST', (transaction, done) => {
   done();
 });
 
-// ── Capture clusterId after signal submit ─────────────────────────────────────
+// -- Capture clusterId after signal submit -----------------------------------
 hooks.after('/v1/signals/submit > POST', (transaction, done) => {
   try {
     const body = JSON.parse(transaction.real.body);
     if (body.clusterId) clusterId = body.clusterId;
   } catch (_) {}
+  done();
+});
+
+// -- Home feed: no auth required ---------------------------------------------
+hooks.before('/v1/home > GET', (transaction, done) => {
+  delete transaction.request.headers['Authorization'];
   done();
 });
