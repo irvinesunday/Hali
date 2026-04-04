@@ -90,7 +90,20 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Verify required secrets
+        run: |
+          if [ -z "$STAGING_DB_CONN" ]; then
+            echo "::error::STAGING_DATABASE_URL secret is not set."
+            echo "Go to Settings → Secrets and variables → Actions → New repository secret"
+            echo "Add STAGING_DATABASE_URL with your PostgreSQL connection string."
+            exit 1
+          fi
+        env:
+          STAGING_DB_CONN: ${{ secrets.STAGING_DATABASE_URL }}
+
       - name: Apply migrations — staging
+        env:
+          STAGING_DB_CONN: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
@@ -102,7 +115,7 @@ jobs:
               --project src/Hali.Infrastructure \
               --startup-project src/Hali.Api \
               --context "$ctx" \
-              --connection "${{ secrets.STAGING_DATABASE_URL }}"
+              --connection "$STAGING_DB_CONN"
           done
 
       - name: Seed taxonomy — staging (idempotent)
@@ -153,10 +166,23 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Verify required secrets
+        run: |
+          if [ -z "$PROD_DB_CONN" ]; then
+            echo "::error::PRODUCTION_DATABASE_URL secret is not set."
+            echo "Go to Settings → Secrets and variables → Actions → New repository secret"
+            echo "Add PRODUCTION_DATABASE_URL with your PostgreSQL connection string."
+            exit 1
+          fi
+        env:
+          PROD_DB_CONN: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
       - name: Apply migrations — production
         # Migrations run BEFORE the new image is deployed.
         # This ensures the DB is ready before traffic hits new code.
         # All migrations must be backward-compatible with the previous API version.
+        env:
+          PROD_DB_CONN: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
@@ -168,7 +194,7 @@ jobs:
               --project src/Hali.Infrastructure \
               --startup-project src/Hali.Api \
               --context "$ctx" \
-              --connection "${{ secrets.PRODUCTION_DATABASE_URL }}"
+              --connection "$PROD_DB_CONN"
           done
 
       - name: Deploy API to production
