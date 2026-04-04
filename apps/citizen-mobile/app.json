@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Hali",
+    "slug": "hali-citizen",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a3a2f"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.halicity.citizen"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a3a2f"
+      },
+      "package": "com.halicity.citizen"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1a3a2f"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "scheme": "hali",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
