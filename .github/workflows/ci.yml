@@ -99,6 +99,9 @@ jobs:
         if: always()
         with: { name: civis-test-results, path: ./test-results/civis/civis-results.trx }
 
+  # ─── Integration tests ─────────────────────────────────────────────────────
+  # Schema is managed by HaliWebApplicationFactory.EnsureSchemaAsync() using
+  # idempotent raw SQL — NOT EF migrations. No dotnet-ef step needed.
   integration-tests:
     name: Integration Tests + Coverage
     runs-on: ubuntu-latest
@@ -117,58 +120,14 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      # Connection strings — all contexts share the same CI database
-      ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Participation: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
-      Redis__Url: "localhost:6379"
-      Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
-      Auth__JwtIssuer: "hali"
-      Auth__JwtAudience: "hali"
-      Auth__JwtExpiryMinutes: "60"
-      Auth__RefreshTokenExpiryDays: "30"
-      Otp__Length: "6"
-      Otp__TtlMinutes: "10"
-      Otp__MaxRequestsPerWindow: "100"
-      Otp__WindowMinutes: "10"
-      Anthropic__ApiKey: ${{ secrets.ANTHROPIC_API_KEY }}
-      Anthropic__Model: "claude-sonnet-4-6"
-      AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
-      AfricasTalking__Username: "sandbox"
-      CIVIS_MIN_UNIQUE_DEVICES: "2"
-      CIVIS_JOIN_THRESHOLD: "0.65"
-      CIVIS_RESTORATION_RATIO: "0.60"
-      CIVIS_MIN_RESTORATION_AFFECTED_VOTES: "2"
-      CIVIS_CONTEXT_EDIT_WINDOW_MINUTES: "2"
-      CIVIS_WRAB_ROLLING_WINDOW_DAYS: "30"
+      # TestConstants reads these env vars for CI-compatible credentials
+      TEST_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_test;Username=hali;Password=hali_test_password"
+      TEST_MAINTENANCE_CONNECTION_STRING: "Host=localhost;Port=5432;Database=postgres;Username=hali;Password=hali_test_password"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
-      - name: Apply migrations (all contexts)
-        run: |
-          CONN="${{ env.CI_CONNECTION_STRING }}"
-          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
-            echo "── Migrating $CTX ──"
-            dotnet ef database update \
-              --project src/Hali.Infrastructure \
-              --startup-project src/Hali.Api \
-              --context "$CTX" \
-              --connection "$CONN"
-          done
-      - name: Seed taxonomy
-        run: |
-          PGPASSWORD=${{ env.POSTGRES_PASSWORD }} psql \
-            -h localhost -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }} \
-            -f seed_taxonomy_expanded.sql
       - name: Run integration tests with coverage
         run: |
           dotnet test tests/Hali.Tests.Integration/ \
@@ -185,7 +144,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: integration-coverage, path: ./**/coverage.cobertura.xml }
 
-  # ─── Job 4b: OpenAPI contract test — live API vs spec ──────────────────────
+  # ─── Contract test — live API vs OpenAPI spec ──────────────────────────────
+  # Uses 01_postgres_schema.sql (raw idempotent SQL) for schema setup.
+  # The API is started with dotnet run and does not auto-create tables.
   contract-test:
     name: API Contract Test (Dredd)
     runs-on: ubuntu-latest
@@ -211,7 +172,6 @@ jobs:
       ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
       ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
       ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
-      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
       Redis__Url: "localhost:6379"
       Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
       Auth__JwtIssuer: "hali"
@@ -235,19 +195,11 @@ jobs:
         with: { node-version: "22" }
       - run: npm install -g dredd
       - run: dotnet restore
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
-      - name: Apply migrations and seed
+      - name: Create schema and seed
         run: |
-          CONN="${{ env.CI_CONNECTION_STRING }}"
-          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
-            echo "── Migrating $CTX ──"
-            dotnet ef database update \
-              --project src/Hali.Infrastructure \
-              --startup-project src/Hali.Api \
-              --context "$CTX" \
-              --connection "$CONN"
-          done
+          PGPASSWORD=hali_test_password psql \
+            -h localhost -U hali -d hali_contract \
+            -f 01_postgres_schema.sql
           PGPASSWORD=hali_test_password psql \
             -h localhost -U hali -d hali_contract \
             -f seed_taxonomy_expanded.sql
@@ -353,7 +305,6 @@ jobs:
       ConnectionStrings__Advisories: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
       ConnectionStrings__Notifications: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
       ConnectionStrings__Admin: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
-      CI_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
       Redis__Url: "localhost:6379"
       Auth__JwtSecret: "ci-test-secret-minimum-32-chars-long"
       Auth__JwtIssuer: "hali"
@@ -368,24 +319,19 @@ jobs:
       Anthropic__Model: "claude-sonnet-4-6"
       AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
       AfricasTalking__Username: "sandbox"
+      # TestConstants env vars for vertical slice tests that go through the factory
+      TEST_CONNECTION_STRING: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
+      TEST_MAINTENANCE_CONNECTION_STRING: "Host=localhost;Port=5432;Database=postgres;Username=hali;Password=hali_test_password"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
-      - name: Apply migrations and seed
+      - name: Create schema and seed
         run: |
-          CONN="${{ env.CI_CONNECTION_STRING }}"
-          for CTX in AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext; do
-            echo "── Migrating $CTX ──"
-            dotnet ef database update \
-              --project src/Hali.Infrastructure \
-              --startup-project src/Hali.Api \
-              --context "$CTX" \
-              --connection "$CONN"
-          done
+          PGPASSWORD=hali_test_password psql \
+            -h localhost -U hali -d hali_slice \
+            -f 01_postgres_schema.sql
           PGPASSWORD=hali_test_password psql \
             -h localhost -U hali -d hali_slice \
             -f seed_taxonomy_expanded.sql
