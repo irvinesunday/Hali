@@ -38,7 +38,7 @@ jobs:
 
       - name: Docker metadata — API
         id: meta-api
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_API }}
           tags: |
@@ -47,7 +47,7 @@ jobs:
 
       - name: Docker metadata — Worker
         id: meta-worker
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_WORKER }}
           tags: |
@@ -55,7 +55,7 @@ jobs:
             type=ref,event=branch
 
       - name: Build and push API image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hali.Api/Dockerfile
@@ -64,7 +64,7 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
 
       - name: Build and push Worker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hali.Workers/Dockerfile
