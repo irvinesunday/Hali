@@ -92,7 +92,7 @@ jobs:
 
       - name: Install dotnet-ef tool
         run: |
-          dotnet tool install --global dotnet-ef
+          dotnet tool install --global dotnet-ef --version 10.*
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Verify required secrets
@@ -110,7 +110,7 @@ jobs:
         run: dotnet restore src/Hali.Api/Hali.Api.csproj
 
       - name: Build
-        run: dotnet build src/Hali.Api/Hali.Api.csproj --no-restore
+        run: dotnet build src/Hali.Api/Hali.Api.csproj --no-restore --configuration Release
 
       - name: Apply migrations — staging
         env:
@@ -121,49 +121,56 @@ jobs:
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AuthDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for SignalsDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context SignalsDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for ClustersDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context ClustersDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for ParticipationDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context ParticipationDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for AdvisoriesDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AdvisoriesDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for NotificationsDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context NotificationsDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for AdminDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AdminDbContext \
-            --connection "$STAGING_DB_CONN"
+            --connection "$STAGING_DB_CONN" \
+            --configuration Release
 
       - name: Deploy API to staging
         # Replace this step with your actual deployment command:
@@ -208,7 +215,7 @@ jobs:
 
       - name: Install dotnet-ef tool
         run: |
-          dotnet tool install --global dotnet-ef
+          dotnet tool install --global dotnet-ef --version 10.*
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Verify required secrets
@@ -226,7 +233,7 @@ jobs:
         run: dotnet restore src/Hali.Api/Hali.Api.csproj
 
       - name: Build
-        run: dotnet build src/Hali.Api/Hali.Api.csproj --no-restore
+        run: dotnet build src/Hali.Api/Hali.Api.csproj --no-restore --configuration Release
 
       - name: Apply migrations — production
         # Migrations run BEFORE the new image is deployed.
@@ -240,49 +247,56 @@ jobs:
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AuthDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for SignalsDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context SignalsDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for ClustersDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context ClustersDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for ParticipationDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context ParticipationDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for AdvisoriesDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AdvisoriesDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for NotificationsDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context NotificationsDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
           echo "--- Applying migrations for AdminDbContext ---"
           dotnet ef database update \
             --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
             --startup-project src/Hali.Api/Hali.Api.csproj \
             --context AdminDbContext \
-            --connection "$PROD_DB_CONN"
+            --connection "$PROD_DB_CONN" \
+            --configuration Release
 
       - name: Deploy API to production
         run: |
