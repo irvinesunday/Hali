@@ -4,6 +4,7 @@ using Hali.Domain.Enums;
 using Hali.Infrastructure.Data.Advisories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hali.Infrastructure.Data.Advisories.Migrations
 {
     [DbContext(typeof(AdvisoriesDbContext))]
-    partial class AdvisoriesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260405104845_AddAdvisoriesSchema")]
+    partial class AddAdvisoriesSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

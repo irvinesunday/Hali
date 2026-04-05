@@ -3,6 +3,7 @@ using System;
 using Hali.Infrastructure.Data.Signals;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hali.Infrastructure.Data.Signals.Migrations
 {
     [DbContext(typeof(SignalsDbContext))]
-    partial class SignalsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260405103854_AddSignalsSchema")]
+    partial class AddSignalsSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
