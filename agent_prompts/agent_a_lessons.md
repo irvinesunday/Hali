@@ -147,4 +147,85 @@ Example:
     devices.ts  → registerPushToken
     offline.ts  → enqueue, flush (success, idempotency key reuse on retry)
 
+
+## Session mobile-01a — mobile-auth (2026-04-05)
+
+AGENT_C_LESSONS:
+Session: mobile-01a
+Phase: Mobile — Auth Stack
+
+LESSON 1:
+Category: Contracts
+Mistake: Agent A produced the 4 production files but did not emit the AGENT_A_CONTRACT
+  block that the session prompt explicitly requires.
+Correct: Every session prompt that contains "Agent A note: produce AGENT_A_CONTRACT"
+  requires a structured output block at the end of Agent A's response, listing every
+  endpoint, its method+path, and the exact request/response shapes. This block is
+  mandatory for Agent B and Agent C to validate alignment.
+Example:
+  WRONG:  (no AGENT_A_CONTRACT block in output)
+  RIGHT:
+    AGENT_A_CONTRACT:
+      POST /v1/auth/otp     { destination, authMethod, deviceId } → { message, expiresInSeconds }
+      POST /v1/auth/verify  { destination, otp, deviceFingerprintHash, platform } → { accessToken, refreshToken, accountId, expiresIn }
+      POST /v1/auth/refresh { refreshToken } → { accessToken, refreshToken, expiresIn }
+      POST /v1/auth/logout  { refreshToken } → 204
+
+LESSON 2:
+Category: Contracts
+Mistake: Agent A added `deviceId: string` to RefreshTokenBody and LogoutBody in
+  types/api.ts, which contradicts the session spec that specifies only
+  `{ refreshToken: string }` for the refresh body.
+Correct: When the session spec explicitly states the request body shape, use exactly
+  those fields. Do not add extra fields without (a) evidence from the backend contract
+  and (b) a comment citing that evidence. Silent field additions break Agent B's tests
+  and the backend contract.
+Example:
+  WRONG:  export interface RefreshTokenBody { refreshToken: string; deviceId: string; }
+  RIGHT:  export interface RefreshTokenBody { refreshToken: string; }
+  // If deviceId IS required by the backend, cite the source:
+  // Per backend contract session-07, POST /v1/auth/refresh requires deviceId for token rotation.
+
+LESSON 3:
+Category: Contracts
+Mistake: Agent A added an undocumented SecureStore key (HALI_DEVICE_ID) that is not
+  listed in the session spec ("SecureStore keys: HALI_ACCESS_TOKEN, HALI_REFRESH_TOKEN,
+  HALI_ACCOUNT_ID").
+Correct: Only define SecureStore keys that are listed in the session spec. If a new key
+  is needed, surface the need as an explicit assumption before writing code.
+Example:
+  WRONG:  DEVICE_ID: 'HALI_DEVICE_ID',  // not in spec
+  RIGHT:  // Only the three keys listed in the session spec:
+          ACCESS_TOKEN: 'HALI_ACCESS_TOKEN',
+          REFRESH_TOKEN: 'HALI_REFRESH_TOKEN',
+          ACCOUNT_ID: 'HALI_ACCOUNT_ID',
+
+LESSON 4:
+Category: Other
+Mistake: Agent A rewrote supporting files (constants.ts, env.ts, types/api.ts) that the
+  session prompt explicitly marks as "read but do not rewrite unless broken", without
+  explaining why they were broken.
+Correct: When the session prompt restricts files to read-only, treat them as read-only
+  unless you explicitly state "File X was broken because <reason>" before rewriting it.
+  Silent rewrites of out-of-scope files violate the MAX-4-production-files constraint.
+Example:
+  WRONG:  (rewrite constants.ts without comment)
+  RIGHT:  // AUDIT: constants.ts was missing HALI_ACCOUNT_ID key required by spec.
+          //        Rewriting under the "unless broken" exception.
+          //        This counts against the 4-file budget.
+
+LESSON 5:
+Category: Coverage
+Mistake: Agent A's auth.ts output was truncated — the full implementation of requestOtp
+  and all subsequent functions was cut off. Agent C cannot validate error handling,
+  network error path, or whether the file compiles.
+Correct: Each production file must be complete in Agent A's output. If the response
+  token limit is a concern, produce fewer files per session rather than truncating any
+  file. An incomplete file is worse than no file — it creates an illusion of coverage.
+Example:
+  WRONG:  export async function requestOtp(...): Promise<...> {
+            const response =   ← truncated
+  RIGHT:  Produce the complete function including try/catch, error mapping, and return.
+          If token budget is tight, split into two sessions.
+
 <!-- LESSONS_APPEND_MARKER — do not remove this line, orchestrator appends below it -->
