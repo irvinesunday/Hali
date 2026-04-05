@@ -110,12 +110,15 @@ jobs:
           dotnet restore src/Hali.Api/Hali.Api.csproj
           CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
           for ctx in $CONTEXTS; do
-            echo "--- Applying migrations for $ctx ---"
-            dotnet ef database update \
+            echo "--- Generating idempotent migration script for $ctx ---"
+            dotnet ef migrations script \
               --project src/Hali.Infrastructure \
               --startup-project src/Hali.Api \
               --context "$ctx" \
-              --connection "$STAGING_DB_CONN"
+              --idempotent \
+              --output "/tmp/migrate_${ctx}.sql"
+            echo "--- Applying migrations for $ctx ---"
+            psql "$STAGING_DB_CONN" -f "/tmp/migrate_${ctx}.sql"
           done
 
       - name: Seed taxonomy — staging (idempotent)
@@ -181,6 +184,7 @@ jobs:
         # Migrations run BEFORE the new image is deployed.
         # This ensures the DB is ready before traffic hits new code.
         # All migrations must be backward-compatible with the previous API version.
+        # Uses idempotent scripts so re-runs are safe even if DB has prior state.
         env:
           PROD_DB_CONN: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
@@ -189,12 +193,15 @@ jobs:
           dotnet restore src/Hali.Api/Hali.Api.csproj
           CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
           for ctx in $CONTEXTS; do
-            echo "--- Applying migrations for $ctx ---"
-            dotnet ef database update \
+            echo "--- Generating idempotent migration script for $ctx ---"
+            dotnet ef migrations script \
               --project src/Hali.Infrastructure \
               --startup-project src/Hali.Api \
               --context "$ctx" \
-              --connection "$PROD_DB_CONN"
+              --idempotent \
+              --output "/tmp/migrate_${ctx}.sql"
+            echo "--- Applying migrations for $ctx ---"
+            psql "$PROD_DB_CONN" -f "/tmp/migrate_${ctx}.sql"
           done
 
       - name: Deploy API to production
