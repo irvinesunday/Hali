@@ -26,6 +26,25 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
                 .OldAnnotation("Npgsql:Enum:official_post_type", "advisory_public_notice,live_update,scheduled_disruption")
                 .OldAnnotation("Npgsql:PostgresExtension:postgis", ",,");
 
+            // Ensure shared types exist (InitialCreate may be skipped due to shared migration ID)
+            migrationBuilder.Sql(@"
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                                   WHERE t.typname = 'civic_category' AND n.nspname = 'public') THEN
+                        CREATE TYPE civic_category AS ENUM (
+                            'electricity', 'environment', 'governance', 'infrastructure',
+                            'roads', 'safety', 'transport', 'water');
+                    END IF;
+                END $$;");
+            migrationBuilder.Sql(@"
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                                   WHERE t.typname = 'official_post_type' AND n.nspname = 'public') THEN
+                        CREATE TYPE official_post_type AS ENUM (
+                            'advisory_public_notice', 'live_update', 'scheduled_disruption');
+                    END IF;
+                END $$;");
+
             migrationBuilder.CreateTable(
                 name: "institution_jurisdictions",
                 columns: table => new
