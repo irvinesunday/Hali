@@ -105,21 +105,51 @@ jobs:
         env:
           STAGING_DB_CONN: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
-          dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet tool install --global dotnet-ef
           dotnet restore src/Hali.Api/Hali.Api.csproj
-          CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
-          for ctx in $CONTEXTS; do
-            echo "--- Generating idempotent migration script for $ctx ---"
-            dotnet ef migrations script \
-              --project src/Hali.Infrastructure \
-              --startup-project src/Hali.Api \
-              --context "$ctx" \
-              --idempotent \
-              --output "/tmp/migrate_${ctx}.sql"
-            echo "--- Applying migrations for $ctx ---"
-            psql "$STAGING_DB_CONN" -f "/tmp/migrate_${ctx}.sql"
-          done
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AuthDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context SignalsDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context ClustersDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context ParticipationDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AdvisoriesDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context NotificationsDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AdminDbContext \
+            --connection "$STAGING_DB_CONN" \
+            --no-build
 
       - name: Seed taxonomy — staging (idempotent)
         run: |
@@ -184,25 +214,54 @@ jobs:
         # Migrations run BEFORE the new image is deployed.
         # This ensures the DB is ready before traffic hits new code.
         # All migrations must be backward-compatible with the previous API version.
-        # Uses idempotent scripts so re-runs are safe even if DB has prior state.
         env:
           PROD_DB_CONN: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
-          dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet tool install --global dotnet-ef
           dotnet restore src/Hali.Api/Hali.Api.csproj
-          CONTEXTS="AuthDbContext SignalsDbContext ClustersDbContext ParticipationDbContext AdvisoriesDbContext NotificationsDbContext AdminDbContext"
-          for ctx in $CONTEXTS; do
-            echo "--- Generating idempotent migration script for $ctx ---"
-            dotnet ef migrations script \
-              --project src/Hali.Infrastructure \
-              --startup-project src/Hali.Api \
-              --context "$ctx" \
-              --idempotent \
-              --output "/tmp/migrate_${ctx}.sql"
-            echo "--- Applying migrations for $ctx ---"
-            psql "$PROD_DB_CONN" -f "/tmp/migrate_${ctx}.sql"
-          done
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AuthDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context SignalsDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context ClustersDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context ParticipationDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AdvisoriesDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context NotificationsDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
+          dotnet ef database update \
+            --project src/Hali.Infrastructure/Hali.Infrastructure.csproj \
+            --startup-project src/Hali.Api/Hali.Api.csproj \
+            --context AdminDbContext \
+            --connection "$PROD_DB_CONN" \
+            --no-build
 
       - name: Deploy API to production
         run: |
