@@ -10,8 +10,7 @@ public class Session06AddIsRestorationClaim : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql(
-            "ALTER TABLE official_posts ADD COLUMN IF NOT EXISTS is_restoration_claim boolean NOT NULL DEFAULT false;");
+        // No-op: is_restoration_claim is included in AddAdvisoriesSchema table creation.
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

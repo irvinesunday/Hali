@@ -48,22 +48,18 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
                     table.PrimaryKey("PK_cluster_event_links", x => x.id);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "outbox_events",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    aggregate_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    aggregate_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    event_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    payload = table.Column<string>(type: "jsonb", nullable: true),
-                    occurred_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    published_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_outbox_events", x => x.id);
-                });
+            // outbox_events may already exist (created by SignalsDbContext migration).
+            migrationBuilder.Sql(@"
+                CREATE TABLE IF NOT EXISTS outbox_events (
+                    id uuid NOT NULL,
+                    aggregate_type character varying(100) NOT NULL,
+                    aggregate_id uuid NOT NULL,
+                    event_type character varying(100) NOT NULL,
+                    payload jsonb,
+                    occurred_at timestamp with time zone NOT NULL,
+                    published_at timestamp with time zone,
+                    CONSTRAINT ""PK_outbox_events"" PRIMARY KEY (id)
+                );");
 
             migrationBuilder.CreateTable(
                 name: "signal_clusters",
@@ -105,11 +101,9 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
                 columns: new[] { "cluster_id", "signal_event_id" },
                 unique: true);
 
-            migrationBuilder.CreateIndex(
-                name: "ix_outbox_events_unpublished",
-                table: "outbox_events",
-                column: "occurred_at",
-                filter: "published_at IS NULL");
+            migrationBuilder.Sql(@"
+                CREATE INDEX IF NOT EXISTS ix_outbox_events_unpublished
+                ON outbox_events (occurred_at) WHERE published_at IS NULL;");
 
             migrationBuilder.CreateIndex(
                 name: "ix_signal_clusters_last_seen",

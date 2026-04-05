@@ -10,8 +10,8 @@ public class InitialCreate : Migration
 {
 	protected override void Up(MigrationBuilder migrationBuilder)
 	{
+		// Enum types only — table creation is handled by Session05Reconcile migration.
 		migrationBuilder.Sql("CREATE TYPE IF NOT EXISTS participation_type AS ENUM ('affected', 'observing', 'no_longer_affected', 'restoration_yes', 'restoration_no', 'restoration_unsure');");
-		migrationBuilder.Sql("\nCREATE TABLE participations (\n    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n    cluster_id uuid NOT NULL,\n    account_id uuid,\n    device_id uuid,\n    participation_type participation_type NOT NULL,\n    context_text text,\n    created_at timestamptz NOT NULL DEFAULT now(),\n    idempotency_key varchar(100),\n    CONSTRAINT uq_participation_idempotency UNIQUE (cluster_id, device_id, participation_type, idempotency_key)\n);");
 	}
 
 	protected override void Down(MigrationBuilder migrationBuilder)
