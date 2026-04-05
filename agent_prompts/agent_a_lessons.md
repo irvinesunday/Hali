@@ -228,4 +228,137 @@ Example:
   RIGHT:  Produce the complete function including try/catch, error mapping, and return.
           If token budget is tight, split into two sessions.
 
+
+## Session mobile-01a — mobile-auth (2026-04-05)
+
+AGENT_C_LESSONS:
+Session: mobile-01a (second attempt)
+Phase: mobile-01a — Auth Stack
+
+LESSON 1:
+Category: Other
+Mistake: Agent A produced a truncated phone.tsx for the THIRD consecutive time
+  despite LESSON 5 from the prior session explicitly prohibiting truncation.
+Correct: Every file submitted must be complete from the first line to the
+  closing brace. If a response would be cut off by context length, split the
+  output into clearly labelled parts (Part 1/2, Part 2/2) rather than
+  submitting a partial file. A truncated file is worse than no file.
+Example:
+  WRONG:  function toE164(input: string): string {
+            const digits = input.replace(/\D/g, '');
+            if (digits.startsWith('0') && digits.length === 10) {
+              return '+254' + digits.slice(1);
+            }
+            // ... file ends here
+  RIGHT:  /* If context is tight, emit: */
+          // [PART 1 of 2 — phone.tsx lines 1-80]
+          // ... complete block ...
+          // [Continued in Part 2]
+
+LESSON 2:
+Category: Architecture
+Mistake: The token refresh call inside `attemptTokenRefresh` used raw `fetch()`
+  instead of routing through the shared `executeRequest` abstraction.
+Correct: All HTTP calls — including the refresh endpoint — must go through
+  `executeRequest` so that error normalisation, timeout handling, and any
+  future middleware apply uniformly.
+Example:
+  WRONG:  const response = await fetch(`${baseUrl}/v1/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+  RIGHT:  const result = await executeRequest<RefreshTokenResponse>(
+            baseUrl, '/v1/auth/refresh', 'POST',
+            { refreshToken }, { 'Content-Type': 'application/json' }
+          );
+
+LESSON 3:
+Category: Other
+Mistake: `Buffer.from(parts.join('|')).toString('base64')` was used in
+  otp.tsx to base64-encode the device fingerprint. `Buffer` is a Node.js
+  global not available in React Native / Hermes without an explicit polyfill.
+Correct: Use `btoa(parts.join('|'))` (available in Hermes) or declare and
+  install a Buffer polyfill (e.g. `buffer` package) and import it explicitly.
+  Never rely on implicit Node.js globals in React Native code.
+Example:
+  WRONG:  return Buffer.from(parts.join('|')).toString('base64');
+  RIGHT:  return btoa(unescape(encodeURIComponent(parts.join('|'))));
+          // or: import { Buffer } from 'buffer'; (with polyfill installed)
+
+LESSON 4:
+Category: Contracts
+Mistake: Agent A exported auth functions as `refreshTokenApi` and `logoutApi`
+  but the session prompt and Agent B's tests expected `refreshToken` and
+  `logout`. The name mismatch caused all Agent B mock intercepts to fail.
+Correct: Export names in auth.ts must exactly match what the session prompt
+  specifies and what Agent B is told to import. When in doubt, use the
+  simplest unambiguous name the prompt prescribes.
+Example:
+  WRONG:  export async function refreshTokenApi(...) { ... }
+          export async function logoutApi(...) { ... }
+  RIGHT:  export async function refreshToken(...) { ... }
+          export async function logout(...) { ... }
+
+LESSON 5:
+Category: Contracts
+Mistake: `ApiError` and `Result<T,E>` were declared in two separate files
+  (`client.ts` and `src/types/api.ts`), creating duplicate type definitions
+  that diverge over time.
+Correct: Declare shared types in exactly one canonical location
+  (`src/types/api.ts`) and import from there everywhere else — including
+  inside `client.ts`.
+Example:
+  WRONG:  // in client.ts
+          export interface ApiError { status: number; code: string; ... }
+          // in src/types/api.ts
+          export interface ApiError { status: number; code: string; ... }
+  RIGHT:  // in src/types/api.ts only
+          export interface ApiError { status: number; code: string; message: string; }
+          // in client.ts
+          import type { ApiError, Result } from '../types/api';
+
+LESSON 6:
+Category: Architecture
+Mistake: In `attemptTokenRefresh`, `isRefreshing = false` was set BEFORE
+  calling `flushQueue(null, err)` in the no-refresh-token error path. A
+  concurrent caller arriving between those two lines would start a second
+  refresh cycle, bypassing the queue.
+Correct: Always set `isRefreshing = false` AFTER `flushQueue` completes so
+  the flag transition and queue drain are atomic from the perspective of any
+  concurrent caller.
+Example:
+  WRONG:  isRefreshing = false;   // ← too early
+          flushQueue(null, err);
+          throw err;
+  RIGHT:  flushQueue(null, err);
+          isRefreshing = false;   // ← after flush
+          throw err;
+
+LESSON 7:
+Category: Contracts
+Mistake: SecureStore constants were exported as properties of a `SECURE_STORE_KEYS`
+  object but the session prompt implied — and Agent B assumed — they were
+  standalone named exports (e.g. `import { HALI_ACCESS_TOKEN } from constants`).
+Correct: Either (a) export as standalone named constants to match the session
+  prompt's implied usage, or (b) explicitly document the object-property shape
+  in the AGENT_A_CONTRACT block so Agent B knows the correct import path.
+  Never leave the export shape ambiguous between agents.
+Example:
+  WRONG:  export const SECURE_STORE_KEYS = {
+            ACCESS_TOKEN: 'HALI_ACCESS_TOKEN',
+            ...
+          };
+          // Agent B imports: import { HALI_ACCESS_TOKEN } from constants  → undefined
+
+  RIGHT (option a — standalone):
+          export const HALI_ACCESS_TOKEN = 'HALI_ACCESS_TOKEN';
+          export const HALI_REFRESH_TOKEN = 'HALI_REFRESH_TOKEN';
+          export const HALI_ACCOUNT_ID   = 'HALI_ACCOUNT_ID';
+
+  RIGHT (option b — object, explicitly documented):
+          export const SECURE_STORE_KEYS = { ... } as const;
+          // AGENT_A_CONTRACT must state: "import SECURE_STORE_KEYS.ACCESS_TOKEN,
+          //   not a standalone HALI_ACCESS_TOKEN export"
+
 <!-- LESSONS_APPEND_MARKER — do not remove this line, orchestrator appends below it -->
