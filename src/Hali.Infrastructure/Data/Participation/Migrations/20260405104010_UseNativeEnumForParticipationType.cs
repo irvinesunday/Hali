@@ -14,6 +14,8 @@ namespace Hali.Infrastructure.Data.Participation.Migrations
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:Enum:participation_type", "affected,no_longer_affected,observing,restoration_no,restoration_unsure,restoration_yes")
                 .Annotation("Npgsql:Enum:participation_type.participation_type", "affected,observing,no_longer_affected,restoration_yes,restoration_no,restoration_unsure")
+                // Both types already exist: default-schema from InitialCreate, schema-prefixed from Session05Reconcile
+                .OldAnnotation("Npgsql:Enum:participation_type", "affected,no_longer_affected,observing,restoration_no,restoration_unsure,restoration_yes")
                 .OldAnnotation("Npgsql:Enum:participation_type.participation_type", "affected,observing,no_longer_affected,restoration_yes,restoration_no,restoration_unsure");
 
             migrationBuilder.AlterColumn<ParticipationType>(

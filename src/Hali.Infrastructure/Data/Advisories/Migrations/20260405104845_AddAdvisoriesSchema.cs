@@ -18,7 +18,13 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
                 .Annotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
                 .Annotation("Npgsql:Enum:official_post_type", "advisory_public_notice,live_update,scheduled_disruption")
                 .Annotation("Npgsql:Enum:official_post_type.official_post_type", "live_update,scheduled_disruption,advisory_public_notice")
-                .Annotation("Npgsql:PostgresExtension:postgis", ",,");
+                .Annotation("Npgsql:PostgresExtension:postgis", ",,")
+                // civic_category (both schemas), official_post_type (default), and postgis
+                // already created by Signals/Auth/Advisories-InitialCreate contexts
+                .OldAnnotation("Npgsql:Enum:civic_category", "electricity,environment,governance,infrastructure,roads,safety,transport,water")
+                .OldAnnotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
+                .OldAnnotation("Npgsql:Enum:official_post_type", "advisory_public_notice,live_update,scheduled_disruption")
+                .OldAnnotation("Npgsql:PostgresExtension:postgis", ",,");
 
             migrationBuilder.CreateTable(
                 name: "institution_jurisdictions",

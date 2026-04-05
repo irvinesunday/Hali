@@ -15,7 +15,10 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
                 .Annotation("Npgsql:Enum:signal_state.signal_state", "unconfirmed,active,possible_restoration,resolved,expired,suppressed")
-                .Annotation("Npgsql:PostgresExtension:postgis", ",,");
+                .Annotation("Npgsql:PostgresExtension:postgis", ",,")
+                // civic_category and postgis already created by Signals/Auth contexts
+                .OldAnnotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
+                .OldAnnotation("Npgsql:PostgresExtension:postgis", ",,");
 
             migrationBuilder.CreateTable(
                 name: "civis_decisions",
