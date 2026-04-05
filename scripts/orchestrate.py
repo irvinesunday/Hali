@@ -56,6 +56,7 @@ SESSIONS = {
     "05": ("session_05_participation_slice.md", "participation"),
     "06": ("session_06_updates_restoration.md", "updates-restoration"),
     "07": ("session_07_notifications_polish.md","notifications"),
+    "mobile-01": ("session_mobile_01.md",       "citizen-mobile-app"),
 }
 
 ROOT = Path(__file__).parent.parent
@@ -214,17 +215,19 @@ def build_amnesia_recovery(session_num: str) -> str:
     try:
         log = git("git log --oneline -10")
         recent_lessons = read_file(LESSONS_FILE)[-2000:]
-        prior_session_int = int(session_num) - 1
         prior_contract = ""
-        if prior_session_int >= 0:
-            prior_key = f"{prior_session_int:02d}"
-            prior_sessions = {v[1]: v for v in SESSIONS.values()}
-            prior_phase = SESSIONS.get(prior_key, ("", ""))[1]
-            prior_contract_path = f"agent_outputs/session_{prior_key}/agent_a.md"
-            raw = read_file(prior_contract_path)
-            if "AGENT_A_CONTRACT:" in raw:
-                start = raw.index("AGENT_A_CONTRACT:")
-                prior_contract = raw[start:start+1500]
+        try:
+            prior_session_int = int(session_num) - 1
+            if prior_session_int >= 0:
+                prior_key = f"{prior_session_int:02d}"
+                prior_contract_path = f"agent_outputs/session_{prior_key}/agent_a.md"
+                raw = read_file(prior_contract_path)
+                if "AGENT_A_CONTRACT:" in raw:
+                    start = raw.index("AGENT_A_CONTRACT:")
+                    prior_contract = raw[start:start+1500]
+        except ValueError:
+            # Non-numeric session ID (e.g., mobile-01) — skip prior contract lookup
+            pass
 
         return f"""## Continuity Check — Session {session_num}
 
@@ -548,7 +551,7 @@ def run_session(session_num: str, dry_run: bool = False):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Hali multi-agent orchestrator")
-    p.add_argument("--session",  required=True, help="Session number (00-07)")
+    p.add_argument("--session",  required=True, help="Session ID (00-07, mobile-01)")
     p.add_argument("--dry-run",  action="store_true",
                    help="Estimate token count and cost without calling the API")
     args = p.parse_args()
