@@ -18,7 +18,7 @@ Scaffold the full solution per Folder_Structure.md:
 - Scripts folder with seed_taxonomy_expanded.sql reference
 - .gitignore, README.md, docker-compose.yml (already present — do not overwrite)
 
-Use the Architecture section of claude.md as the definitive layout.
+Use the Architecture section of CLAUDE.md as the definitive layout.
 Do NOT follow 10_repository_structure.md — it is superseded.
 
 ### Phase 2 — Core schema migrations

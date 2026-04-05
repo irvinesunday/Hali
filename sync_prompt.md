@@ -5,7 +5,7 @@ Your task is not to redesign anything. Your task is to synchronise the existing
 repo artifacts to these locked decisions.
 
 Before starting, read these files in order:
-1. claude.md
+1. CLAUDE.md
 2. mvp_locked_decisions.md
 3. openapi_patch_checklist.md
 4. schema_patch_notes.md
@@ -91,5 +91,5 @@ Key changes:
 
 - Show a concise change plan before implementing each task
 - Do not introduce new features or change locked product decisions
-- Do not modify claude.md, mvp_locked_decisions.md, or any spec file
+- Do not modify CLAUDE.md, mvp_locked_decisions.md, or any spec file
 - When uncertain: stop and ask

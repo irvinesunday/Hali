@@ -10,7 +10,7 @@ public class InitialCreate : Migration
 {
 	protected override void Up(MigrationBuilder migrationBuilder)
 	{
-		migrationBuilder.Sql("\nCREATE TABLE admin_audit_logs (\n    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n    actor_account_id uuid,\n    action varchar(100) NOT NULL,\n    target_type varchar(50),\n    target_id uuid,\n    metadata jsonb,\n    created_at timestamptz NOT NULL DEFAULT now()\n);");
+		// No-op: table creation is handled by AddAdminSchema migration.
 	}
 
 	protected override void Down(MigrationBuilder migrationBuilder)

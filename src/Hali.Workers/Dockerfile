@@ -4,7 +4,7 @@
 # Shares the same base image as the API for layer cache efficiency
 # =============================================================================
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
 WORKDIR /src
 
 COPY ["src/Hali.Workers/Hali.Workers.csproj",        "src/Hali.Workers/"]
@@ -29,14 +29,12 @@ RUN dotnet publish "src/Hali.Workers/Hali.Workers.csproj" \
     --output /app/publish \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-RUN addgroup --system --gid 1001 hali \
- && adduser  --system --uid 1001 --ingroup hali hali
-
+# .NET 10 images include a non-root 'app' user (UID 1654)
 WORKDIR /app
-COPY --from=publish --chown=hali:hali /app/publish .
-USER hali
+COPY --from=publish /app/publish .
+USER $APP_UID
 
 # Workers don't expose HTTP but should respond to a process health signal.
 # docker-compose and Kubernetes can check process liveness instead.
