@@ -28,13 +28,18 @@ namespace Hali.Infrastructure.Data.Participation.Migrations
                     END IF;
                 END $$;");
 
-            migrationBuilder.AlterColumn<ParticipationType>(
-                name: "participation_type",
-                table: "participations",
-                type: "participation_type",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "integer");
+            // Raw SQL with USING clause — PostgreSQL cannot auto-cast integer to enum
+            migrationBuilder.Sql(@"
+                ALTER TABLE participations
+                ALTER COLUMN participation_type TYPE participation_type
+                USING (CASE participation_type
+                    WHEN 0 THEN 'affected'
+                    WHEN 1 THEN 'no_longer_affected'
+                    WHEN 2 THEN 'observing'
+                    WHEN 3 THEN 'restoration_no'
+                    WHEN 4 THEN 'restoration_unsure'
+                    WHEN 5 THEN 'restoration_yes'
+                END)::participation_type;");
         }
 
         /// <inheritdoc />
