@@ -361,4 +361,161 @@ Example:
           // AGENT_A_CONTRACT must state: "import SECURE_STORE_KEYS.ACCESS_TOKEN,
           //   not a standalone HALI_ACCESS_TOKEN export"
 
+
+## Session integration-tests — integration-tests (2026-04-05)
+
+AGENT_C_LESSONS:
+Session: 08
+Phase: Integration Tests
+
+LESSON 1:
+Category: Architecture
+Mistake: Agent A defined HaliWebApplicationFactory in one namespace while Agent B
+  independently defined a second copy of the same class in a different namespace.
+  Both files would be compiled into the same test assembly, causing a name conflict
+  and a build failure.
+Correct: In test infrastructure sessions, Agent A owns all shared test infrastructure
+  classes (factories, base classes, fakes). Agent B must import from Agent A's namespace
+  and must never redefine a class that Agent A already provides. If Agent B needs a
+  variant, it must subclass or compose — never redeclare.
+Example:
+  WRONG:  // Agent B creates Infrastructure/HaliWebApplicationFactory.cs with its own
+          // class HaliWebApplicationFactory : WebApplicationFactory<Program>
+  RIGHT:  // Agent B adds a using directive:
+          // using Hali.Tests.Integration; // Agent A's factory
+          // and references Factory.CreateClient() from IntegrationTestBase
+
+LESSON 2:
+Category: Architecture
+Mistake: Agent A's output was truncated mid-method, leaving ConfigureWebHost incomplete.
+  The critical service replacements (ISmsProvider, IGeocodingService, IPushNotificationService)
+  were not shown or confirmed as present. External services that send real network requests
+  (SMS, geocoding, push) were not demonstrably stubbed.
+Correct: In integration test factories, ALL external side-effect services must be replaced
+  with fakes in ConfigureWebHost. The replacement list must be explicit and complete:
+  ISmsProvider → FakeSmsProvider, INlpExtractionService → FakeNlpExtractionService,
+  IGeocodingService → FakeGeocodingService, IPushNotificationService → FakePushNotificationService.
+  Each fake must be shown as a concrete file, not implied.
+Example:
+  WRONG:  // (service replacement implied but not shown; file truncated)
+  RIGHT:  services.RemoveAll<ISmsProvider>();
+          services.AddScoped<ISmsProvider, FakeSmsProvider>();
+          services.RemoveAll<IGeocodingService>();
+          services.AddScoped<IGeocodingService, FakeGeocodingService>();
+          services.RemoveAll<IPushNotificationService>();
+          services.AddScoped<IPushNotificationService, FakePushNotificationService>();
+          services.RemoveAll<INlpExtractionService>();
+          services.AddScoped<INlpExtractionService, FakeNlpExtractionService>();
+
+LESSON 3:
+Category: Contracts
+Mistake: Agent A's FakeNlpExtractionService file was truncated mid-property-assignment.
+  A fake that returns an incomplete NlpCandidateDto (missing required fields) will cause
+  the application's taxonomy validation to reject it with 422, making all preview and
+  submit tests fail for the wrong reason.
+Correct: Every fake service must return a fully valid response that passes all downstream
+  validation gates. For NLP, this means the returned NlpCandidateDto must have all required
+  fields (category from the canonical taxonomy, summary, condition, confidence, lat, lng)
+  populated with values that will pass the application's validation logic.
+Example:
+  WRONG:  new NlpCandidateDto { Category = "roads", Summary = "...", Confidence = 0.92,
+          // file truncated — remaining fields missing
+  RIGHT:  new NlpCandidateDto
+          {
+              Category   = "roads",
+              Summary    = "Pothole on test road",
+              Condition  = "pothole",
+              Confidence = 0.92,
+              Latitude   = -1.286389,
+              Longitude  = 36.817223,
+              // all required fields present
+          }
+
+LESSON 4:
+Category: Architecture
+Mistake: Agent B removed INlpExtractionService from the DI container using a fragile
+  FullName.Contains("INlpExtractionService") string match instead of a type-safe
+  typeof() comparison.
+Correct: Always use typeof() when removing or replacing service descriptors in
+  ConfigureWebHost. String matching silently fails when namespaces change.
+Example:
+  WRONG:  var nlpDescriptor = services.SingleOrDefault(
+              d => d.ServiceType.FullName != null &&
+                   d.ServiceType.FullName.Contains("INlpExtractionService"));
+  RIGHT:  services.RemoveAll<INlpExtractionService>();
+          // or, if RemoveAll is not available:
+          var descriptor = services.SingleOrDefault(
+              d => d.ServiceType == typeof(INlpExtractionService));
+          if (descriptor != null) services.Remove(descriptor);
+
+LESSON 5:
+Category: Coverage
+Mistake: The test GetCluster_AfterSignalSubmit_ReturnsCluster does not account for
+  whether cluster creation is synchronous or asynchronous. If clustering runs in a
+  background worker, the test will query for the cluster before it exists, returning
+  404 and appearing as a flaky failure.
+Correct: Integration tests must not have hidden timing dependencies. Either disable
+  background workers in the test host and run clustering inline, or add an explicit
+  polling loop with a timeout. Document the chosen approach in a comment.
+Example:
+  WRONG:  await client.PostAsync("/v1/signals/submit", content);
+          var response = await client.GetAsync($"/v1/clusters/{clusterId}");
+          response.EnsureSuccessStatusCode(); // may 404 if worker hasn't run yet
+  RIGHT:  // Option A — disable worker, invoke clustering synchronously in test helper
+          await client.PostAsync("/v1/signals/submit", content);
+          await _factory.TriggerClusteringAsync(); // runs inline in test host
+          var response = await client.GetAsync($"/v1/clusters/{clusterId}");
+          // Option B — poll with timeout
+          ClusterDetailResponse? cluster = null;
+          var deadline = DateTime.UtcNow.AddSeconds(5);
+          while (DateTime.UtcNow < deadline)
+          {
+              var r = await client.GetAsync($"/v1/clusters/{clusterId}");
+              if (r.IsSuccessStatusCode) { cluster = await r.Content.ReadFromJsonAsync<ClusterDetailResponse>(); break; }
+              await Task.Delay(200);
+          }
+          Assert.NotNull(cluster);
+
+LESSON 6:
+Category: Contracts
+Mistake: The namespace for INlpExtractionService differed between Agent A
+  (Hali.Application.Abstractions.Nlp) and Agent B (Hali.Application.Contracts).
+  This means one agent's fake would fail to compile against the real interface.
+Correct: Before writing any fake or stub in a test project, confirm the exact namespace
+  of the interface being faked by reading the Session 05 contract output. Never guess
+  a namespace — always derive it from the authoritative source.
+Example:
+  WRONG:  // Agent B guesses:
+          using Hali.Application.Contracts;
+          public class FakeNlpExtractionService : INlpExtractionService ...
+  RIGHT:  // Read Session 05 AGENT_A_CONTRACT, confirm namespace, then:
+          using Hali.Application.Abstractions.Nlp; // confirmed from contract
+          public class FakeNlpExtractionService : INlpExtractionService ...
+
+LESSON 7:
+Category: Coverage
+Mistake: The business rule "one active participation type per device per cluster"
+  was tested only by checking HTTP status codes (202). A test that checks only the
+  status code of the second request cannot confirm that the first participation was
+  actually cancelled — the system might have two active rows and still return 202.
+Correct: For business rules that assert a single-active-row invariant, the test must
+  also verify the final state — either by re-fetching the cluster detail and inspecting
+  the participation field, or by querying the DB directly via the test factory's scope.
+Example:
+  WRONG:  var r1 = await client.PostAsync("/v1/clusters/{id}/participation", affected);
+          var r2 = await client.PostAsync("/v1/clusters/{id}/participation", observing);
+          Assert.Equal(HttpStatusCode.Accepted, r2.StatusCode); // only status checked
+  RIGHT:  var r1 = await client.PostAsync("/v1/clusters/{id}/participation", affected);
+          var r2 = await client.PostAsync("/v1/clusters/{id}/participation", observing);
+          Assert.Equal(HttpStatusCode.Accepted, r2.StatusCode);
+          // also verify only one active participation exists:
+          var cluster = await client.GetFromJsonAsync<ClusterDetailDto>($"/v1/clusters/{id}");
+          Assert.Equal("observing", cluster!.MyParticipation); // not "affected"
+          // OR query DB directly:
+          using var scope = _factory.Services.CreateScope();
+          var db = scope.ServiceProvider.GetRequiredService<HaliDbContext>();
+          var count = await db.Participations.CountAsync(p =>
+              p.ClusterId == clusterId && p.DeviceId == deviceId && p.CancelledAt == null);
+          Assert.Equal(1, count);
+
 <!-- LESSONS_APPEND_MARKER — do not remove this line, orchestrator appends below it -->
