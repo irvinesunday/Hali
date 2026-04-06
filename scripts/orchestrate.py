@@ -399,7 +399,7 @@ def run_session(session_num: str, dry_run: bool = False):
     )
 
     shared_ctx = (
-        f"## claude.md\n{read_file('claude.md')}\n\n"
+        f"## CLAUDE.md\n{read_file('CLAUDE.md')}\n\n"
         f"## mvp_locked_decisions.md\n{read_file('mvp_locked_decisions.md')}\n\n"
         f"## 01_postgres_schema.sql (excerpt)\n{read_file('01_postgres_schema.sql')[:3000]}\n"
     )

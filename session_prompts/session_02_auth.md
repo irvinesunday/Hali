@@ -23,7 +23,7 @@ Build Phase 3 (Auth) only. Do not begin Phase 4.
 - Device registration: upsert into devices table on every auth verify
 - Rate limiting on OTP requests: rl:otp:{destination} in Redis
 
-### Key rules from claude.md Auth Rules
+### Key rules from CLAUDE.md Auth Rules
 - Refresh tokens stored as SHA-256 hashes, never plaintext
 - Refresh token rotation preferred (issue new token on every refresh)
 - Single active token per device if rotation is complex

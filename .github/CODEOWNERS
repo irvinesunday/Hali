@@ -15,7 +15,7 @@
 /.github/                       @irvinesunday
 
 # Spec files — changes here affect Claude Code's behaviour
-/claude.md                      @irvinesunday
+/CLAUDE.md                      @irvinesunday
 /mvp_locked_decisions.md        @irvinesunday
 /01_postgres_schema.sql         @irvinesunday
 /02_openapi.yaml                @irvinesunday

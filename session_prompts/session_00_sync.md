@@ -4,7 +4,7 @@
 # Session 00 — Synchronisation Patch
 # Run this FIRST, before any code is written.
 
-Read claude.md fully before doing anything else.
+Read CLAUDE.md fully before doing anything else.
 
 Then read and execute sync_prompt.md exactly as written.
 

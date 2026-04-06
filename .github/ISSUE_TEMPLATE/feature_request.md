@@ -7,8 +7,8 @@ assignees: "irvinesunday"
 ---
 
 ## Is this in MVP scope?
-<!-- Check claude.md Phase 1 MVP Scope before filing. Out-of-scope features will be closed. -->
-- [ ] I have checked claude.md and this is in Phase 1 MVP scope
+<!-- Check CLAUDE.md Phase 1 MVP Scope before filing. Out-of-scope features will be closed. -->
+- [ ] I have checked CLAUDE.md and this is in Phase 1 MVP scope
 - [ ] This is post-MVP (label it accordingly)
 
 ## What problem does this solve

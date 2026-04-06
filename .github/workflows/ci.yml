@@ -38,7 +38,7 @@ jobs:
         run: npm install -g @stoplight/spectral-cli
       - name: Lint OpenAPI spec
         run: spectral lint 02_openapi.yaml --ruleset .spectral.yaml 2>&1 | tee spectral-output.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: spectral-lint-report, path: spectral-output.txt }
 
@@ -73,10 +73,10 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
                DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[Hali.*]*" \
                DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*Tests*]*,[*Migrations*]*"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: unit-test-results, path: ./test-results/unit/unit-results.trx }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: unit-coverage, path: ./**/coverage.cobertura.xml }
 
   civis-tests:
@@ -95,7 +95,7 @@ jobs:
             --filter "Category=CIVIS" \
             --logger "trx;LogFileName=civis-results.trx" \
             --results-directory ./test-results/civis
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: civis-test-results, path: ./test-results/civis/civis-results.trx }
 
@@ -139,10 +139,10 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
                DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[Hali.*]*" \
                DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*Tests*]*,[*Migrations*]*"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: integration-test-results, path: ./test-results/integration/integration-results.trx }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: integration-coverage, path: ./**/coverage.cobertura.xml }
 
   # ─── Contract test — live API vs OpenAPI spec ──────────────────────────────
@@ -192,7 +192,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - name: Setup Node for Dredd
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with: { node-version: "22" }
       - run: npm install -g dredd
       - run: dotnet restore
@@ -222,7 +222,7 @@ jobs:
             --reporter=junit \
             --output=./test-results/dredd/contract-results.xml \
             || true  # Don't fail CI while hooks are being developed
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: contract-test-results, path: ./test-results/dredd/ }
 
@@ -271,7 +271,7 @@ jobs:
               sys.exit(1)
           print(f"COVERAGE GATE PASSED: {rate:.2f}% >= {threshold}%")
           PYEOF
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: coverage-html-report, path: ./coverage-report/ }
       - name: Post PR comment
@@ -363,6 +363,6 @@ jobs:
             --filter "Category=VerticalSlice" \
             --logger "trx;LogFileName=slice-results.trx" \
             --results-directory ./test-results/slice
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: vertical-slice-results, path: ./test-results/slice/slice-results.trx }
