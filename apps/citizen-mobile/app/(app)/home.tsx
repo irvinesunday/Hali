@@ -65,9 +65,15 @@ export default function HomeScreen(): React.ReactElement {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   // ── Load followed localities once on mount, store in context ─────────────
+  // getFollowedLocalities returns Result<T, ApiError>; unwrap inside the
+  // queryFn so the surrounding hook stays a normal TanStack query.
   const localitiesQuery = useQuery({
     queryKey: ['localities', 'followed'],
-    queryFn: getFollowedLocalities,
+    queryFn: async () => {
+      const result = await getFollowedLocalities();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    },
     staleTime: 60_000,
   });
 
