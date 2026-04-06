@@ -207,20 +207,25 @@ describe('participate', () => {
     );
   });
 
-  it('passes the full ParticipationRequest as the request body', async () => {
+  // Note: the wire body sends `type` as the PascalCase enum name the
+  // backend's Enum.TryParse expects. The mobile snake_case ParticipationType
+  // is converted via participationTypeToBackend before sending. This is
+  // verified end-to-end here AND covered in unit tests at
+  // __tests__/utils/participationApi.test.ts.
+  it('passes the body with PascalCase wire type', async () => {
     mockApiRequest.mockResolvedValueOnce(okResult(undefined));
 
     await participate(clusterId, baseBody);
 
     const [, options] = mockApiRequest.mock.calls[0];
     expect(options.body).toEqual({
-      type: 'affected',
+      type: 'Affected',
       deviceHash: 'fake-device-hash',
       idempotencyKey: 'idem-001',
     });
   });
 
-  it('sends "observing" participation type correctly', async () => {
+  it('sends "observing" → "Observing" on the wire', async () => {
     mockApiRequest.mockResolvedValueOnce(okResult(undefined));
 
     await participate(clusterId, {
@@ -230,10 +235,10 @@ describe('participate', () => {
     });
 
     const [, options] = mockApiRequest.mock.calls[0];
-    expect(options.body.type).toBe('observing');
+    expect(options.body.type).toBe('Observing');
   });
 
-  it('sends "no_longer_affected" participation type correctly', async () => {
+  it('sends "no_longer_affected" → "NoLongerAffected" on the wire', async () => {
     mockApiRequest.mockResolvedValueOnce(okResult(undefined));
 
     await participate(clusterId, {
@@ -243,7 +248,9 @@ describe('participate', () => {
     });
 
     const [, options] = mockApiRequest.mock.calls[0];
-    expect(options.body.type).toBe('no_longer_affected');
+    // Critical contract assertion: underscores must be stripped, not just
+    // case-folded, because Enum.TryParse does not understand snake_case.
+    expect(options.body.type).toBe('NoLongerAffected');
   });
 
   it('url-encodes cluster ids that contain reserved characters', async () => {

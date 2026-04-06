@@ -5,6 +5,7 @@
 // No legacy axios shim.
 
 import { apiRequest } from './client';
+import { participationTypeToBackend } from '../utils/participationApi';
 import type {
   ApiError,
   Result,
@@ -74,17 +75,31 @@ export async function getCluster(
 }
 
 /**
- * POST /v1/clusters/{id}/participation — stub for mobile-01d.
+ * POST /v1/clusters/{id}/participation
+ *
+ * Records an Affected / Observing / NoLongerAffected vote on a cluster.
+ * Restoration votes go through submitRestorationResponse instead — the
+ * backend's participation endpoint explicitly rejects restoration types.
+ *
+ * IMPORTANT: the backend uses Enum.TryParse against the C# ParticipationType
+ * enum (case-insensitive but NOT underscore-aware), so "no_longer_affected"
+ * is rejected with 422. participationTypeToBackend converts the mobile
+ * snake_case union to the PascalCase wire value the controller accepts.
  */
 export async function participate(
   clusterId: string,
   body: ParticipationRequest,
 ): Promise<Result<void, ApiError>> {
+  const wireType = participationTypeToBackend(body.type);
   return apiRequest<void>(
     `/v1/clusters/${encodeURIComponent(clusterId)}/participation`,
     {
       method: 'POST',
-      body: body as unknown as Record<string, unknown>,
+      body: {
+        type: wireType,
+        deviceHash: body.deviceHash,
+        idempotencyKey: body.idempotencyKey,
+      },
     },
   );
 }
