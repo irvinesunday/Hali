@@ -130,12 +130,35 @@ export interface ClusterResponse {
 
 // ─── Home ─────────────────────────────────────────────────────────────────────
 
-export interface HomeResponse {
-  activeNow: ClusterResponse[];
-  officialUpdates: OfficialPostResponse[];
-  recurringAtThisTime: ClusterResponse[];
-  otherActiveSignals: ClusterResponse[];
+/**
+ * Paginated section of the home feed.
+ * Matches the backend `PagedSection<T>` record exactly.
+ */
+export interface PagedSection<T> {
+  items: T[];
+  nextCursor: string | null;
+  totalCount: number;
 }
+
+/**
+ * Home feed response. Each section is a PagedSection — NOT a flat array.
+ * See Hali.Contracts/Home/HomeResponseDto.cs.
+ *
+ * The backend does not return an `isCalmState` flag; the client computes it
+ * as: every section has `items.length === 0`.
+ */
+export interface HomeResponse {
+  activeNow: PagedSection<ClusterResponse>;
+  officialUpdates: PagedSection<OfficialPostResponse>;
+  recurringAtThisTime: PagedSection<ClusterResponse>;
+  otherActiveSignals: PagedSection<ClusterResponse>;
+}
+
+export type HomeSectionName =
+  | 'active_now'
+  | 'official_updates'
+  | 'recurring_at_this_time'
+  | 'other_active_signals';
 
 // ─── Signals ──────────────────────────────────────────────────────────────────
 
