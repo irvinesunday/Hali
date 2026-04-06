@@ -26,31 +26,32 @@ export interface VerifyOtpRequestBody {
   expoPushToken?: string;
 }
 
+// Shape of the /v1/auth/otp success response.
+// Backend returns { "message": "OTP sent" } — no other fields.
 export interface RequestOtpResponse {
   message: string;
-  expiresInSeconds?: number;
 }
 
+// Shape of the /v1/auth/verify success response.
+// Matches the backend TokenResponseDto exactly — NO accountId field.
+// The account ID is extracted from the JWT's `sub` claim via
+// src/utils/jwt.ts#decodeAccountIdFromJwt.
 export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
-  accountId: string;
   expiresIn: number;
 }
 
-// Kept for legacy imports — alias to VerifyOtpResponse.
-// Remove once all callers migrate to VerifyOtpResponse.
+// Legacy alias — same shape as VerifyOtpResponse. Remove when all callers
+// migrate to the explicit names.
 export type TokenResponse = VerifyOtpResponse;
 
 export interface RefreshRequestBody {
   refreshToken: string;
 }
 
-export interface RefreshTokenResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}
+// Same shape as VerifyOtpResponse — backend reuses TokenResponseDto.
+export type RefreshTokenResponse = VerifyOtpResponse;
 
 export interface LogoutRequestBody {
   refreshToken: string;

@@ -67,20 +67,27 @@ export async function clearTokens(): Promise<void> {
 
 // ─── Error construction ──────────────────────────────────────────────────────
 
+/**
+ * Normalise the three error body shapes used across the Hali backend:
+ *   1. { error: "..." }                        — most endpoints
+ *   2. { error: "...", code: "..." }           — clusters / official posts 422s
+ *   3. { code: "...", message: "..." }         — signals rate limiter
+ *
+ * Returns a unified ApiError with both `code` and `message` populated.
+ * Prefers `message` over `error` when both are present; prefers `code` over
+ * a default when provided.
+ */
 function buildApiError(status: number, body: unknown): ApiError {
-  if (
-    body !== null &&
-    typeof body === 'object' &&
-    'code' in body &&
-    typeof (body as Record<string, unknown>).code === 'string'
-  ) {
+  if (body !== null && typeof body === 'object') {
     const b = body as Record<string, unknown>;
-    return {
-      status,
-      code: b.code as string,
-      message:
-        typeof b.message === 'string' ? b.message : 'An unexpected error occurred.',
-    };
+    const code = typeof b.code === 'string' ? b.code : 'unknown_error';
+    const message =
+      typeof b.message === 'string'
+        ? b.message
+        : typeof b.error === 'string'
+          ? b.error
+          : 'An unexpected error occurred.';
+    return { status, code, message };
   }
   return {
     status,

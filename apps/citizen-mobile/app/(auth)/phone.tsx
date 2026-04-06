@@ -55,8 +55,10 @@ export default function PhoneScreen(): React.ReactElement {
       });
     } else {
       setScreenState('error');
+      // Auth rate limit comes back as HTTP 429 with { error: "..." } —
+      // no code field, so we detect by status instead.
       setErrorMessage(
-        result.error.code === 'rate_limit_exceeded'
+        result.error.status === 429
           ? STRINGS.AUTH.OTP_RATE_LIMIT
           : result.error.message || STRINGS.AUTH.OTP_REQUEST_FAILED,
       );

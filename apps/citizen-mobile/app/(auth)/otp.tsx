@@ -24,6 +24,7 @@ import * as Crypto from 'expo-crypto';
 import { verifyOtp } from '../../src/api/auth';
 import { useAuth } from '../../src/context/AuthContext';
 import { STRINGS } from '../../src/config/strings';
+import { decodeAccountIdFromJwt } from '../../src/utils/jwt';
 
 type ScreenState = 'idle' | 'loading' | 'error';
 
@@ -106,12 +107,19 @@ export default function OtpScreen(): React.ReactElement {
     });
 
     if (result.ok) {
+      // The backend's /v1/auth/verify response does NOT include accountId —
+      // it's embedded in the JWT `sub` claim. Decode it client-side.
+      const accountId = decodeAccountIdFromJwt(result.value.accessToken);
+      if (accountId === null) {
+        setScreenState('error');
+        setErrorMessage(STRINGS.AUTH.OTP_VERIFY_FAILED);
+        return;
+      }
       await signIn({
         accessToken: result.value.accessToken,
         refreshToken: result.value.refreshToken,
-        accountId: result.value.accountId,
+        accountId,
       });
-      // Root layout will pick up the status change and route into (app)
       router.replace('/(app)/home');
       return;
     }
