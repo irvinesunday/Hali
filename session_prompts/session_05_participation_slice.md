@@ -28,7 +28,7 @@ prompt versioning, and context window management.
 - POST /v1/clusters/{id}/context
 - POST /v1/clusters/{id}/restoration-response
 
-#### Business rules (from claude.md Application-Layer Business Rules)
+#### Business rules (from CLAUDE.md Application-Layer Business Rules)
 
 **One participation type per device per cluster:**
 Before inserting, delete or soft-replace any existing row for (cluster_id, device_id).

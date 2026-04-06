@@ -5,7 +5,7 @@
 # =============================================================================
 
 # ── Stage 1: Restore dependencies ────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
 WORKDIR /src
 
 # Copy solution and project files first (layer caching — only re-runs on .csproj changes)
@@ -35,21 +35,20 @@ RUN dotnet publish "src/Hali.Api/Hali.Api.csproj" \
     /p:UseAppHost=false
 
 # ── Stage 4: Runtime (minimal image, non-root) ────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Security: run as non-root
-RUN addgroup --system --gid 1001 hali \
- && adduser  --system --uid 1001 --ingroup hali hali
+# .NET 10 images include a non-root 'app' user (UID 1654)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=publish --chown=hali:hali /app/publish .
+COPY --from=publish /app/publish .
 
-USER hali
+USER $APP_UID
 
 # Health check — CI and deploy workflow both call /health
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget -qO- http://localhost:8080/health || exit 1
+    CMD curl -sf http://localhost:8080/health || exit 1
 
 EXPOSE 8080
 

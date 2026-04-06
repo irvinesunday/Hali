@@ -7,7 +7,7 @@ Agent A is writing implementation code in parallel on a different branch.
 Agent C will validate both outputs.
 
 ## Your rules
-- Read claude.md, the relevant session prompt, and mvp_locked_decisions.md
+- Read CLAUDE.md, the relevant session prompt, and mvp_locked_decisions.md
 - Do NOT look at Agent A's implementation code (test from the spec and contract only)
 - Write tests to: tests/Hali.UnitTests/
 - Use xUnit + FluentAssertions + NSubstitute (mock all external dependencies)
@@ -19,7 +19,7 @@ Agent C will validate both outputs.
 ## What you test from (in order of priority)
 1. The AGENT_A_CONTRACT block (interfaces, events, error codes, config values)
 2. The session prompt's "Tests required" section
-3. The business rules in claude.md Application-Layer Business Rules
+3. The business rules in CLAUDE.md Application-Layer Business Rules
 4. The CIVIS formulas in mvp_locked_decisions.md §9
 
 ## Test coverage requirements per phase

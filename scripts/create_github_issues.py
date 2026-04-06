@@ -68,7 +68,7 @@ ISSUE_TREE = [
             {
                 "title": "Story 0.1 — Patch OpenAPI spec to canonical /v1/* routes",
                 "body": """**As** the build system,
-**I need** the OpenAPI spec to match the locked endpoint list in claude.md
+**I need** the OpenAPI spec to match the locked endpoint list in CLAUDE.md
 **So that** backend controllers and mobile API calls share a single source of truth.
 
 **Acceptance criteria:**
@@ -158,7 +158,7 @@ ISSUE_TREE = [
 - `dotnet build` passes with zero errors
 - Folder layout matches Folder_Structure.md
 
-**Ref:** Folder_Structure.md, claude.md Architecture section""",
+**Ref:** Folder_Structure.md, CLAUDE.md Architecture section""",
                 "labels": ["user-story", "infra", "session-01"],
                 "tasks": [
                     ("Create solution file and all 6 src projects", ["task", "infra"]),
@@ -239,7 +239,7 @@ ISSUE_TREE = [
 - Expired or revoked tokens rejected with HTTP 401
 - Rate limit: rl:auth-refresh:{deviceHash}
 
-**Ref:** session_02_auth.md, claude.md Auth Rules""",
+**Ref:** session_02_auth.md, CLAUDE.md Auth Rules""",
                 "labels": ["user-story", "auth", "backend", "session-02"],
                 "tasks": [
                     ("JWT service: issue access token from account + device claims", ["task", "auth", "backend"]),
@@ -468,7 +468,7 @@ ISSUE_TREE = [
 - signal_clusters.affected_count and observing_count updated after each write
 - outbox_event written on every participation
 
-**Ref:** session_05_participation_slice.md, claude.md Application-Layer Business Rules""",
+**Ref:** session_05_participation_slice.md, CLAUDE.md Application-Layer Business Rules""",
                 "labels": ["user-story", "backend", "session-05"],
                 "tasks": [
                     ("Participation write service: upsert with one-type-per-device enforcement", ["task", "backend"]),
@@ -491,7 +491,7 @@ ISSUE_TREE = [
 - Rejected with HTTP 422 / code: context_edit_window_expired after window
 - context_text stored on participations row, max 150 chars
 
-**Ref:** claude.md Application-Layer Business Rules""",
+**Ref:** CLAUDE.md Application-Layer Business Rules""",
                 "labels": ["user-story", "backend", "session-05"],
                 "tasks": [
                     ("Affected participation gate check for context endpoint", ["task", "backend"]),
@@ -601,7 +601,7 @@ ISSUE_TREE = [
 - Official posts NEVER suppress or replace citizen cluster state
 - institution is_restoration_claim=true triggers possible_restoration on linked cluster — not resolution
 
-**Ref:** claude.md Core Product Doctrine §2 Dual Visibility""",
+**Ref:** CLAUDE.md Core Product Doctrine §2 Dual Visibility""",
                 "labels": ["user-story", "backend", "session-06"],
                 "tasks": [
                     ("Cluster detail query: join official_posts for related cluster", ["task", "backend"]),
@@ -636,7 +636,7 @@ ISSUE_TREE = [
 - PUT /v1/users/me/notification-settings persists opt-in preferences
 - GET /v1/users/me returns account summary
 
-**Ref:** session_07_notifications_polish.md, claude.md Application-Layer Business Rules""",
+**Ref:** session_07_notifications_polish.md, CLAUDE.md Application-Layer Business Rules""",
                 "labels": ["user-story", "backend", "session-07"],
                 "tasks": [
                     ("POST /v1/devices/push-token: upsert expo_push_token on devices row", ["task", "backend"]),

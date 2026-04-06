@@ -286,7 +286,7 @@ Do not couple domain logic to vendor-specific response shapes.
 
 When documents in this pack conflict, the following hierarchy applies:
 
-1. `claude.md` (this file) — implementation authority
+1. `CLAUDE.md` (this file) — implementation authority
 2. `mvp_locked_decisions.md` — locked decisions authority
 3. `mobile_screen_inventory.md` — frontend authority
 4. `openapi_patch_checklist.md` — API contract authority
@@ -294,16 +294,16 @@ When documents in this pack conflict, the following hierarchy applies:
 
 **The following files are reference context only — not implementation authority:**
 - `Claude.md` (uppercase — old version, superseded by this file)
-- `Claude_Seed_Prompt.md` (old paths, superseded by claude.md)
-- `Hali_MVP_Claude_Execution_Pack.docx` (old paths, superseded by claude.md)
-- `09_claude.md` (earlier version, superseded by this file)
+- `Claude_Seed_Prompt.md` (old paths, superseded by CLAUDE.md)
+- `Hali_MVP_Claude_Execution_Pack.docx` (old paths, superseded by CLAUDE.md)
+- `09_CLAUDE.md` (earlier version, superseded by this file)
 - `10_repository_structure.md` (proposes a different module-per-domain layout; superseded by Folder_Structure.md and the Architecture section of this file)
 
 All spec files (`mvp_locked_decisions.md`, `mobile_screen_inventory.md`, `nlp_extraction_prompt.md`,
 `openapi_patch_checklist.md`, `schema_patch_notes.md`, `seed_taxonomy_expanded.sql`) live at
 the **project root**, not in a `docs/` subfolder.
 
-Where any older files conflict with claude.md or locked_decisions, **claude.md wins**.
+Where any older files conflict with CLAUDE.md or locked_decisions, **CLAUDE.md wins**.
 
 ---
 
@@ -311,7 +311,7 @@ Where any older files conflict with claude.md or locked_decisions, **claude.md w
 
 Before writing any code, read these files in this order:
 
-1. `claude.md` — this file (you are reading it)
+1. `CLAUDE.md` — this file (you are reading it)
 2. `mvp_locked_decisions.md` — all locked implementation decisions
 3. `01_postgres_schema.sql` — canonical schema DDL
 4. `mobile_screen_inventory.md` — before any frontend work
@@ -422,8 +422,78 @@ original affected participation. After the window, return HTTP 422 with code
 
 ---
 
+## Copilot Review Comments
+
+When resolving GitHub Copilot review comments on pull requests, follow the workflow defined in
+`docs/arch/COPILOT_RESOLUTION_SKILL.md`. Key rules:
+
+- Always read the current file at HEAD before applying a fix — comment line numbers may be stale
+- Search the full PR diff for other instances of the same problem before committing
+- Never apply a fix that conflicts with locked decisions (`CLAUDE.md` as the authoritative master brief, `mvp_locked_decisions.md`)
+- Fix all instances of a pattern bug, not just the one the comment points to
+
+---
+
 ## Final Reminder
 
 Hali is not a social app.
 
 Build it as a calm, trustworthy civic infrastructure system that helps people understand and navigate real-world conditions.
+
+---
+
+## PR Description Rules (MANDATORY)
+
+When creating a pull request via `gh pr create` or any GitHub API call, you MUST populate the PR body fully. Never submit a PR with empty template fields.
+
+Before creating any PR, construct the full body by filling in every section of the template:
+
+```
+## Summary
+One or two sentences describing what this PR does and why.
+
+## Session / Phase
+Session: [e.g. Session 04 — Clustering & CIVIS]
+Phase: [e.g. Phase 1 — Citizen Mobile]
+
+## Agent C Verdict
+Verdict: [PASS / PASS_WITH_NOTES / FAIL — or PENDING if not yet run]
+Approved to merge: [Yes / No / Pending]
+
+## Coverage
+Line coverage: [e.g. 91.4% — or PENDING if CI hasn't run]
+Gate status: [PASS / INFORMATIONAL / PENDING]
+
+## Changes made
+- [Bullet 1: specific thing implemented]
+- [Bullet 2: specific thing implemented]
+
+## How to test
+1. [Step 1]
+2. [Step 2]
+
+## Checklist
+- [ ] All 6 CI jobs are green
+- [ ] Coverage gate >= 95%
+- [ ] Agent C validation report reviewed
+- [ ] No hardcoded secrets or API keys
+- [ ] No .env files committed
+- [ ] EF Core migrations are reversible
+- [ ] Outbox events written in same transaction as state changes
+- [ ] No features outside MVP scope introduced
+```
+
+Pass this entire string as the `--body` argument when creating the PR.
+Do NOT use `--body-file` pointing to the raw template — always construct the populated version inline.
+If Agent C has not run yet, mark Verdict and coverage as PENDING rather than leaving blank.
+
+---
+
+## Branching Strategy
+
+- Base branch for all feature/fix/chore branches: `develop`
+- All PRs from feature branches must target `develop`, never `main`
+- `main` is updated only via a release PR from `develop`
+- When creating a branch, always branch off the latest `develop`:
+  `git checkout develop && git pull && git checkout -b <branch-name>`
+- Never use `--base main` in `gh pr create`

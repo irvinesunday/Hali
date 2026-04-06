@@ -9,29 +9,7 @@ public class B5InstitutionAuth : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql(
-            "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS institution_id UUID NULL;");
-
-        migrationBuilder.Sql(
-            "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false;");
-
-        migrationBuilder.Sql(@"
-CREATE TABLE IF NOT EXISTS institution_invites (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    institution_id UUID NOT NULL,
-    invite_token_hash VARCHAR(64) NOT NULL,
-    invited_by_account_id UUID NOT NULL REFERENCES accounts(id),
-    expires_at TIMESTAMPTZ NOT NULL,
-    accepted_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_institution_invites_token UNIQUE (invite_token_hash)
-);");
-
-        migrationBuilder.Sql(
-            "CREATE INDEX IF NOT EXISTS ix_institution_invites_token ON institution_invites(invite_token_hash);");
-
-        migrationBuilder.Sql(
-            "CREATE INDEX IF NOT EXISTS ix_institution_invites_institution ON institution_invites(institution_id);");
+        // No-op: columns and table are created by SyncEnumTypeAnnotations migration.
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
