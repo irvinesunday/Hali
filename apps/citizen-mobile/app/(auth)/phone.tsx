@@ -18,37 +18,14 @@ import {
 import { router } from 'expo-router';
 import { requestOtp } from '../../src/api/auth';
 import { STRINGS } from '../../src/config/strings';
+import {
+  normaliseKenyaPhone,
+  isValidKenyaPhoneInput,
+} from '../../src/utils/phone';
 
 type ScreenState = 'idle' | 'loading' | 'error';
 
 const KENYA_PREFIX = '+254';
-
-/**
- * Normalise user input to an E.164 Kenyan phone number.
- * Accepts: 07XXXXXXXX, 7XXXXXXXX, +2547XXXXXXXX, 2547XXXXXXXX
- * Returns null if the input does not look like a valid Kenyan number.
- */
-export function normaliseKenyaPhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '');
-
-  // Full international: 2547XXXXXXXX (12 digits)
-  if (digits.startsWith('254') && digits.length === 12) {
-    return `+${digits}`;
-  }
-  // Local with leading zero: 07XXXXXXXX (10 digits)
-  if (digits.startsWith('0') && digits.length === 10) {
-    return `+254${digits.slice(1)}`;
-  }
-  // Local without leading zero: 7XXXXXXXX (9 digits)
-  if (digits.length === 9) {
-    return `+254${digits}`;
-  }
-  return null;
-}
-
-function isValidLocalInput(raw: string): boolean {
-  return normaliseKenyaPhone(raw) !== null;
-}
 
 export default function PhoneScreen(): React.ReactElement {
   const [phoneInput, setPhoneInput] = useState<string>('');
@@ -56,7 +33,7 @@ export default function PhoneScreen(): React.ReactElement {
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const isSubmittable =
-    screenState !== 'loading' && isValidLocalInput(phoneInput);
+    screenState !== 'loading' && isValidKenyaPhoneInput(phoneInput);
 
   async function handleSubmit(): Promise<void> {
     const destination = normaliseKenyaPhone(phoneInput);
