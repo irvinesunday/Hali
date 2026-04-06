@@ -303,7 +303,7 @@ describe('submitRestorationResponse', () => {
     mockApiRequest.mockResolvedValueOnce(okResult(undefined));
 
     await submitRestorationResponse(clusterId, {
-      response: 'restoration_yes',
+      response: 'restored',
       deviceHash: 'hash',
     });
 
@@ -313,12 +313,15 @@ describe('submitRestorationResponse', () => {
     );
   });
 
-  // The backend accepts exactly three response values. These tests lock
-  // that contract so a renamed/removed enum value surfaces immediately.
+  // The backend accepts exactly three response values verified against
+  // ClustersController.cs and ParticipationService.cs. These tests lock
+  // that contract so a renamed/removed value surfaces immediately.
+  // Note: there is no 'restoration_no' wire value — the backend treats
+  // the negative case as "still_affected" which re-records you as Affected.
   const validResponses: RestorationResponseRequest['response'][] = [
-    'restoration_yes',
-    'restoration_no',
-    'restoration_unsure',
+    'restored',
+    'still_affected',
+    'not_sure',
   ];
 
   it.each(validResponses)(
@@ -340,7 +343,7 @@ describe('submitRestorationResponse', () => {
     mockApiRequest.mockResolvedValueOnce(okResult(undefined));
 
     await submitRestorationResponse(clusterId, {
-      response: 'restoration_yes',
+      response: 'restored',
       deviceHash: 'specific-device-hash',
     });
 
@@ -354,7 +357,7 @@ describe('submitRestorationResponse', () => {
     );
 
     const result = await submitRestorationResponse(clusterId, {
-      response: 'restoration_yes',
+      response: 'restored',
       deviceHash: 'hash',
     });
 
@@ -369,7 +372,7 @@ describe('submitRestorationResponse', () => {
     );
 
     const result = await submitRestorationResponse(clusterId, {
-      response: 'restoration_no',
+      response: 'still_affected',
       deviceHash: 'hash',
     });
 

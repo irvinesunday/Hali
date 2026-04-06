@@ -250,8 +250,23 @@ export interface ContextRequest {
   deviceHash: string;
 }
 
+/**
+ * Restoration response wire values — verified against
+ * ClustersController.cs and ParticipationService.cs.
+ *
+ * Backend mapping (NOT 1:1 with the ParticipationType union):
+ *   "restored"       → records as ParticipationType.RestorationYes
+ *   "still_affected" → records as ParticipationType.Affected (re-affirms affected)
+ *   "not_sure"       → records as ParticipationType.RestorationUnsure
+ *
+ * There is no "restoration_no" wire value — the backend treats the
+ * negative case semantically as "I'm still affected" which re-records
+ * you as a current affected user.
+ */
+export type RestorationResponseValue = 'restored' | 'still_affected' | 'not_sure';
+
 export interface RestorationResponseRequest {
-  response: 'restoration_yes' | 'restoration_no' | 'restoration_unsure';
+  response: RestorationResponseValue;
   deviceHash: string;
 }
 
