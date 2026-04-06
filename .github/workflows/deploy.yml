@@ -55,7 +55,7 @@ jobs:
             type=ref,event=branch
 
       - name: Build and push API image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hali.Api/Dockerfile
@@ -64,7 +64,7 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
 
       - name: Build and push Worker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hali.Workers/Dockerfile
