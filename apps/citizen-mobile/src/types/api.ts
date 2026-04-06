@@ -1,3 +1,15 @@
+// ─── Result + Error (canonical location — do not redeclare elsewhere) ───────
+
+export interface ApiError {
+  status: number;
+  code: string;
+  message: string;
+}
+
+export type Result<T, E = ApiError> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export interface OtpRequestBody {
@@ -14,14 +26,30 @@ export interface VerifyOtpRequestBody {
   expoPushToken?: string;
 }
 
-export interface TokenResponse {
+export interface RequestOtpResponse {
+  message: string;
+  expiresInSeconds?: number;
+}
+
+export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
+  accountId: string;
   expiresIn: number;
 }
 
+// Kept for legacy imports — alias to VerifyOtpResponse.
+// Remove once all callers migrate to VerifyOtpResponse.
+export type TokenResponse = VerifyOtpResponse;
+
 export interface RefreshRequestBody {
   refreshToken: string;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
 }
 
 export interface LogoutRequestBody {

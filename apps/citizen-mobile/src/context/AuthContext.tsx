@@ -1,166 +1,203 @@
+// apps/citizen-mobile/src/context/AuthContext.tsx
+//
+// Authentication state machine: unknown → unauthenticated | authenticated.
+//
+// Boot: restore session from SecureStore on mount.
+// signIn: persist tokens + transition to authenticated.
+// signOut: best-effort logout API call, clear SecureStore, transition to
+//          unauthenticated.
+//
+// The API client calls the registered auth failure handler when a refresh
+// cycle fails irrecoverably — this dispatches SIGN_OUT and the root layout
+// redirects to the auth stack.
+
 import React, {
   createContext,
-  useContext,
-  useReducer,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
 } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { registerAuthFailureHandler } from '../api/client';
-import { logout as apiLogout } from '../api/auth';
+import { logout as logoutApi } from '../api/auth';
 import { SECURE_STORE_KEYS } from '../config/constants';
-import type { AuthState } from '../types/domain';
 
-// ─── State machine ────────────────────────────────────────────────────────────
-// UNKNOWN → check SecureStore
-// UNAUTHENTICATED → /auth/phone
-// AUTHENTICATED → /(app)/home
-// 401 + refresh success → AUTHENTICATED (new tokens)
-// 401 + refresh failure → UNAUTHENTICATED (tokens cleared)
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type AuthStatus = 'unknown' | 'unauthenticated' | 'authenticated';
+
+export interface AuthState {
+  status: AuthStatus;
+  accountId: string | null;
+}
+
+export interface SignInParams {
+  accessToken: string;
+  refreshToken: string;
+  accountId: string;
+}
+
+export interface AuthContextValue {
+  authState: AuthState;
+  signIn: (params: SignInParams) => Promise<void>;
+  signOut: () => Promise<void>;
+}
+
+// ─── Reducer ─────────────────────────────────────────────────────────────────
 
 type AuthAction =
-  | { type: 'RESTORE'; payload: Omit<AuthState, 'status'> & { status: 'authenticated' | 'unauthenticated' } }
-  | { type: 'SIGN_IN'; payload: { accessToken: string; refreshToken: string; accountId: string } }
+  | { type: 'RESTORE'; accountId: string }
+  | { type: 'SIGN_IN'; accountId: string }
   | { type: 'SIGN_OUT' };
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'RESTORE':
-      return { ...action.payload };
+      return { status: 'authenticated', accountId: action.accountId };
     case 'SIGN_IN':
-      return {
-        ...action.payload,
-        status: 'authenticated',
-      };
+      return { status: 'authenticated', accountId: action.accountId };
     case 'SIGN_OUT':
-      return {
-        accessToken: null,
-        refreshToken: null,
-        accountId: null,
-        status: 'unauthenticated',
-      };
+      return { status: 'unauthenticated', accountId: null };
+    default:
+      return state;
   }
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+const initialState: AuthState = {
+  status: 'unknown',
+  accountId: null,
+};
 
-interface AuthContextValue {
-  state: AuthState;
-  signIn: (tokens: {
-    accessToken: string;
-    refreshToken: string;
-    accountId: string;
-  }) => Promise<void>;
-  signOut: () => Promise<void>;
-}
+// ─── Context ─────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(authReducer, {
-    accessToken: null,
-    refreshToken: null,
-    accountId: null,
-    status: 'unknown',
-  });
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement {
+  const [authState, dispatch] = useReducer(authReducer, initialState);
 
-  // Boot: restore tokens from SecureStore
+  // Boot: restore session from SecureStore
   useEffect(() => {
-    async function bootstrap() {
-      const [accessToken, refreshToken, accountId] = await Promise.all([
-        SecureStore.getItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN),
-        SecureStore.getItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN),
-        SecureStore.getItemAsync(SECURE_STORE_KEYS.ACCOUNT_ID),
-      ]);
+    let cancelled = false;
 
-      if (refreshToken && accountId) {
-        dispatch({
-          type: 'RESTORE',
-          payload: {
-            accessToken,
-            refreshToken,
-            accountId,
-            status: 'authenticated',
-          },
-        });
-      } else {
-        dispatch({
-          type: 'RESTORE',
-          payload: {
-            accessToken: null,
-            refreshToken: null,
-            accountId: null,
-            status: 'unauthenticated',
-          },
-        });
+    async function restoreSession(): Promise<void> {
+      try {
+        const [accessToken, accountId] = await Promise.all([
+          SecureStore.getItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN),
+          SecureStore.getItemAsync(SECURE_STORE_KEYS.ACCOUNT_ID),
+        ]);
+
+        if (cancelled) return;
+
+        if (accessToken !== null && accountId !== null) {
+          dispatch({ type: 'RESTORE', accountId });
+        } else {
+          dispatch({ type: 'SIGN_OUT' });
+        }
+      } catch {
+        if (!cancelled) {
+          dispatch({ type: 'SIGN_OUT' });
+        }
       }
     }
 
-    bootstrap();
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Register the API-layer auth-failure handler (called on refresh token expiry)
-  const forceSignOut = useCallback(async () => {
-    await Promise.all([
-      SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN),
-      SecureStore.deleteItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN),
-      SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCOUNT_ID),
-    ]);
-    dispatch({ type: 'SIGN_OUT' });
-  }, []);
-
+  // Register auth failure handler with API client (once, on mount)
   useEffect(() => {
-    registerAuthFailureHandler(forceSignOut);
-  }, [forceSignOut]);
+    registerAuthFailureHandler(() => {
+      dispatch({ type: 'SIGN_OUT' });
+    });
+  }, []);
 
   const signIn = useCallback(
-    async (tokens: {
-      accessToken: string;
-      refreshToken: string;
-      accountId: string;
-    }) => {
+    async (params: SignInParams): Promise<void> => {
       await Promise.all([
         SecureStore.setItemAsync(
           SECURE_STORE_KEYS.ACCESS_TOKEN,
-          tokens.accessToken,
+          params.accessToken,
         ),
         SecureStore.setItemAsync(
           SECURE_STORE_KEYS.REFRESH_TOKEN,
-          tokens.refreshToken,
+          params.refreshToken,
         ),
         SecureStore.setItemAsync(
           SECURE_STORE_KEYS.ACCOUNT_ID,
-          tokens.accountId,
+          params.accountId,
         ),
       ]);
-      dispatch({ type: 'SIGN_IN', payload: tokens });
+      dispatch({ type: 'SIGN_IN', accountId: params.accountId });
     },
     [],
   );
 
-  const signOut = useCallback(async () => {
-    const storedRefresh = await SecureStore.getItemAsync(
-      SECURE_STORE_KEYS.REFRESH_TOKEN,
-    );
-    if (storedRefresh) {
-      try {
-        await apiLogout({ refreshToken: storedRefresh });
-      } catch {
-        // Best-effort — clear locally regardless
+  const signOut = useCallback(async (): Promise<void> => {
+    // Best-effort logout — clear local session regardless of API outcome
+    try {
+      const stored = await SecureStore.getItemAsync(
+        SECURE_STORE_KEYS.REFRESH_TOKEN,
+      );
+      if (stored !== null) {
+        await logoutApi({ refreshToken: stored });
       }
+    } catch {
+      // Swallowed intentionally
+    } finally {
+      await Promise.all([
+        SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN),
+        SecureStore.deleteItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN),
+        SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCOUNT_ID),
+      ]);
+      dispatch({ type: 'SIGN_OUT' });
     }
-    await forceSignOut();
-  }, [forceSignOut]);
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ state, signIn, signOut }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({ authState, signIn, signOut }),
+    [authState, signIn, signOut],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuthContext(): AuthContextValue {
+// ─── Hook (canonical) ────────────────────────────────────────────────────────
+
+export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuthContext must be used within AuthProvider');
+  if (ctx === null) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return ctx;
+}
+
+// ─── Legacy hook (backward-compat shim) ──────────────────────────────────────
+//
+// TEMPORARY: The 3 out-of-scope screens (app/index.tsx, (app)/_layout.tsx,
+// settings/account.tsx) still import `useAuthContext` and destructure `state`.
+// Expose a shim that reshapes { authState } → { state } so those files keep
+// compiling. Delete this when the final screen sub-session migrates to
+// useAuth(). Legacy consumers only read state.status — no tokens exposed.
+
+export interface LegacyAuthContextValue {
+  state: {
+    status: AuthStatus;
+    accountId: string | null;
+  };
+  signIn: (params: SignInParams) => Promise<void>;
+  signOut: () => Promise<void>;
+}
+
+export function useAuthContext(): LegacyAuthContextValue {
+  const { authState, signIn, signOut } = useAuth();
+  return { state: authState, signIn, signOut };
 }
