@@ -215,10 +215,18 @@ export interface SignalSubmitRequest {
   spatialCellId?: string;
 }
 
+/**
+ * Shape of the /v1/signals/submit success response.
+ * Matches Hali.Contracts.Signals.SignalSubmitResponseDto exactly.
+ *
+ * Note: the backend does NOT return a clusterId here. Clustering happens
+ * asynchronously via a background worker (outbox pattern). The mobile
+ * client should navigate to the home feed on success, where the new
+ * cluster will appear after the worker runs.
+ */
 export interface SignalSubmitResponse {
-  clusterId: string;
-  clusterState: string;
-  isNewCluster: boolean;
+  signalEventId: string;
+  createdAt: string;
 }
 
 // ─── Participation ────────────────────────────────────────────────────────────
