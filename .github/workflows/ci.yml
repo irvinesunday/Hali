@@ -6,12 +6,11 @@ on:
   pull_request:
     branches: [main, develop]
 
-# Default to least-privilege for the GITHUB_TOKEN. Individual jobs can
-# escalate as needed.
+# Default to least-privilege for the GITHUB_TOKEN. Individual jobs that
+# write to the API (e.g. coverage-gate posting a PR comment) escalate
+# their own permissions explicitly.
 permissions:
   contents: read
-  pull-requests: write
-  checks: write
 
 env:
   DOTNET_VERSION: "10.0.x"
@@ -237,6 +236,12 @@ jobs:
     name: "Coverage Gate"
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-test]
+    # Needs `pull-requests: write` so the coverage report comment can be
+    # posted via github.rest.issues.createComment (PR comments live on the
+    # issues API but use the pull-requests scope).
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

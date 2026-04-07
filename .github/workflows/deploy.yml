@@ -6,12 +6,12 @@ on:
       - main     # → production (requires environment approval)
       - develop  # → staging (automatic)
 
-# Default to least-privilege for the GITHUB_TOKEN. Jobs that need to push
-# images or request OIDC tokens declare their own narrower permissions.
+# Default to least-privilege for the GITHUB_TOKEN. Only `contents: read`
+# is needed by every job (checkout). Jobs that push images escalate to
+# `packages: write` themselves (see build-images below). No job in this
+# workflow currently uses OIDC, so `id-token` is intentionally omitted.
 permissions:
   contents: read
-  packages: write
-  id-token: write
 
 env:
   DOTNET_VERSION: "10.0.x"
