@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -38,7 +37,12 @@ public class CorrelationIdMiddleware
             ? Guid.NewGuid().ToString("N")
             : rawHeader;
 
-        var logSafeId = BuildLogSafeIdentifier(rawHeader);
+        // The value passed to the logger MUST be entirely server-generated
+        // — no taint from the request header. We generate a fresh GUID
+        // here and use only that value in every _logger call below. The
+        // client-supplied correlation id is still echoed back in the
+        // response header for cross-service tracing, but never logged.
+        var logSafeId = Guid.NewGuid().ToString("N");
 
         context.Items["CorrelationId"] = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
@@ -62,30 +66,6 @@ public class CorrelationIdMiddleware
                 context.Response.StatusCode,
                 durationMs);
         }
-    }
-
-    /// <summary>
-    /// Build a log-safe correlation identifier by filtering the raw header
-    /// to alphanumerics, hyphens and underscores only, capping at 64 chars,
-    /// and falling back to a server-generated GUID if nothing usable
-    /// remains. The returned string is constructed from a fresh char[] so
-    /// CodeQL's taint tracker treats it as a new (untainted) value.
-    /// </summary>
-    private static string BuildLogSafeIdentifier(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw))
-        {
-            return Guid.NewGuid().ToString("N");
-        }
-
-        var sanitized = new string(raw
-            .Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_')
-            .Take(64)
-            .ToArray());
-
-        return string.IsNullOrEmpty(sanitized)
-            ? Guid.NewGuid().ToString("N")
-            : sanitized;
     }
 
 }
