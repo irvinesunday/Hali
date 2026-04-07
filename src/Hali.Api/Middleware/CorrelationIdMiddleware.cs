@@ -95,12 +95,14 @@ public class CorrelationIdMiddleware
     /// </summary>
     private static string BuildLogSafeToken(string? raw, int maxLength)
     {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        if (string.IsNullOrEmpty(raw)) return "_";
 
-        return new string(raw
-            .Where(char.IsLetterOrDigit)
+        var sanitized = new string(raw
+            .Where(c => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
             .Take(maxLength)
             .ToArray());
+
+        return string.IsNullOrEmpty(sanitized) ? "_" : sanitized;
     }
 
     /// <summary>
@@ -110,13 +112,17 @@ public class CorrelationIdMiddleware
     /// </summary>
     private static string BuildLogSafePath(string? raw, int maxLength)
     {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        if (string.IsNullOrEmpty(raw)) return "_";
 
-        return new string(raw
-            .Where(c => char.IsLetterOrDigit(c)
+        var sanitized = new string(raw
+            .Where(c => (c >= 'A' && c <= 'Z')
+                        || (c >= 'a' && c <= 'z')
+                        || (c >= '0' && c <= '9')
                         || c == '/' || c == '-' || c == '_'
                         || c == '.' || c == '~')
             .Take(maxLength)
             .ToArray());
+
+        return string.IsNullOrEmpty(sanitized) ? "_" : sanitized;
     }
 }
