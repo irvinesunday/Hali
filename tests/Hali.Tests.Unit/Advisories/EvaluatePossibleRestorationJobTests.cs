@@ -91,6 +91,7 @@ public class EvaluatePossibleRestorationJobTests
         }
 
         public Task<ParticipationEntity?> GetByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
+        public Task<ParticipationEntity?> GetMostRecentByAccountAsync(Guid c, Guid a, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
         public Task DeleteByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.CompletedTask;
         public Task AddAsync(ParticipationEntity p, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateContextAsync(Guid id, string text, CancellationToken ct) => Task.CompletedTask;
