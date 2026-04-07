@@ -1,5 +1,15 @@
 # Hali MVP – Claude Engineering Guide (Phase 1 Locked, Implementation Update v2)
 
+> **This lowercase `claude.md` file is superseded.**
+>
+> The canonical agent instructions live in [`CLAUDE.md`](./CLAUDE.md). Follow that
+> file for all mandatory workflow and policy requirements, including any
+> self-healing / CI troubleshooting guidance. If a self-healing requirement is
+> needed, it must be maintained in `CLAUDE.md` rather than duplicated here.
+>
+> The remainder of this document is retained as historical reference only and
+> must not be relied on where it conflicts with `CLAUDE.md`.
+
 ## Project Identity
 
 Hali is a civic communication convergence system — a neutral “civic weather system” that helps people understand what is happening in a locality through structured citizen signals and official updates.
@@ -500,20 +510,7 @@ If Agent C has not run yet, mark Verdict and coverage as PENDING rather than lea
 
 ---
 
-## Self-Healing Requirement (MANDATORY)
+<!-- The "Self-Healing Requirement" section that previously lived here has been
+moved to CLAUDE.md (the canonical instructions file). Do not reintroduce a
+duplicate copy in this superseded lowercase file. -->
 
-For any task involving CI pipelines, deployment workflows, database migrations,
-Docker builds, or test failures:
-
-1. Read `docs/arch/SELF_HEALING_SKILL.md` before starting
-2. After every fix, watch the CI run yourself using `gh run watch`
-3. Read failure logs yourself using `gh run view --log-failed`
-4. Apply the next fix from the fix table in the skill file
-5. Iterate until the job passes or you hit a genuine external blocker
-
-Never stop and report a code-level failure to Irvine.
-Never wait for Irvine to paste error logs.
-You have gh CLI access. Use it every time without being asked.
-
-Only defer to Irvine when the fix requires action outside the codebase:
-missing GitHub secret, Neon infrastructure change, or external API credentials.
