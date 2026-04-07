@@ -76,6 +76,7 @@ public static class ServiceCollectionExtensions
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();
+		services.AddScoped<ILocalityLookupRepository, LocalityLookupRepository>();
 		services.AddHttpClient<AnthropicNlpExtractionService>();
 		services.AddScoped<INlpExtractionService, AnthropicNlpExtractionService>();
 		services.AddHttpClient<NominatimGeocodingService>();
