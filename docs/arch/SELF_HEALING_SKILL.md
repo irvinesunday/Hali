@@ -48,7 +48,7 @@ You have gh CLI access — use it every time.
 | `project.assets.json not found` | dotnet ef ran before restore | Add `dotnet restore` before `dotnet build`. Check project path is correct. |
 | `tool not found: dotnet-ef` | PATH not persisted across steps | Use `echo "$HOME/.dotnet/tools" >> $GITHUB_PATH` — NOT `export PATH=...` |
 | `ConnectionString not initialized` | Secret is empty string | STOP — secret not set in GitHub Actions. Report exact secret name to Irvine. |
-| `relation already exists` | Tables exist but no migration history | Add `--idempotent` flag to all `dotnet ef database update` calls. |
+| `relation already exists` | Tables exist but no migration history | Do not add `--idempotent` to `dotnet ef database update` (unsupported). Generate and apply an idempotent script with `dotnet ef migrations script --idempotent`, or baseline/reset/repair `__EFMigrationsHistory`. |
 | `PendingModelChangesWarning` | Model changed without migration | Run `dotnet ef migrations add <name> --context <ctx>`, commit, retry. |
 | `context was not found` | Wrong DbContext class name | Run `grep -rn "class.*DbContext" src/Hali.Infrastructure/ --include="*.cs"` and use exact names. |
 | `psql: invalid connection option "Host"` | psql used with Npgsql connection string | Remove all psql. Use `dotnet ef database update` directly. |
@@ -61,8 +61,8 @@ You have gh CLI access — use it every time.
 ## Step order for .NET CI jobs — always follow this sequence
 
 ```
-actions/setup-dotnet@v4  (dotnet 9.0.x)
-dotnet tool install --global dotnet-ef
+actions/setup-dotnet@v4  (dotnet ${{ env.DOTNET_VERSION }})   # repo standard: 10.0.x
+dotnet tool install --global dotnet-ef --version 10.*
 echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 dotnet restore <startup-project>
 dotnet build <startup-project> --no-restore
