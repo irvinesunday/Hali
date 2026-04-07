@@ -18,5 +18,17 @@ export const PARTICIPATION_LABELS = {
 export const MAX_FOLLOWED_WARDS = 5;
 export const SIGNAL_TEXT_MAX_LENGTH = 500;
 export const CONTEXT_TEXT_MAX_LENGTH = 150;
+// Location confidence gates for the signal composer:
+//   confidence < WARN  → empty field, user MUST enter location before proceeding
+//   WARN ≤ confidence < AMBER → amber warning, user can correct or accept
+//   confidence ≥ AMBER → pre-filled, no mandatory confirmation
 export const LOCATION_CONFIDENCE_WARN_THRESHOLD = 0.5;
 export const LOCATION_CONFIDENCE_AMBER_THRESHOLD = 0.8;
+
+// Condition confidence gates — same structure, different thresholds per spec.
+// NOT yet enforced in the composer UI: the mobile app has no taxonomy data
+// (slug list per category) so a correction dropdown cannot be rendered.
+// When /packages/taxonomy is integrated, confirm.tsx should read these
+// constants and implement the same three-tier gate as location.
+export const CONDITION_CONFIDENCE_WARN_THRESHOLD = 0.5;
+export const CONDITION_CONFIDENCE_AMBER_THRESHOLD = 0.75;

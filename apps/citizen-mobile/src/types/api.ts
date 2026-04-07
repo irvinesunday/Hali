@@ -1,3 +1,15 @@
+// ─── Result + Error (canonical location — do not redeclare elsewhere) ───────
+
+export interface ApiError {
+  status: number;
+  code: string;
+  message: string;
+}
+
+export type Result<T, E = ApiError> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export interface OtpRequestBody {
@@ -14,15 +26,32 @@ export interface VerifyOtpRequestBody {
   expoPushToken?: string;
 }
 
-export interface TokenResponse {
+// Shape of the /v1/auth/otp success response.
+// Backend returns { "message": "OTP sent" } — no other fields.
+export interface RequestOtpResponse {
+  message: string;
+}
+
+// Shape of the /v1/auth/verify success response.
+// Matches the backend TokenResponseDto exactly — NO accountId field.
+// The account ID is extracted from the JWT's `sub` claim via
+// src/utils/jwt.ts#decodeAccountIdFromJwt.
+export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
 }
 
+// Legacy alias — same shape as VerifyOtpResponse. Remove when all callers
+// migrate to the explicit names.
+export type TokenResponse = VerifyOtpResponse;
+
 export interface RefreshRequestBody {
   refreshToken: string;
 }
+
+// Same shape as VerifyOtpResponse — backend reuses TokenResponseDto.
+export type RefreshTokenResponse = VerifyOtpResponse;
 
 export interface LogoutRequestBody {
   refreshToken: string;
@@ -101,12 +130,35 @@ export interface ClusterResponse {
 
 // ─── Home ─────────────────────────────────────────────────────────────────────
 
-export interface HomeResponse {
-  activeNow: ClusterResponse[];
-  officialUpdates: OfficialPostResponse[];
-  recurringAtThisTime: ClusterResponse[];
-  otherActiveSignals: ClusterResponse[];
+/**
+ * Paginated section of the home feed.
+ * Matches the backend `PagedSection<T>` record exactly.
+ */
+export interface PagedSection<T> {
+  items: T[];
+  nextCursor: string | null;
+  totalCount: number;
 }
+
+/**
+ * Home feed response. Each section is a PagedSection — NOT a flat array.
+ * See Hali.Contracts/Home/HomeResponseDto.cs.
+ *
+ * The backend does not return an `isCalmState` flag; the client computes it
+ * as: every section has `items.length === 0`.
+ */
+export interface HomeResponse {
+  activeNow: PagedSection<ClusterResponse>;
+  officialUpdates: PagedSection<OfficialPostResponse>;
+  recurringAtThisTime: PagedSection<ClusterResponse>;
+  otherActiveSignals: PagedSection<ClusterResponse>;
+}
+
+export type HomeSectionName =
+  | 'active_now'
+  | 'official_updates'
+  | 'recurring_at_this_time'
+  | 'other_active_signals';
 
 // ─── Signals ──────────────────────────────────────────────────────────────────
 
@@ -163,10 +215,18 @@ export interface SignalSubmitRequest {
   spatialCellId?: string;
 }
 
+/**
+ * Shape of the /v1/signals/submit success response.
+ * Matches Hali.Contracts.Signals.SignalSubmitResponseDto exactly.
+ *
+ * Note: the backend does NOT return a clusterId here. Clustering happens
+ * asynchronously via a background worker (outbox pattern). The mobile
+ * client should navigate to the home feed on success, where the new
+ * cluster will appear after the worker runs.
+ */
 export interface SignalSubmitResponse {
-  clusterId: string;
-  clusterState: string;
-  isNewCluster: boolean;
+  signalEventId: string;
+  createdAt: string;
 }
 
 // ─── Participation ────────────────────────────────────────────────────────────
@@ -190,8 +250,23 @@ export interface ContextRequest {
   deviceHash: string;
 }
 
+/**
+ * Restoration response wire values — verified against
+ * ClustersController.cs and ParticipationService.cs.
+ *
+ * Backend mapping (NOT 1:1 with the ParticipationType union):
+ *   "restored"       → records as ParticipationType.RestorationYes
+ *   "still_affected" → records as ParticipationType.Affected (re-affirms affected)
+ *   "not_sure"       → records as ParticipationType.RestorationUnsure
+ *
+ * There is no "restoration_no" wire value — the backend treats the
+ * negative case semantically as "I'm still affected" which re-records
+ * you as a current affected user.
+ */
+export type RestorationResponseValue = 'restored' | 'still_affected' | 'not_sure';
+
 export interface RestorationResponseRequest {
-  response: 'restoration_yes' | 'restoration_no' | 'restoration_unsure';
+  response: RestorationResponseValue;
   deviceHash: string;
 }
 

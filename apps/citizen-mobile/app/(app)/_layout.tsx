@@ -1,20 +1,44 @@
-// Auth guard for the authenticated app stack.
-// Redirects to /auth/phone if not authenticated.
+// apps/citizen-mobile/app/(app)/_layout.tsx
+//
+// Authenticated app layout.
+//
+// Two responsibilities beyond rendering the stack:
+//   1. Auth guard — redirect unauthenticated users to /(auth)/phone
+//   2. Mount the runtime bootstraps that should only run when authed:
+//      - usePushBootstrap()  — token registration + deep link routing
+//      - initOfflineQueue()  — load persisted queue + listen for flush triggers
+//
+// These are intentionally inside the (app) layout (not the root layout)
+// because both depend on having a valid session — push registration
+// hits an [Authorize] endpoint, and the offline queue's submit fn calls
+// authenticated services.
+
 import React, { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { useAuthContext } from '../../src/context/AuthContext';
+import { useAuth } from '../../src/context/AuthContext';
+import { usePushBootstrap } from '../../src/lib/pushBootstrap';
+import { initOfflineQueue } from '../../src/lib/offlineQueueBootstrap';
 
-export default function AppLayout() {
+export default function AppLayout(): React.ReactElement | null {
   const router = useRouter();
-  const { state } = useAuthContext();
+  const { authState } = useAuth();
 
+  // Auth guard
   useEffect(() => {
-    if (state.status === 'unauthenticated') {
+    if (authState.status === 'unauthenticated') {
       router.replace('/(auth)/phone');
     }
-  }, [state.status, router]);
+  }, [authState.status, router]);
 
-  if (state.status !== 'authenticated') {
+  // Push registration + deep link routing — runs once per mount
+  usePushBootstrap();
+
+  // Offline queue runtime — load persisted items + start listeners
+  useEffect(() => {
+    void initOfflineQueue();
+  }, []);
+
+  if (authState.status !== 'authenticated') {
     return null;
   }
 
