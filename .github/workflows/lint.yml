@@ -6,6 +6,9 @@ on:
   push:
     branches: [develop]
 
+env:
+  DOTNET_VERSION: "10.0.x"
+
 jobs:
   format:
     name: Lint / Format
@@ -18,7 +21,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
         run: dotnet restore src/Hali.Api/Hali.Api.csproj
