@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Default to least-privilege for the GITHUB_TOKEN. Individual jobs can
+# escalate as needed.
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 env:
   DOTNET_VERSION: "10.0.x"
   POSTGRES_DB: hali_test

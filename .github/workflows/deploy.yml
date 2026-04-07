@@ -6,6 +6,13 @@ on:
       - main     # → production (requires environment approval)
       - develop  # → staging (automatic)
 
+# Default to least-privilege for the GITHUB_TOKEN. Jobs that need to push
+# images or request OIDC tokens declare their own narrower permissions.
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
 env:
   DOTNET_VERSION: "10.0.x"
   REGISTRY: ghcr.io
