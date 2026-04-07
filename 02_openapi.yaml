@@ -164,7 +164,7 @@ paths:
   /v1/localities/followed:
     get:
       tags: [Localities]
-      summary: List current user's followed wards
+      summary: List current user's followed wards (with display names)
       security:
         - bearerAuth: []
       responses:
@@ -173,16 +173,20 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [localityIds]
-                properties:
-                  localityIds:
-                    type: array
-                    items: { type: string, format: uuid }
-                    description: |
-                      Followed locality UUIDs only. The wire shape does NOT
-                      currently include locality names (ward_name, etc.). See
-                      docs/arch/pr50-followup-gaps.md for the planned extension.
+                type: array
+                items:
+                  type: object
+                  required: [localityId, wardName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    displayLabel:
+                      type: string
+                      nullable: true
+                      description: User-chosen area/estate name (e.g. "South B"). May be null for follows that predate this column — UI falls back to wardName.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
         '401':
           description: Unauthenticated
     put:
@@ -196,16 +200,74 @@ paths:
           application/json:
             schema:
               type: object
-              required: [localityIds]
+              description: |
+                Send `items` (preferred — carries displayLabel for each follow).
+                Legacy `localityIds` is still accepted for backwards compatibility
+                but does not capture display labels.
               properties:
+                items:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: object
+                    required: [localityId]
+                    properties:
+                      localityId: { type: string, format: uuid }
+                      displayLabel:
+                        type: string
+                        nullable: true
+                        maxLength: 160
                 localityIds:
                   type: array
+                  deprecated: true
                   items: { type: string, format: uuid }
                   maxItems: 5
       responses:
         '204': { description: Updated }
         '422':
           description: max_followed_localities_exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/localities/search:
+    get:
+      tags: [Localities]
+      summary: Search for an area / estate by free text (Nominatim + PostGIS ward resolution)
+      description: |
+        Forward-geocodes the query via Nominatim (biased to Kenya), then resolves
+        each candidate to a Hali locality via PostGIS point-in-polygon. Returns
+        up to 5 matches. Candidates outside any covered locality are skipped.
+        Results are cached in Redis for 1 hour. Anonymous endpoint.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        '200':
+          description: Candidate localities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, placeLabel, wardName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    placeLabel:
+                      type: string
+                      description: Human-readable label from Nominatim (e.g. "South B, Nairobi"). Use this as displayLabel when following.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+        '400':
+          description: Query too short
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }

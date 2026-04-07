@@ -4,13 +4,13 @@
 //
 // Background: GET /v1/home does NOT accept a localityId query parameter —
 // the backend derives the locality scope from the authenticated user's
-// follows and merges data across all of them. The `activeLocalityId` here
+// follows and merges data across all of them. The active locality here
 // is purely a client-side UX concept for:
 //   - the ward picker pill in the home header
 //   - composer preview location context (later sub-session)
 // It never filters the home query.
 //
-// The `followedLocalityIds` mirror is populated once after GET
+// The followedLocalities mirror is populated once after GET
 // /v1/localities/followed succeeds, and kept in sync when the user edits
 // their follows in Settings.
 
@@ -21,16 +21,17 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import type { FollowedLocality } from '../types/api';
 
 export interface LocalityContextValue {
   /** Currently selected ward for UX context. Not sent to the API. */
-  activeLocalityId: string | null;
+  activeLocality: FollowedLocality | null;
   /** Mirror of GET /v1/localities/followed (max 5). */
-  followedLocalityIds: string[];
+  followedLocalities: FollowedLocality[];
   /** Has the initial follows load completed? */
   followsLoaded: boolean;
   setActiveLocalityId: (id: string | null) => void;
-  setFollowedLocalityIds: (ids: string[]) => void;
+  setFollowedLocalities: (items: FollowedLocality[]) => void;
 }
 
 const LocalityContext = createContext<LocalityContextValue | null>(null);
@@ -40,44 +41,53 @@ export function LocalityProvider({
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
-  const [followedLocalityIds, setFollowedLocalityIdsRaw] = useState<string[]>(
-    [],
-  );
-  const [activeLocalityId, setActiveLocalityIdRaw] = useState<string | null>(
-    null,
-  );
+  const [followedLocalities, setFollowedLocalitiesRaw] = useState<
+    FollowedLocality[]
+  >([]);
+  const [activeLocality, setActiveLocalityRaw] =
+    useState<FollowedLocality | null>(null);
   const [followsLoaded, setFollowsLoaded] = useState<boolean>(false);
 
-  const setActiveLocalityId = useCallback((id: string | null) => {
-    setActiveLocalityIdRaw(id);
-  }, []);
+  const setActiveLocalityId = useCallback(
+    (id: string | null) => {
+      setActiveLocalityRaw((prev) => {
+        if (id === null) return null;
+        const match = followedLocalities.find((l) => l.localityId === id);
+        return match ?? prev;
+      });
+    },
+    [followedLocalities],
+  );
 
-  const setFollowedLocalityIds = useCallback((ids: string[]) => {
-    setFollowedLocalityIdsRaw(ids);
+  const setFollowedLocalities = useCallback((items: FollowedLocality[]) => {
+    setFollowedLocalitiesRaw(items);
     setFollowsLoaded(true);
-    // Default the active ward to the first followed ward IF the user
-    // doesn't already have one, OR if their current active ward was just
-    // removed from the follow set.
-    setActiveLocalityIdRaw((prev) => {
-      if (prev !== null && ids.includes(prev)) return prev;
-      return ids[0] ?? null;
+    // Default the active locality to the first followed one IF the user
+    // doesn't already have one, OR if their current active locality was
+    // just removed from the follow set.
+    setActiveLocalityRaw((prev) => {
+      if (prev !== null) {
+        const stillThere = items.find((l) => l.localityId === prev.localityId);
+        if (stillThere) return stillThere;
+      }
+      return items[0] ?? null;
     });
   }, []);
 
   const value = useMemo<LocalityContextValue>(
     () => ({
-      activeLocalityId,
-      followedLocalityIds,
+      activeLocality,
+      followedLocalities,
       followsLoaded,
       setActiveLocalityId,
-      setFollowedLocalityIds,
+      setFollowedLocalities,
     }),
     [
-      activeLocalityId,
-      followedLocalityIds,
+      activeLocality,
+      followedLocalities,
       followsLoaded,
       setActiveLocalityId,
-      setFollowedLocalityIds,
+      setFollowedLocalities,
     ],
   );
 
