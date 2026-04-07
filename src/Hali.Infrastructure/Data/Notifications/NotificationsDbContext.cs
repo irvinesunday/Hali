@@ -40,6 +40,7 @@ public class NotificationsDbContext : DbContext
 			e.Property((Follow x) => x.Id).HasColumnName("id");
 			e.Property((Follow x) => x.AccountId).HasColumnName("account_id");
 			e.Property((Follow x) => x.LocalityId).HasColumnName("locality_id");
+			e.Property((Follow x) => x.DisplayLabel).HasColumnName("display_label").HasMaxLength(160);
 			e.Property((Follow x) => x.CreatedAt).HasColumnName("created_at");
 			e.HasIndex((Follow x) => new { x.AccountId, x.LocalityId }).IsUnique().HasDatabaseName("uq_follow");
 		});
