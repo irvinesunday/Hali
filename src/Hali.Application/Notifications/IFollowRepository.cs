@@ -11,5 +11,7 @@ public interface IFollowRepository
     Task<IReadOnlyList<Follow>> GetByAccountAsync(Guid accountId, CancellationToken ct = default);
     Task<IReadOnlyList<Follow>> GetByLocalityAsync(Guid localityId, CancellationToken ct = default);
     Task<int> CountByAccountAsync(Guid accountId, CancellationToken ct = default);
-    Task ReplaceFollowsAsync(Guid accountId, IEnumerable<Guid> localityIds, CancellationToken ct = default);
+    Task ReplaceFollowsAsync(Guid accountId, IEnumerable<FollowEntry> entries, CancellationToken ct = default);
 }
+
+public record FollowEntry(Guid LocalityId, string? DisplayLabel);
