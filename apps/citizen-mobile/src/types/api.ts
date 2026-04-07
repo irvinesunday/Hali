@@ -77,13 +77,32 @@ export interface UserMeResponse {
 
 // ─── Localities ───────────────────────────────────────────────────────────────
 
-export interface FollowedLocalitiesResponse {
-  localityIds: string[];
+export interface FollowedLocality {
+  localityId: string;
+  displayLabel: string | null;
+  wardName: string;
+  cityName: string | null;
+}
+
+export type FollowedLocalitiesResponse = FollowedLocality[];
+
+export interface FollowedLocalityItem {
+  localityId: string;
+  displayLabel: string | null;
 }
 
 export interface SetFollowedLocalitiesBody {
-  localityIds: string[];
+  items: FollowedLocalityItem[];
 }
+
+export interface LocalitySearchResult {
+  localityId: string;
+  placeLabel: string;
+  wardName: string;
+  cityName: string | null;
+}
+
+export type LocalitySearchResponse = LocalitySearchResult[];
 
 // ─── Official Posts ───────────────────────────────────────────────────────────
 

@@ -1,13 +1,13 @@
 // apps/citizen-mobile/app/(app)/settings/wards.tsx
 //
-// Ward following — view, add, remove. Max 5 enforced both client-side
-// (button disabled at capacity) and server-side (422
-// max_followed_localities_exceeded).
+// Ward following — view, search, add, remove. Max 5 enforced both
+// client-side (search disabled at capacity) and server-side
+// (422 max_followed_localities_exceeded).
 //
 // PUT /v1/localities/followed replaces the full set, so add and remove
-// both send the entire updated array in one call.
+// both send the entire updated array of items in one call.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -23,23 +23,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getFollowedLocalities,
+  searchLocalities,
   setFollowedLocalities,
 } from '../../../src/api/localities';
 import { useLocalityContext } from '../../../src/context/LocalityContext';
 import { Loading } from '../../../src/components/common/Loading';
 import { MAX_FOLLOWED_WARDS } from '../../../src/config/constants';
-import type { ApiError } from '../../../src/types/api';
+import type {
+  ApiError,
+  FollowedLocality,
+  FollowedLocalityItem,
+  LocalitySearchResult,
+} from '../../../src/types/api';
+
+const SEARCH_DEBOUNCE_MS = 400;
 
 export default function WardsSettingsScreen(): React.ReactElement {
   const router = useRouter();
   const qc = useQueryClient();
-  const {
-    activeLocalityId,
-    setFollowedLocalityIds,
-    setActiveLocalityId,
-  } = useLocalityContext();
+  const { setFollowedLocalities: pushContextFollowed } = useLocalityContext();
 
-  const [newWardId, setNewWardId] = useState('');
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
   // ── Followed localities query ─────────────────────────────────────────────
@@ -52,42 +57,48 @@ export default function WardsSettingsScreen(): React.ReactElement {
     },
   });
 
-  const currentIds = useMemo<string[]>(
-    () => followedQuery.data?.localityIds ?? [],
+  const current = useMemo<FollowedLocality[]>(
+    () => followedQuery.data ?? [],
     [followedQuery.data],
   );
 
+  // ── Debounced search ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const atCapacity = current.length >= MAX_FOLLOWED_WARDS;
+
+  const searchQuery = useQuery({
+    queryKey: ['localities', 'search', debouncedQuery],
+    queryFn: async () => {
+      const result = await searchLocalities(debouncedQuery);
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    },
+    enabled: debouncedQuery.length >= 2 && !atCapacity,
+    staleTime: 60_000,
+  });
+
   // ── Update mutation ───────────────────────────────────────────────────────
-  // setFollowedLocalities returns Result<void, ApiError>; we throw inside
-  // mutationFn so React Query's onError fires with a typed Error.
-  const updateMutation = useMutation<void, Error, string[]>({
-    mutationFn: async (ids) => {
-      const result = await setFollowedLocalities({ localityIds: ids });
+  const updateMutation = useMutation<void, Error, FollowedLocalityItem[]>({
+    mutationFn: async (items) => {
+      const result = await setFollowedLocalities({ items });
       if (!result.ok) throw new ApiResultError(result.error);
     },
-    onSuccess: (_void, ids) => {
-      // Mirror into LocalityContext immediately so the home feed picks up
-      // the new follows without waiting for refetch.
-      setFollowedLocalityIds(ids);
-
-      // Smart active-ward selection: keep the current active if it's still
-      // in the set, otherwise fall back to the first ward (or null if empty).
-      // This avoids the bug where add-then-set unconditionally jumped the
-      // active ward to ids[0] even when the user was deliberately on a
-      // different one.
-      if (activeLocalityId === null || !ids.includes(activeLocalityId)) {
-        setActiveLocalityId(ids[0] ?? null);
+    onSuccess: async () => {
+      const refreshed = await getFollowedLocalities();
+      if (refreshed.ok) {
+        pushContextFollowed(refreshed.value);
       }
-
       qc.invalidateQueries({ queryKey: ['localities', 'followed'] });
       qc.invalidateQueries({ queryKey: ['home'] });
     },
     onError: (err) => {
-      // 422 max_followed_localities_exceeded is the most likely failure
-      // we can still recover from — show a specific toast.
       if (err instanceof ApiResultError) {
         if (err.apiError.code === 'max_followed_localities_exceeded') {
-          setToast(`You can follow at most ${MAX_FOLLOWED_WARDS} wards.`);
+          setToast(`You can follow up to ${MAX_FOLLOWED_WARDS} areas.`);
           return;
         }
         setToast(err.apiError.message);
@@ -97,34 +108,39 @@ export default function WardsSettingsScreen(): React.ReactElement {
     },
   });
 
-  function handleAdd(): void {
-    const trimmed = newWardId.trim();
-    if (trimmed === '') return;
-    if (currentIds.includes(trimmed)) {
-      setToast('You are already following this ward.');
+  function handleAdd(candidate: LocalitySearchResult): void {
+    if (current.some((c) => c.localityId === candidate.localityId)) {
+      setToast('You are already following this area.');
       return;
     }
-    if (currentIds.length >= MAX_FOLLOWED_WARDS) {
-      setToast(`You can follow at most ${MAX_FOLLOWED_WARDS} wards.`);
+    if (atCapacity) {
+      setToast(`You can follow up to ${MAX_FOLLOWED_WARDS} areas.`);
       return;
     }
     setToast(null);
-    updateMutation.mutate([...currentIds, trimmed]);
-    setNewWardId('');
+    const items: FollowedLocalityItem[] = [
+      ...current.map((c) => ({
+        localityId: c.localityId,
+        displayLabel: c.displayLabel,
+      })),
+      { localityId: candidate.localityId, displayLabel: candidate.placeLabel },
+    ];
+    updateMutation.mutate(items);
+    setQuery('');
+    setDebouncedQuery('');
   }
 
-  function handleRemove(id: string): void {
+  function handleRemove(localityId: string): void {
     setToast(null);
-    updateMutation.mutate(currentIds.filter((w) => w !== id));
+    const items: FollowedLocalityItem[] = current
+      .filter((c) => c.localityId !== localityId)
+      .map((c) => ({ localityId: c.localityId, displayLabel: c.displayLabel }));
+    updateMutation.mutate(items);
   }
 
   if (followedQuery.isLoading && !followedQuery.data) {
     return <Loading />;
   }
-
-  const atCapacity = currentIds.length >= MAX_FOLLOWED_WARDS;
-  const canAdd =
-    newWardId.trim().length > 0 && !atCapacity && !updateMutation.isPending;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -142,12 +158,12 @@ export default function WardsSettingsScreen(): React.ReactElement {
         <View style={styles.navSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View
           style={[styles.badge, atCapacity && styles.badgeAtCapacity]}
           accessible
           accessibilityRole="text"
-          accessibilityLabel={`${currentIds.length} of ${MAX_FOLLOWED_WARDS} wards followed`}
+          accessibilityLabel={`${current.length} of ${MAX_FOLLOWED_WARDS} areas followed`}
         >
           <Text
             style={[
@@ -155,63 +171,98 @@ export default function WardsSettingsScreen(): React.ReactElement {
               atCapacity && styles.badgeTextAtCapacity,
             ]}
           >
-            {currentIds.length} of {MAX_FOLLOWED_WARDS} wards followed
+            {current.length} of {MAX_FOLLOWED_WARDS} areas followed
           </Text>
         </View>
 
-        {currentIds.length === 0 && (
+        {current.length === 0 && (
           <Text style={styles.empty}>
-            You&apos;re not following any wards yet. Add a ward ID below to
-            start seeing local civic signals.
+            You&apos;re not following any areas yet. Search below to find an
+            area or estate to follow.
           </Text>
         )}
 
-        {currentIds.map((id) => (
-          <View key={id} style={styles.wardRow}>
-            <Text style={styles.wardId} numberOfLines={1}>
-              {id}
-            </Text>
+        {current.map((item) => (
+          <View key={item.localityId} style={styles.wardRow}>
+            <View style={styles.wardRowText}>
+              <Text style={styles.wardName} numberOfLines={1}>
+                {item.displayLabel ?? item.wardName}
+              </Text>
+              {item.cityName !== null && (
+                <Text style={styles.wardCity} numberOfLines={1}>
+                  {item.wardName}
+                  {item.cityName ? ` · ${item.cityName}` : ''}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity
-              onPress={() => handleRemove(id)}
+              onPress={() => handleRemove(item.localityId)}
               hitSlop={8}
               disabled={updateMutation.isPending}
               accessible
               accessibilityRole="button"
-              accessibilityLabel={`Remove ward ${id.slice(0, 8)}`}
+              accessibilityLabel={`Remove ${item.displayLabel ?? item.wardName}`}
             >
               <Ionicons name="close-circle" size={22} color="#DC2626" />
             </TouchableOpacity>
           </View>
         ))}
 
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addInput}
-            value={newWardId}
-            onChangeText={setNewWardId}
-            placeholder="Ward / locality ID (UUID)"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!atCapacity && !updateMutation.isPending}
-            accessible
-            accessibilityLabel="Ward ID input"
-          />
-          <TouchableOpacity
-            style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
-            onPress={handleAdd}
-            disabled={!canAdd}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Add ward"
-          >
-            {updateMutation.isPending ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.addBtnText}>Add</Text>
+        {atCapacity ? (
+          <Text style={styles.capacityHint}>
+            You can follow up to {MAX_FOLLOWED_WARDS} areas. Remove one to add
+            another.
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.sectionLabel}>Add an area</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search for an area or estate..."
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!updateMutation.isPending}
+              accessible
+              accessibilityLabel="Area search"
+            />
+
+            {searchQuery.isFetching && (
+              <ActivityIndicator color="#1a3a2f" style={{ marginTop: 8 }} />
             )}
-          </TouchableOpacity>
-        </View>
+
+            {searchQuery.data && searchQuery.data.length === 0 && debouncedQuery.length >= 2 && (
+              <Text style={styles.searchEmpty}>
+                No matches. Try a nearby estate or street name.
+              </Text>
+            )}
+
+            {searchQuery.data?.map((candidate) => (
+              <TouchableOpacity
+                key={`${candidate.localityId}:${candidate.placeLabel}`}
+                style={styles.candidateRow}
+                onPress={() => handleAdd(candidate)}
+                disabled={updateMutation.isPending}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={`Follow ${candidate.placeLabel}`}
+              >
+                <View style={styles.candidateText}>
+                  <Text style={styles.candidatePrimary} numberOfLines={1}>
+                    {candidate.placeLabel}
+                  </Text>
+                  <Text style={styles.candidateSecondary} numberOfLines={1}>
+                    {candidate.wardName}
+                    {candidate.cityName ? ` · ${candidate.cityName}` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="add-circle" size={22} color="#1a3a2f" />
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
 
         {toast !== null && (
           <Text
@@ -223,12 +274,6 @@ export default function WardsSettingsScreen(): React.ReactElement {
             {toast}
           </Text>
         )}
-
-        <Text style={styles.hint}>
-          Enter the locality ID (UUID) of the ward you want to follow.
-          Maximum {MAX_FOLLOWED_WARDS} wards. The first ward you add becomes
-          your active ward in the home feed.
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -270,6 +315,12 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 13, fontWeight: '600', color: '#1a3a2f' },
   badgeTextAtCapacity: { color: '#991B1B' },
   empty: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 8,
+  },
   wardRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,15 +329,10 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  wardId: {
-    flex: 1,
-    fontSize: 14,
-    color: '#111827',
-    fontFamily: 'monospace',
-  },
-  addRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  addInput: {
-    flex: 1,
+  wardRowText: { flex: 1 },
+  wardName: { fontSize: 15, color: '#111827', fontWeight: '600' },
+  wardCity: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  searchInput: {
     borderWidth: 1.5,
     borderColor: '#D1D5DB',
     borderRadius: 10,
@@ -296,17 +342,27 @@ const styles = StyleSheet.create({
     color: '#111827',
     backgroundColor: '#FFFFFF',
   },
-  addBtn: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    minWidth: 70,
+  searchEmpty: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+  candidateRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    padding: 12,
+    gap: 10,
   },
-  addBtnDisabled: { backgroundColor: '#9CA3AF' },
-  addBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  candidateText: { flex: 1 },
+  candidatePrimary: { fontSize: 14, color: '#111827', fontWeight: '500' },
+  candidateSecondary: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  capacityHint: {
+    fontSize: 13,
+    color: '#991B1B',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    padding: 12,
+  },
   toast: {
     fontSize: 14,
     color: '#991B1B',
@@ -314,5 +370,4 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
   },
-  hint: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
 });

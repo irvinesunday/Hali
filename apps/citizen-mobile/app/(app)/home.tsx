@@ -55,11 +55,11 @@ function isSectionEmpty<T>(section: PagedSection<T> | undefined): boolean {
 export default function HomeScreen(): React.ReactElement {
   const router = useRouter();
   const {
-    activeLocalityId,
-    followedLocalityIds,
+    activeLocality,
+    followedLocalities,
     followsLoaded,
     setActiveLocalityId,
-    setFollowedLocalityIds,
+    setFollowedLocalities,
   } = useLocalityContext();
   const [wardPickerVisible, setWardPickerVisible] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
@@ -79,9 +79,9 @@ export default function HomeScreen(): React.ReactElement {
 
   useEffect(() => {
     if (localitiesQuery.data) {
-      setFollowedLocalityIds(localitiesQuery.data.localityIds);
+      setFollowedLocalities(localitiesQuery.data);
     }
-  }, [localitiesQuery.data, setFollowedLocalityIds]);
+  }, [localitiesQuery.data, setFollowedLocalities]);
 
   // ── Home feed query — NOT scoped by activeLocalityId ─────────────────────
   // The backend merges data across all follows. activeLocalityId is
@@ -107,7 +107,7 @@ export default function HomeScreen(): React.ReactElement {
     );
   }, [feed]);
 
-  const hasNoFollows = followsLoaded && followedLocalityIds.length === 0;
+  const hasNoFollows = followsLoaded && followedLocalities.length === 0;
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -120,11 +120,11 @@ export default function HomeScreen(): React.ReactElement {
           accessible
           accessibilityRole="button"
           accessibilityLabel="Ward selector"
-          disabled={followedLocalityIds.length === 0}
+          disabled={followedLocalities.length === 0}
         >
           <Text style={styles.wardPillText} numberOfLines={1}>
-            {activeLocalityId
-              ? `Ward: ${activeLocalityId.slice(0, 8)}…`
+            {activeLocality
+              ? (activeLocality.displayLabel ?? activeLocality.wardName)
               : 'No ward selected'}
           </Text>
           <Ionicons name="chevron-down" size={14} color="#1a3a2f" />
@@ -156,7 +156,7 @@ export default function HomeScreen(): React.ReactElement {
             <NoFollowsState onOpenSettings={() => router.push('/(app)/settings/wards')} />
           ) : isCalmState ? (
             <CalmState
-              followedCount={followedLocalityIds.length}
+              followedCount={followedLocalities.length}
               lastUpdatedAt={lastUpdatedAt}
             />
           ) : (
@@ -208,34 +208,42 @@ export default function HomeScreen(): React.ReactElement {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>Select ward</Text>
-            {followedLocalityIds.length === 0 ? (
+            {followedLocalities.length === 0 ? (
               <Text style={styles.modalEmpty}>
                 You haven't followed any wards yet. Go to Settings → Wards to
                 follow up to 5 wards.
               </Text>
             ) : (
               <FlatList
-                data={followedLocalityIds}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.wardRow,
-                      item === activeLocalityId && styles.wardRowActive,
-                    ]}
-                    onPress={() => {
-                      setActiveLocalityId(item);
-                      setWardPickerVisible(false);
-                    }}
-                  >
-                    <Text style={styles.wardRowText}>
-                      Ward {item.slice(0, 8)}…
-                    </Text>
-                    {item === activeLocalityId && (
-                      <Ionicons name="checkmark" size={18} color="#1a3a2f" />
-                    )}
-                  </TouchableOpacity>
-                )}
+                data={followedLocalities}
+                keyExtractor={(item) => item.localityId}
+                renderItem={({ item }) => {
+                  const isActive =
+                    item.localityId === activeLocality?.localityId;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.wardRow,
+                        isActive && styles.wardRowActive,
+                      ]}
+                      onPress={() => {
+                        setActiveLocalityId(item.localityId);
+                        setWardPickerVisible(false);
+                      }}
+                    >
+                      <Text style={styles.wardRowText}>
+                        {item.displayLabel ?? item.wardName}
+                      </Text>
+                      {isActive && (
+                        <Ionicons
+                          name="checkmark"
+                          size={18}
+                          color="#1a3a2f"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
               />
             )}
             <TouchableOpacity
