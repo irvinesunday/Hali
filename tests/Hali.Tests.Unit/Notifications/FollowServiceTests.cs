@@ -36,16 +36,31 @@ public class FollowServiceTests
 
     private sealed class FakeLocalityLookup : ILocalityLookupRepository
     {
+        public Dictionary<Guid, LocalitySummary> Store { get; } = new();
+        public bool AutoPopulate { get; set; } = true;
+
         public Task<IReadOnlyDictionary<Guid, LocalitySummary>> GetByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
-            => Task.FromResult((IReadOnlyDictionary<Guid, LocalitySummary>)
-                ids.ToDictionary(id => id, id => new LocalitySummary(id, "Ward " + id.ToString().Substring(0, 4), "Nairobi", "Nairobi")));
+        {
+            if (AutoPopulate)
+            {
+                foreach (var id in ids)
+                {
+                    if (!Store.ContainsKey(id))
+                        Store[id] = new LocalitySummary(id, "Ward " + id.ToString().Substring(0, 4), "Nairobi", "Nairobi");
+                }
+            }
+            var dict = ids
+                .Where(i => Store.ContainsKey(i))
+                .ToDictionary(i => i, i => Store[i]);
+            return Task.FromResult((IReadOnlyDictionary<Guid, LocalitySummary>)dict);
+        }
 
         public Task<LocalitySummary?> FindByPointAsync(double latitude, double longitude, CancellationToken ct = default)
             => Task.FromResult<LocalitySummary?>(null);
     }
 
-    private static FollowService NewService(IFollowRepository? repo = null)
-        => new FollowService(repo ?? new FakeFollowRepo(), new FakeLocalityLookup());
+    private static FollowService NewService(IFollowRepository? repo = null, FakeLocalityLookup? lookup = null)
+        => new FollowService(repo ?? new FakeFollowRepo(), lookup ?? new FakeLocalityLookup());
 
     [Fact]
     public async Task SetFollowed_WithFiveLocalities_Succeeds()
@@ -103,5 +118,98 @@ public class FollowServiceTests
         var result = await svc.GetFollowedAsync(accountId);
         Assert.Equal(2, result.Count);
         Assert.All(result, f => Assert.Contains(f.LocalityId, second));
+    }
+
+    // -----------------------------------------------------------------------
+    // GetFollowedWithDetailsAsync — joins follows + locality lookup
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFollowedWithDetails_ReturnsDisplayLabel_WhenPresent()
+    {
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[] { new FollowEntry(localityId, "South B") });
+
+        var result = await svc.GetFollowedWithDetailsAsync(accountId);
+
+        var dto = Assert.Single(result);
+        Assert.Equal(localityId, dto.LocalityId);
+        Assert.Equal("South B", dto.DisplayLabel);
+        Assert.False(string.IsNullOrEmpty(dto.WardName));
+    }
+
+    [Fact]
+    public async Task GetFollowedWithDetails_ReturnsNullDisplayLabel_WhenNotProvided()
+    {
+        // UI is responsible for falling back to wardName when DisplayLabel
+        // is null. The service must surface the null faithfully — not
+        // synthesize a label.
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[] { new FollowEntry(localityId, null) });
+
+        var result = await svc.GetFollowedWithDetailsAsync(accountId);
+
+        var dto = Assert.Single(result);
+        Assert.Null(dto.DisplayLabel);
+        Assert.False(string.IsNullOrEmpty(dto.WardName));
+    }
+
+    [Fact]
+    public async Task GetFollowedWithDetails_DropsFollows_WhenLocalityLookupMissing()
+    {
+        // If the Signals DB no longer has a row for a followed locality,
+        // the service must NOT return a DTO with an empty wardName — it
+        // would violate the API contract. The follow is dropped instead.
+        var lookup = new FakeLocalityLookup { AutoPopulate = false };
+        var repo = new FakeFollowRepo();
+        var svc = NewService(repo, lookup);
+
+        var accountId = Guid.NewGuid();
+        var present = Guid.NewGuid();
+        var missing = Guid.NewGuid();
+        lookup.Store[present] = new LocalitySummary(present, "Makadara Ward", "Nairobi", "Nairobi");
+
+        await svc.SetFollowedAsync(accountId, new[]
+        {
+            new FollowEntry(present, "South B"),
+            new FollowEntry(missing, "Ghost Estate"),
+        });
+
+        var result = await svc.GetFollowedWithDetailsAsync(accountId);
+
+        var dto = Assert.Single(result);
+        Assert.Equal(present, dto.LocalityId);
+        Assert.Equal("Makadara Ward", dto.WardName);
+    }
+
+    // -----------------------------------------------------------------------
+    // SetFollowedAsync — dedupe behavior preserves non-null DisplayLabel
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task SetFollowed_DedupePrefersNonNullDisplayLabel()
+    {
+        // Two entries for the same localityId — the second carries the
+        // label. The dedupe must keep the labelled entry, not silently
+        // drop it because it appears later.
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[]
+        {
+            new FollowEntry(localityId, null),
+            new FollowEntry(localityId, "South B"),
+        });
+
+        var follows = await svc.GetFollowedAsync(accountId);
+        var follow = Assert.Single(follows);
+        Assert.Equal("South B", follow.DisplayLabel);
     }
 }
