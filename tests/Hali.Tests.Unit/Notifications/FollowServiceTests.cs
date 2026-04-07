@@ -212,4 +212,28 @@ public class FollowServiceTests
         var follow = Assert.Single(follows);
         Assert.Equal("South B", follow.DisplayLabel);
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public async Task SetFollowed_DedupeTreatsBlankDisplayLabelAsMissing(string blank)
+    {
+        // SetFollowedAsync uses IsNullOrWhiteSpace to detect a "missing"
+        // label, so an empty or whitespace-only DisplayLabel must not
+        // clobber a real labelled entry that arrives in the same call.
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[]
+        {
+            new FollowEntry(localityId, blank),
+            new FollowEntry(localityId, "South B"),
+        });
+
+        var follows = await svc.GetFollowedAsync(accountId);
+        var follow = Assert.Single(follows);
+        Assert.Equal("South B", follow.DisplayLabel);
+    }
 }
