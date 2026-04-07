@@ -44,7 +44,7 @@ You have gh CLI access — use it every time.
 
 | Error | Root cause | Fix |
 |---|---|---|
-| `deps.json does not exist` | dotnet ef ran before build | Add explicit `dotnet build` before all `dotnet ef` calls. Remove `--no-build`. |
+| `deps.json does not exist` | dotnet ef ran before build | Add an explicit `dotnet build` step in the same job, then call `dotnet ef ... --no-build` so the build is not repeated. (See the step-order section below — `--no-build` is required when an earlier step has already built the project.) |
 | `project.assets.json not found` | dotnet ef ran before restore | Add `dotnet restore` before `dotnet build`. Check project path is correct. |
 | `tool not found: dotnet-ef` | PATH not persisted across steps | Use `echo "$HOME/.dotnet/tools" >> $GITHUB_PATH` — NOT `export PATH=...` |
 | `ConnectionString not initialized` | Secret is empty string | STOP — secret not set in GitHub Actions. Report exact secret name to Irvine. |
@@ -54,7 +54,7 @@ You have gh CLI access — use it every time.
 | `psql: invalid connection option "Host"` | psql used with Npgsql connection string | Remove all psql. Use `dotnet ef database update` directly. |
 | `exit code 1` with no clear message | Silent build failure | Run `dotnet build` explicitly and read compiler errors. |
 | `Coverage gate failed` | Coverage dropped | Read uncovered files, add targeted tests. Never add empty tests. |
-| `Merge conflict` | Branch behind base | Run `git merge origin/develop`, resolve, push. |
+| `Merge conflict` | Branch behind base | Merge or rebase onto the PR's actual base branch (for example, `git merge origin/<base-branch>`), resolve conflicts, push. Most feature branches target `develop`, but release PRs target `main` — always check the PR's base before merging. |
 | `PR body empty` | Template fields not populated | Construct full body inline. Never use `--body-file` on raw template. |
 | `Docker build failed` | Missing COPY line for .csproj | Run `grep -rn "ProjectReference" src/Hali.Api/Hali.Api.csproj` and add missing COPY lines. |
 
@@ -66,7 +66,7 @@ dotnet tool install --global dotnet-ef --version 10.*
 echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 dotnet restore <startup-project>
 dotnet build <startup-project> --no-restore
-dotnet ef database update --context <ctx> --connection "$CONN"
+dotnet ef database update --no-build --context <ctx> --connection "$CONN"
 ```
 
 Never skip steps. Never reorder. Never use `--no-build` unless the build
