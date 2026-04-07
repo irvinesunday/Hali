@@ -1,5 +1,23 @@
-// Home Feed — four sections, ward selector, floating Report button
-import React, { useState } from 'react';
+// apps/citizen-mobile/app/(app)/home.tsx
+//
+// Home feed — four canonical sections + calm state + persistent Report FAB.
+//
+// Section order (canonical, must not be reordered):
+//   1. Active now
+//   2. Official updates
+//   3. Recurring at this time
+//   4. Other active signals
+//
+// Calm state rules (see docs/arch/04_phase1_mobile.md):
+//   - When ALL four sections have items.length === 0, show:
+//       "Currently calm in your followed wards" + last-checked timestamp
+//   - When the user has no follows at all, show a different "follow a ward"
+//     empty state — calm only applies when you're actively watching wards
+//     and nothing is happening.
+//   - Scheduled / upcoming official updates still render even when calm.
+//   - Never show a generic empty illustration.
+
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,80 +32,112 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { ClusterCard } from '../../src/components/clusters/ClusterCard';
-import { Empty } from '../../src/components/common/Empty';
+import { ClusterCard } from '../../src/components/feed/ClusterCard';
 import { Loading } from '../../src/components/common/Loading';
-import { getHome } from '../../src/api/clusters';
 import { getFollowedLocalities } from '../../src/api/localities';
+import { useHome, ApiResultError } from '../../src/hooks/useClusters';
 import { useLocalityContext } from '../../src/context/LocalityContext';
-import type { ClusterResponse, OfficialPostResponse } from '../../src/types/api';
+import { formatRelativeTime } from '../../src/utils/formatters';
+import type {
+  ClusterResponse,
+  OfficialPostResponse,
+  PagedSection,
+} from '../../src/types/api';
 
-export default function HomeScreen() {
+// ─── Section presentation ────────────────────────────────────────────────────
+
+function isSectionEmpty<T>(section: PagedSection<T> | undefined): boolean {
+  return !section || section.items.length === 0;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export default function HomeScreen(): React.ReactElement {
   const router = useRouter();
-  const { activeLocalityId, followedLocalityIds, setActiveLocalityId, setFollowedLocalityIds } =
-    useLocalityContext();
+  const {
+    activeLocality,
+    followedLocalities,
+    followsLoaded,
+    setActiveLocalityId,
+    setFollowedLocalities,
+  } = useLocalityContext();
   const [wardPickerVisible, setWardPickerVisible] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
-  // Seed followed wards on mount
+  // ── Load followed localities once on mount, store in context ─────────────
+  // getFollowedLocalities returns Result<T, ApiError>; unwrap inside the
+  // queryFn so the surrounding hook stays a normal TanStack query.
   const localitiesQuery = useQuery({
     queryKey: ['localities', 'followed'],
     queryFn: async () => {
-      const res = await getFollowedLocalities();
-      setFollowedLocalityIds(res.localityIds);
-      return res;
+      const result = await getFollowedLocalities();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
     },
     staleTime: 60_000,
   });
 
-  const homeQuery = useQuery({
-    queryKey: ['home', activeLocalityId],
-    queryFn: () => getHome(activeLocalityId!),
-    enabled: !!activeLocalityId,
-    staleTime: 30_000,
-  });
+  useEffect(() => {
+    if (localitiesQuery.data) {
+      setFollowedLocalities(localitiesQuery.data);
+    }
+  }, [localitiesQuery.data, setFollowedLocalities]);
 
-  const isLoading = homeQuery.isLoading && !homeQuery.data;
+  // ── Home feed query — NOT scoped by activeLocalityId ─────────────────────
+  // The backend merges data across all follows. activeLocalityId is
+  // client-side only.
+  const homeQuery = useHome();
+
+  useEffect(() => {
+    if (homeQuery.dataUpdatedAt > 0) {
+      setLastUpdatedAt(new Date(homeQuery.dataUpdatedAt));
+    }
+  }, [homeQuery.dataUpdatedAt]);
+
+  // ── Derived state ────────────────────────────────────────────────────────
   const feed = homeQuery.data;
 
-  const allEmpty =
-    feed &&
-    feed.activeNow.length === 0 &&
-    feed.officialUpdates.length === 0 &&
-    feed.recurringAtThisTime.length === 0 &&
-    feed.otherActiveSignals.length === 0;
+  const isCalmState = useMemo<boolean>(() => {
+    if (!feed) return false;
+    return (
+      isSectionEmpty(feed.activeNow) &&
+      isSectionEmpty(feed.officialUpdates) &&
+      isSectionEmpty(feed.recurringAtThisTime) &&
+      isSectionEmpty(feed.otherActiveSignals)
+    );
+  }, [feed]);
 
+  const hasNoFollows = followsLoaded && followedLocalities.length === 0;
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.wordmark}>hali</Text>
         <TouchableOpacity
           style={styles.wardPill}
           onPress={() => setWardPickerVisible(true)}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Ward selector"
+          disabled={followedLocalities.length === 0}
         >
           <Text style={styles.wardPillText} numberOfLines={1}>
-            {activeLocalityId
-              ? `Ward: ${activeLocalityId.slice(0, 8)}…`
-              : 'Select ward'}
+            {activeLocality
+              ? (activeLocality.displayLabel ?? activeLocality.wardName)
+              : 'No ward selected'}
           </Text>
           <Ionicons name="chevron-down" size={14} color="#1a3a2f" />
         </TouchableOpacity>
       </View>
 
-      {isLoading ? (
+      {homeQuery.isLoading && !feed ? (
         <Loading />
-      ) : !activeLocalityId ? (
+      ) : homeQuery.isError ? (
         <View style={styles.center}>
-          <Empty
-            message="No ward selected"
-            subMessage="Go to Settings → Wards to follow a ward."
-          />
-        </View>
-      ) : allEmpty ? (
-        <View style={styles.center}>
-          <Empty
-            message="Currently calm in this ward"
-            subMessage="No active signals right now."
+          <ErrorState
+            message={(homeQuery.error as ApiResultError).message}
+            onRetry={() => void homeQuery.refetch()}
           />
         </View>
       ) : (
@@ -96,58 +146,56 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl
-              refreshing={homeQuery.isFetching}
-              onRefresh={() => homeQuery.refetch()}
+              refreshing={homeQuery.isFetching && !homeQuery.isLoading}
+              onRefresh={() => void homeQuery.refetch()}
               tintColor="#1a3a2f"
             />
           }
         >
-          {/* Section 1 — Active now */}
-          <Section
-            title="Active now"
-            clusters={feed?.activeNow ?? []}
-            emptyMessage="No active signals right now."
-          />
-
-          {/* Section 2 — Official updates */}
-          {(feed?.officialUpdates ?? []).length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Official updates</Text>
-              {feed!.officialUpdates.map((post) => (
-                <OfficialPostCard key={post.id} post={post} />
-              ))}
-            </View>
+          {hasNoFollows ? (
+            <NoFollowsState onOpenSettings={() => router.push('/(app)/settings/wards')} />
+          ) : isCalmState ? (
+            <CalmState
+              followedCount={followedLocalities.length}
+              lastUpdatedAt={lastUpdatedAt}
+            />
+          ) : (
+            <>
+              <Section
+                title="Active now"
+                clusters={feed?.activeNow.items ?? []}
+              />
+              <OfficialUpdatesSection
+                posts={feed?.officialUpdates.items ?? []}
+              />
+              <Section
+                title="Recurring at this time"
+                clusters={feed?.recurringAtThisTime.items ?? []}
+              />
+              <Section
+                title="Other active signals"
+                clusters={feed?.otherActiveSignals.items ?? []}
+              />
+              {lastUpdatedAt !== null && (
+                <Text style={styles.lastUpdated}>
+                  Last updated {formatRelativeTime(lastUpdatedAt.toISOString())}
+                </Text>
+              )}
+            </>
           )}
-          {(feed?.officialUpdates ?? []).length === 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Official updates</Text>
-              <Empty message="No official updates." />
-            </View>
-          )}
-
-          {/* Section 3 — Recurring */}
-          <Section
-            title="Recurring at this time"
-            clusters={feed?.recurringAtThisTime ?? []}
-            emptyMessage="No recurring signals."
-          />
-
-          {/* Section 4 — Other active */}
-          <Section
-            title="Other active signals"
-            clusters={feed?.otherActiveSignals ?? []}
-            emptyMessage="Nothing else active."
-          />
         </ScrollView>
       )}
 
-      {/* Floating Report button */}
+      {/* Persistent Report FAB — always visible, even in calm/no-follows */}
       <TouchableOpacity
         style={styles.fab}
         activeOpacity={0.85}
         onPress={() => router.push('/(app)/compose/text')}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel="Report a signal"
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
 
       {/* Ward picker modal */}
@@ -160,34 +208,42 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>Select ward</Text>
-            {followedLocalityIds.length === 0 ? (
-              <Empty
-                message="No wards followed"
-                subMessage="Go to Settings → Wards to follow up to 5 wards."
-              />
+            {followedLocalities.length === 0 ? (
+              <Text style={styles.modalEmpty}>
+                You haven't followed any wards yet. Go to Settings → Wards to
+                follow up to 5 wards.
+              </Text>
             ) : (
               <FlatList
-                data={followedLocalityIds}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.wardRow,
-                      item === activeLocalityId && styles.wardRowActive,
-                    ]}
-                    onPress={() => {
-                      setActiveLocalityId(item);
-                      setWardPickerVisible(false);
-                    }}
-                  >
-                    <Text style={styles.wardRowText}>
-                      Ward {item.slice(0, 8)}…
-                    </Text>
-                    {item === activeLocalityId && (
-                      <Ionicons name="checkmark" size={18} color="#1a3a2f" />
-                    )}
-                  </TouchableOpacity>
-                )}
+                data={followedLocalities}
+                keyExtractor={(item) => item.localityId}
+                renderItem={({ item }) => {
+                  const isActive =
+                    item.localityId === activeLocality?.localityId;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.wardRow,
+                        isActive && styles.wardRowActive,
+                      ]}
+                      onPress={() => {
+                        setActiveLocalityId(item.localityId);
+                        setWardPickerVisible(false);
+                      }}
+                    >
+                      <Text style={styles.wardRowText}>
+                        {item.displayLabel ?? item.wardName}
+                      </Text>
+                      {isActive && (
+                        <Ionicons
+                          name="checkmark"
+                          size={18}
+                          color="#1a3a2f"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
               />
             )}
             <TouchableOpacity
@@ -203,28 +259,47 @@ export default function HomeScreen() {
   );
 }
 
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
 function Section({
   title,
   clusters,
-  emptyMessage,
 }: {
   title: string;
   clusters: ClusterResponse[];
-  emptyMessage: string;
-}) {
+}): React.ReactElement | null {
+  if (clusters.length === 0) return null;
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      {clusters.length === 0 ? (
-        <Empty message={emptyMessage} />
-      ) : (
-        clusters.map((c) => <ClusterCard key={c.id} cluster={c} />)
-      )}
+      {clusters.map((c) => (
+        <ClusterCard key={c.id} cluster={c} />
+      ))}
     </View>
   );
 }
 
-function OfficialPostCard({ post }: { post: OfficialPostResponse }) {
+function OfficialUpdatesSection({
+  posts,
+}: {
+  posts: OfficialPostResponse[];
+}): React.ReactElement | null {
+  if (posts.length === 0) return null;
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Official updates</Text>
+      {posts.map((post) => (
+        <OfficialPostCard key={post.id} post={post} />
+      ))}
+    </View>
+  );
+}
+
+function OfficialPostCard({
+  post,
+}: {
+  post: OfficialPostResponse;
+}): React.ReactElement {
   return (
     <View style={styles.officialCard}>
       <Text style={styles.officialTitle}>{post.title}</Text>
@@ -235,8 +310,80 @@ function OfficialPostCard({ post }: { post: OfficialPostResponse }) {
   );
 }
 
+function CalmState({
+  followedCount,
+  lastUpdatedAt,
+}: {
+  followedCount: number;
+  lastUpdatedAt: Date | null;
+}): React.ReactElement {
+  return (
+    <View style={styles.calmContainer}>
+      <Text style={styles.calmTitle}>
+        Currently calm in your followed {followedCount === 1 ? 'ward' : 'wards'}
+      </Text>
+      <Text style={styles.calmBody}>
+        No active signals, official updates, or recurring patterns right now.
+      </Text>
+      {lastUpdatedAt !== null && (
+        <Text style={styles.calmTimestamp}>
+          Last checked {formatRelativeTime(lastUpdatedAt.toISOString())}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function NoFollowsState({
+  onOpenSettings,
+}: {
+  onOpenSettings: () => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.calmContainer}>
+      <Text style={styles.calmTitle}>Follow a ward to see activity</Text>
+      <Text style={styles.calmBody}>
+        Hali shows you civic signals in the wards you follow. Pick up to 5.
+      </Text>
+      <TouchableOpacity
+        style={styles.primaryCta}
+        onPress={onOpenSettings}
+        accessible
+        accessibilityRole="button"
+      >
+        <Text style={styles.primaryCtaText}>Manage wards</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.calmContainer}>
+      <Text style={styles.calmTitle}>Couldn't load the feed</Text>
+      <Text style={styles.calmBody}>{message}</Text>
+      <TouchableOpacity
+        style={styles.primaryCta}
+        onPress={onRetry}
+        accessible
+        accessibilityRole="button"
+      >
+        <Text style={styles.primaryCtaText}>Try again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f9fafb' },
+  safe: { flex: 1, backgroundColor: '#F9FAFB' },
   flex: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -244,15 +391,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: '#E5E7EB',
   },
   wordmark: { fontSize: 22, fontWeight: '800', color: '#1a3a2f' },
   wardPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F0FDF4',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -269,15 +416,21 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   officialCard: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: '#FFFBEB',
     borderRadius: 12,
     padding: 14,
     gap: 6,
     borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
+    borderLeftColor: '#F59E0B',
   },
   officialTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
   officialBody: { fontSize: 14, color: '#374151', lineHeight: 20 },
+  lastUpdated: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 16,
+  },
   fab: {
     position: 'absolute',
     bottom: 32,
@@ -295,13 +448,45 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   center: { flex: 1, justifyContent: 'center' },
+  calmContainer: {
+    padding: 24,
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  calmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  calmBody: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  calmTimestamp: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  primaryCta: {
+    marginTop: 12,
+    backgroundColor: '#1a3a2f',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  primaryCtaText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -309,16 +494,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  modalEmpty: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+    paddingVertical: 12,
+  },
   wardRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#F3F4F6',
   },
-  wardRowActive: { backgroundColor: '#f0fdf4' },
+  wardRowActive: { backgroundColor: '#F0FDF4' },
   wardRowText: { fontSize: 15, color: '#111827' },
   modalClose: { paddingVertical: 12, alignItems: 'center' },
-  modalCloseText: { fontSize: 15, color: '#6b7280' },
+  modalCloseText: { fontSize: 15, color: '#6B7280' },
 });

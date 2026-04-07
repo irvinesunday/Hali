@@ -35,6 +35,7 @@ GITHUB_TOKEN           = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO            = os.environ.get("GITHUB_REPO")
 MODEL                  = "claude-sonnet-4-6"
 MAX_OUTPUT_TOKENS      = 8192
+MAX_OUTPUT_TOKENS_LONG = 16384  # for agents producing large code output (e.g., Agent D mobile)
 CONTEXT_WARN_THRESHOLD = 150_000   # warn if input exceeds this many tokens
 CONTEXT_HARD_LIMIT     = 190_000   # refuse to call if input exceeds this
 MONTHLY_BUDGET_USD     = float(os.environ.get("MONTHLY_API_BUDGET_USD", "50"))
@@ -48,14 +49,19 @@ SPEND_FILE     = "agent_outputs/.spend.json"   # cumulative spend tracker
 LESSONS_MARKER = "<!-- LESSONS_APPEND_MARKER — do not remove this line, orchestrator appends below it -->"
 
 SESSIONS = {
-    "00": ("session_00_sync.md",                "sync"),
-    "01": ("session_01_foundation.md",           "foundation"),
-    "02": ("session_02_auth.md",                "auth"),
-    "03": ("session_03_intake.md",              "intake"),
-    "04": ("session_04_clustering_civis.md",    "clustering-civis"),
-    "05": ("session_05_participation_slice.md", "participation"),
-    "06": ("session_06_updates_restoration.md", "updates-restoration"),
-    "07": ("session_07_notifications_polish.md","notifications"),
+    "00": ("session_00_sync.md",                "sync",               "backend"),
+    "01": ("session_01_foundation.md",           "foundation",         "backend"),
+    "02": ("session_02_auth.md",                "auth",               "backend"),
+    "03": ("session_03_intake.md",              "intake",             "backend"),
+    "04": ("session_04_clustering_civis.md",    "clustering-civis",   "backend"),
+    "05": ("session_05_participation_slice.md", "participation",      "backend"),
+    "06": ("session_06_updates_restoration.md", "updates-restoration","backend"),
+    "07": ("session_07_notifications_polish.md","notifications",      "backend"),
+    "mobile-01a": ("session_mobile_01a.md",      "mobile-auth",        "mobile"),
+    "mobile-01b": ("session_mobile_01b.md",      "mobile-home-feed",   "mobile"),
+    "mobile-01c": ("session_mobile_01c.md",      "mobile-composer",    "mobile"),
+    "mobile-01d": ("session_mobile_01d.md",      "mobile-cluster",     "mobile"),
+    "mobile-01e": ("session_mobile_01e.md",      "mobile-settings",    "mobile"),
 }
 
 ROOT = Path(__file__).parent.parent
@@ -118,24 +124,26 @@ RETRYABLE = (APIStatusError, APIConnectionError, APITimeoutError)
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
 )
-def _call_api(client: Anthropic, system: str, user: str) -> tuple[str, int, int]:
+def _call_api(client: Anthropic, system: str, user: str,
+              max_tokens: int = MAX_OUTPUT_TOKENS) -> tuple[str, int, int]:
     """Call the Anthropic API. Returns (text, input_tokens, output_tokens)."""
     response = client.messages.create(
         model=MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
     return response.content[0].text, response.usage.input_tokens, response.usage.output_tokens
 
 
-def call_claude(system: str, user: str, label: str, dry_run: bool = False) -> str:
+def call_claude(system: str, user: str, label: str, dry_run: bool = False,
+                max_tokens: int = MAX_OUTPUT_TOKENS) -> str:
     """
     Call Claude with retry, token counting, and cost tracking.
     In dry_run mode prints estimates but makes no API calls.
     """
     input_tokens  = count_tokens(system + user)
-    est_cost      = estimate_cost(input_tokens)
+    est_cost      = estimate_cost(input_tokens, max_tokens)
     cumulative    = load_cumulative_spend()
 
     # Context window guard
@@ -164,7 +172,7 @@ def call_claude(system: str, user: str, label: str, dry_run: bool = False) -> st
         return f"[DRY RUN — {label} would have cost ~${est_cost:.4f}]"
 
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    text, in_tok, out_tok = _call_api(client, system, user)
+    text, in_tok, out_tok = _call_api(client, system, user, max_tokens)
     actual_cost = estimate_cost(in_tok, out_tok)
     record_spend(actual_cost)
     log.info(f"[{label}] Done: {in_tok:,} in / {out_tok:,} out tokens | actual cost ${actual_cost:.4f}")
@@ -203,6 +211,18 @@ def validate_agent_b(output: str) -> list[str]:
         problems.append(f"Only {test_count} test methods found — expected at least 3")
     return problems
 
+def validate_agent_d(output: str) -> list[str]:
+    """Structural checks on Agent D's mobile output. Returns blocking problems only."""
+    problems = []
+    if len(output) < 500:
+        problems.append("Output suspiciously short — may be a refusal or incomplete response")
+    if output.count("```") < 2:
+        problems.append("No code blocks found — expected at least one TypeScript code block")
+    # Contract block is advisory — Agent D often fills entire output with code
+    if "AGENT_D_FRONTEND_CONTRACT:" not in output:
+        log.info("[Agent D] No AGENT_D_FRONTEND_CONTRACT block (advisory — output likely truncated by token limit)")
+    return problems
+
 
 # ─── Amnesia recovery ──────────────────────────────────────────────────────────
 
@@ -214,17 +234,19 @@ def build_amnesia_recovery(session_num: str) -> str:
     try:
         log = git("git log --oneline -10")
         recent_lessons = read_file(LESSONS_FILE)[-2000:]
-        prior_session_int = int(session_num) - 1
         prior_contract = ""
-        if prior_session_int >= 0:
-            prior_key = f"{prior_session_int:02d}"
-            prior_sessions = {v[1]: v for v in SESSIONS.values()}
-            prior_phase = SESSIONS.get(prior_key, ("", ""))[1]
-            prior_contract_path = f"agent_outputs/session_{prior_key}/agent_a.md"
-            raw = read_file(prior_contract_path)
-            if "AGENT_A_CONTRACT:" in raw:
-                start = raw.index("AGENT_A_CONTRACT:")
-                prior_contract = raw[start:start+1500]
+        try:
+            prior_session_int = int(session_num) - 1
+            if prior_session_int >= 0:
+                prior_key = f"{prior_session_int:02d}"
+                prior_contract_path = f"agent_outputs/session_{prior_key}/agent_a.md"
+                raw = read_file(prior_contract_path)
+                if "AGENT_A_CONTRACT:" in raw:
+                    start = raw.index("AGENT_A_CONTRACT:")
+                    prior_contract = raw[start:start+1500]
+        except ValueError:
+            # Non-numeric session ID (e.g., mobile-01) — skip prior contract lookup
+            pass
 
         return f"""## Continuity Check — Session {session_num}
 
@@ -353,7 +375,7 @@ def run_session(session_num: str, dry_run: bool = False):
         log.error(f"Unknown session: {session_num}. Valid: {list(SESSIONS.keys())}")
         sys.exit(1)
 
-    session_file, phase_name = SESSIONS[session_num]
+    session_file, phase_name, session_type = SESSIONS[session_num]
     mode = " [DRY RUN]" if dry_run else ""
     print(f"\n{'='*60}\n  Session {session_num}: {phase_name}{mode}\n{'='*60}\n")
 
@@ -384,21 +406,22 @@ def run_session(session_num: str, dry_run: bool = False):
 
     # ── Dry-run: estimate costs for all agents and exit ──────────────────────
     if dry_run:
+        # (label, system_prompt, user_prompt, output_tokens)
         agents = [
-            ("Agent A", agent_a_system, shared_ctx + "\n\n## Session task\n" + session_prompt),
-            ("Agent B", agent_b_base,   shared_ctx + "\n\n## Session task\n" + session_prompt),
-            ("Agent C", agent_c_base,   shared_ctx + "\n\n## Session task\n" + session_prompt),
+            ("Agent A", agent_a_system, shared_ctx + "\n\n## Session task\n" + session_prompt, MAX_OUTPUT_TOKENS),
+            ("Agent B", agent_b_base,   shared_ctx + "\n\n## Session task\n" + session_prompt, MAX_OUTPUT_TOKENS),
+            ("Agent C", agent_c_base,   shared_ctx + "\n\n## Session task\n" + session_prompt, MAX_OUTPUT_TOKENS),
         ]
         if agent_d_base:
-            agents.append(("Agent D (mobile)", agent_d_base, shared_ctx + "\n\n## Session task\n" + session_prompt))
+            agents.append(("Agent D (mobile)", agent_d_base, shared_ctx + "\n\n## Session task\n" + session_prompt, MAX_OUTPUT_TOKENS_LONG))
 
         total_est = 0.0
         print("DRY RUN — token and cost estimates:\n")
-        for label, sys_p, usr_p in agents:
+        for label, sys_p, usr_p, out_tok in agents:
             tokens = count_tokens(sys_p + usr_p)
-            cost   = estimate_cost(tokens)
+            cost   = estimate_cost(tokens, out_tok)
             total_est += cost
-            print(f"  {label}: ~{tokens:,} input tokens | est. ${cost:.4f}")
+            print(f"  {label}: ~{tokens:,} input tokens | ~{out_tok:,} max output | est. ${cost:.4f}")
         cumulative = load_cumulative_spend()
         print(f"\n  Session total estimate: ${total_est:.4f}")
         print(f"  Cumulative spend so far: ${cumulative:.4f}")
@@ -454,7 +477,8 @@ def run_session(session_num: str, dry_run: bool = False):
         try:
             out = call_claude(agent_d_base,
                               f"{shared_ctx}\n\n## Session task\n{session_prompt}",
-                              "Agent D (mobile)", dry_run)
+                              "Agent D (mobile)", dry_run,
+                              max_tokens=MAX_OUTPUT_TOKENS_LONG)
             results["d"] = out
         except Exception as e:
             log.warning(f"Agent D skipped: {e}")
@@ -473,15 +497,32 @@ def run_session(session_num: str, dry_run: bool = False):
     out_b = results.get("b", "")
     out_d = results.get("d", "")
 
-    # Fail hard if Agent A or B had structural problems
-    a_problems = results.get("a_problems", [])
-    b_problems = results.get("b_problems", [])
-    if a_problems or b_problems:
-        log.error("Structural validation failed — not proceeding to Agent C.")
-        log.error("Agent A problems: " + str(a_problems))
-        log.error("Agent B problems: " + str(b_problems))
-        log.error("Fix the session prompt or context and re-run.")
-        sys.exit(1)
+    # Fail hard if primary agents had structural problems
+    if session_type == "mobile":
+        # For mobile sessions, Agent D is primary — A/B validation is advisory only
+        if results.get("a_problems"):
+            log.info(f"[Agent A] Validation issues (advisory for mobile session): {results['a_problems']}")
+        if results.get("b_problems"):
+            log.info(f"[Agent B] Validation issues (advisory for mobile session): {results['b_problems']}")
+        if out_d:
+            d_problems = validate_agent_d(out_d)
+            if d_problems:
+                log.error("Agent D structural validation failed — not proceeding to Agent C.")
+                log.error("Agent D problems: " + str(d_problems))
+                log.error("Fix the session prompt or context and re-run.")
+                sys.exit(1)
+        else:
+            log.error("Mobile session but Agent D produced no output.")
+            sys.exit(1)
+    else:
+        a_problems = results.get("a_problems", [])
+        b_problems = results.get("b_problems", [])
+        if a_problems or b_problems:
+            log.error("Structural validation failed — not proceeding to Agent C.")
+            log.error("Agent A problems: " + str(a_problems))
+            log.error("Agent B problems: " + str(b_problems))
+            log.error("Fix the session prompt or context and re-run.")
+            sys.exit(1)
 
     out_dir = ROOT / "agent_outputs" / f"session_{session_num}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -548,7 +589,7 @@ def run_session(session_num: str, dry_run: bool = False):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Hali multi-agent orchestrator")
-    p.add_argument("--session",  required=True, help="Session number (00-07)")
+    p.add_argument("--session",  required=True, help="Session ID (00-07, mobile-01a through mobile-01e)")
     p.add_argument("--dry-run",  action="store_true",
                    help="Estimate token count and cost without calling the API")
     args = p.parse_args()

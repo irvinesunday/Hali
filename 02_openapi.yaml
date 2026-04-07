@@ -2,8 +2,14 @@
 openapi: 3.1.0
 info:
   title: Hali API
-  version: 0.3.0
+  version: 0.4.0
   summary: Civic signal and official update API for the Hali MVP
+  description: |
+    Spec repaired against the C# backend source in `src/Hali.Api/Controllers/*`
+    and `src/Hali.Contracts/**/*Dto.cs`. JSON convention:
+      - Property names: camelCase (System.Text.Json `JsonNamingPolicy.CamelCase`)
+      - Enum values: snake_case_lower (`JsonStringEnumConverter` with
+        `JsonNamingPolicy.SnakeCaseLower`)
 servers:
   - url: http://localhost:8080
 tags:
@@ -29,16 +35,29 @@ paths:
           application/json:
             schema:
               type: object
-              required: [authMethod, destination]
+              required: [destination, authMethod]
               properties:
+                destination: { type: string }
                 authMethod:
                   type: string
-                  enum: [phone_otp, email_otp, magic_link]
-                  description: Accepts snake_case; backend normalises to PascalCase AuthMethod enum
-                destination: { type: string }
+                  enum: [phone_otp, email_otp, magic_link, google, apple]
+                  description: |
+                    Serialised from `Hali.Domain.Enums.AuthMethod` via
+                    snake_case_lower converter. Phase 1 only uses `phone_otp`.
       responses:
         '200':
           description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "OTP sent" }
+        '429':
+          description: OTP rate limited
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/verify:
     post:
       tags: [Auth]
@@ -66,6 +85,9 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '400':
           description: Invalid or expired OTP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/refresh:
     post:
       tags: [Auth]
@@ -88,6 +110,9 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
           description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/logout:
     post:
       tags: [Auth]
@@ -124,17 +149,46 @@ paths:
                 phoneNumber: { type: string }
       responses:
         '202': { description: OTP sent to phone }
-        '400': { description: Invalid, expired, or already-accepted invite }
+        '400':
+          description: Invalid, expired, or already-accepted invite
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: OTP rate limited
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Localities ──────────────────────────────────────────────────────
   /v1/localities/followed:
     get:
       tags: [Localities]
-      summary: List current user's followed wards
+      summary: List current user's followed wards (with display names)
       security:
         - bearerAuth: []
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, wardName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    displayLabel:
+                      type: string
+                      nullable: true
+                      description: User-chosen area/estate name (e.g. "South B"). May be null for follows that predate this column — UI falls back to wardName.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+        '401':
+          description: Unauthenticated
     put:
       tags: [Localities]
       summary: Set followed wards (max 5)
@@ -146,26 +200,89 @@ paths:
           application/json:
             schema:
               type: object
-              required: [localityIds]
+              description: |
+                Send `items` (preferred — carries displayLabel for each follow).
+                Legacy `localityIds` is still accepted for backwards compatibility
+                but does not capture display labels.
               properties:
+                items:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: object
+                    required: [localityId]
+                    properties:
+                      localityId: { type: string, format: uuid }
+                      displayLabel:
+                        type: string
+                        nullable: true
+                        maxLength: 160
                 localityIds:
                   type: array
+                  deprecated: true
                   items: { type: string, format: uuid }
                   maxItems: 5
       responses:
-        '200': { description: Updated }
-        '422': { description: max_followed_localities_exceeded }
+        '204': { description: Updated }
+        '422':
+          description: max_followed_localities_exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/localities/search:
+    get:
+      tags: [Localities]
+      summary: Search for an area / estate by free text (Nominatim + PostGIS ward resolution)
+      description: |
+        Forward-geocodes the query via Nominatim (biased to Kenya), then resolves
+        each candidate to a Hali locality via PostGIS point-in-polygon. Returns
+        up to 5 matches. Candidates outside any covered locality are skipped.
+        Results are cached in Redis for 1 hour. Anonymous endpoint.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        '200':
+          description: Candidate localities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, placeLabel, wardName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    placeLabel:
+                      type: string
+                      description: Human-readable label from Nominatim (e.g. "South B, Nairobi"). Use this as displayLabel when following.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+        '400':
+          description: Query too short
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:
     post:
       tags: [Signals]
-      summary: NLP-first preview — extracts candidate structured civic signals
+      summary: NLP-first preview — extracts a structured civic signal candidate
       description: |
-        Returns candidates[] (structured extractions from free text) and
-        existingClusterCandidates[] (nearby clusters the signal could join).
-      security:
-        - bearerAuth: []
+        Returns a single structured extraction from free text, including the
+        canonical category/subcategory and a resolved location object. Anonymous
+        callers are rate-limited to 10 requests per IP per 10 minutes (Redis-
+        backed).
+      security: []
       requestBody:
         required: true
         content:
@@ -174,11 +291,31 @@ paths:
               $ref: '#/components/schemas/SignalPreviewRequest'
       responses:
         '200':
-          description: Preview result with candidate clusters to join
+          description: Preview result
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalPreviewResponse'
+        '400':
+          description: free_text is required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: NLP returned an unrecognised category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limited (anonymous IP cap)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: NLP extraction service unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/signals/submit:
     post:
       tags: [Signals]
@@ -192,21 +329,56 @@ paths:
             schema:
               $ref: '#/components/schemas/SignalSubmitRequest'
       responses:
-        '201':
+        '200':
           description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalSubmitResponse'
+        '400':
+          description: idempotency_key or device_hash missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Signal already submitted with this idempotency key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Invalid category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Too many signals submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Clusters ────────────────────────────────────────────────────────
   /v1/clusters/{id}:
     get:
       tags: [Clusters]
       summary: Get cluster detail with official updates side by side
+      security: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterResponse'
+        '404':
+          description: Cluster not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/participation:
     post:
       tags: [Participation]
@@ -225,7 +397,17 @@ paths:
             schema:
               $ref: '#/components/schemas/ParticipationRequest'
       responses:
-        '202': { description: Accepted }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash or type missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: invalid_participation_type or device_not_found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/context:
     post:
       tags: [Participation]
@@ -242,16 +424,27 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                contextText: { type: string, maxLength: 150 }
+              $ref: '#/components/schemas/ContextRequest'
       responses:
-        '202': { description: Accepted }
-        '422': { description: context_requires_affected_participation or context_edit_window_expired }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash or text missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: |
+            One of:
+              - device_not_found
+              - policy_blocked (reason=context_requires_affected_participation)
+              - policy_blocked (reason=context_edit_window_expired)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/restoration-response:
     post:
       tags: [Participation]
-      summary: Cast a restoration vote (yes/no/unsure)
+      summary: Cast a restoration vote (still_affected / restored / not_sure)
       security:
         - bearerAuth: []
       parameters:
@@ -264,14 +457,23 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [type]
-              properties:
-                type:
-                  type: string
-                  enum: [restoration_yes, restoration_no, restoration_unsure]
+              $ref: '#/components/schemas/RestorationResponseRequest'
       responses:
-        '202': { description: Accepted }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: |
+            One of:
+              - invalid_restoration_response
+              - device_not_found
+              - policy_blocked (reason=restoration_requires_affected_participation)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Official Posts ──────────────────────────────────────────────────
   /v1/official-posts:
@@ -287,8 +489,27 @@ paths:
             schema:
               $ref: '#/components/schemas/OfficialPostCreateRequest'
       responses:
-        '201': { description: Created }
-        '403': { description: Outside institution jurisdiction }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfficialPostResponse'
+        '400':
+          description: type, category, title, or body missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Outside institution jurisdiction (code=outside_jurisdiction)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: invalid_post_type, invalid_category, or institution_required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Home Feed ───────────────────────────────────────────────────────
   /v1/home:
@@ -298,7 +519,7 @@ paths:
       description: |
         Returns four sections. Without `section` or `cursor`, returns first page of all sections.
         Section limits: active_now=20, official_updates=5, recurring_at_this_time=10, other_active_signals=10.
-        First page (unauthenticated or empty follows) is cached in Redis for 30 seconds.
+        First page (authenticated with non-empty follows) is cached in Redis for 30 seconds.
         Subsequent pages are fetched live (no cache).
       security: []
       parameters:
@@ -324,6 +545,9 @@ paths:
                 $ref: '#/components/schemas/HomeResponse'
         '400':
           description: Unknown section name
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Users ───────────────────────────────────────────────────────────
   /v1/users/me:
@@ -333,7 +557,14 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        '401': { description: Unauthenticated }
+        '404': { description: Account not found }
   /v1/users/me/notification-settings:
     put:
       tags: [Users]
@@ -345,13 +576,10 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                clusterActivated: { type: boolean }
-                restorationPrompt: { type: boolean }
-                clusterResolved: { type: boolean }
+              $ref: '#/components/schemas/NotificationSettings'
       responses:
-        '200': { description: Updated }
+        '204': { description: Updated }
+        '401': { description: Unauthenticated }
 
   # ── Devices ─────────────────────────────────────────────────────────
   /v1/devices/push-token:
@@ -366,12 +594,22 @@ paths:
           application/json:
             schema:
               type: object
-              required: [deviceFingerprintHash, expoPushToken]
+              required: [deviceHash, expoPushToken]
               properties:
-                deviceFingerprintHash: { type: string }
+                deviceHash: { type: string }
                 expoPushToken: { type: string }
       responses:
-        '200': { description: Updated }
+        '204': { description: Updated }
+        '400':
+          description: device_hash or expo_push_token missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: device_not_found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Admin ───────────────────────────────────────────────────────────
   /v1/admin/institutions:
@@ -386,13 +624,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, jurisdictionLocalityIds]
               properties:
                 name: { type: string }
                 jurisdictionLocalityIds:
                   type: array
                   items: { type: string, format: uuid }
-                contactEmail: { type: string, format: email }
+                contactEmail: { type: string, format: email, nullable: true }
       responses:
         '201':
           description: Institution created with invite link
@@ -400,10 +638,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [institutionId, inviteLink, inviteExpiresAt]
                 properties:
                   institutionId: { type: string, format: uuid }
                   inviteLink: { type: string, format: uri }
                   inviteExpiresAt: { type: string, format: date-time }
+        '400':
+          description: name is required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/admin/institutions/{id}/access:
     delete:
       tags: [Admin]
@@ -416,15 +660,13 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: Access revoked }
-  /v1/admin/orphaned-signals:
-    get:
-      tags: [Admin]
-      summary: View unowned categories and orphaned civic clusters
-      security:
-        - bearerAuth: []
-      responses:
-        '200': { description: OK }
+        '200':
+          description: Access revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Empty object on success.
 
 components:
   securitySchemes:
@@ -439,87 +681,263 @@ components:
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
   schemas:
+    ErrorResponse:
+      type: object
+      description: |
+        Standard error envelope. Most endpoints return `{ error }`; some 422
+        responses additionally include a stable `code` for programmatic
+        handling. When `code` is `policy_blocked`, an optional `reason` field
+        carries the specific sub-reason (e.g.
+        `context_edit_window_expired`).
+      properties:
+        error: { type: string }
+        code: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+
     TokenResponse:
       type: object
+      required: [accessToken, refreshToken, expiresIn]
       properties:
         accessToken: { type: string }
         refreshToken: { type: string }
         expiresIn: { type: integer, description: Access token TTL in seconds }
+
+    # ── Signals ──────────────────────────────────────────────────────
     SignalPreviewRequest:
       type: object
-      required: [text, sourceLanguage]
+      required: [freeText]
+      description: |
+        Mirrors `Hali.Contracts.Signals.SignalPreviewRequestDto`. Location
+        signals are passed as flat fields, not a nested object.
       properties:
-        text: { type: string, maxLength: 500 }
-        sourceLanguage: { type: string, example: en }
-        location:
-          type: object
-          properties:
-            latitude: { type: number }
-            longitude: { type: number }
-            userEnteredPlace: { type: string }
-    SignalCandidate:
+        freeText: { type: string, maxLength: 500 }
+        userLatitude: { type: number, nullable: true }
+        userLongitude: { type: number, nullable: true }
+        selectedWard: { type: string, nullable: true }
+        locale: { type: string, nullable: true, example: en }
+        knownCity: { type: string, nullable: true }
+        countryCode: { type: string, nullable: true, example: KE }
+    SignalLocation:
       type: object
+      description: |
+        Mirrors `Hali.Contracts.Signals.SignalLocationDto`. Resolved location
+        descriptors and a confidence score.
+      required: [locationConfidence, locationSource]
+      properties:
+        areaName: { type: string, nullable: true }
+        roadName: { type: string, nullable: true }
+        junctionName: { type: string, nullable: true }
+        landmarkName: { type: string, nullable: true }
+        facilityName: { type: string, nullable: true }
+        locationLabel: { type: string, nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
+        locationConfidence: { type: number, minimum: 0, maximum: 1 }
+        locationSource: { type: string }
+    SignalPreviewResponse:
+      type: object
+      description: |
+        Single extraction result. Mirrors `SignalPreviewResponseDto`. The
+        previously-documented `candidates[]` and `existingClusterCandidates[]`
+        arrays do NOT exist in the backend.
+      required:
+        [category, subcategorySlug, conditionConfidence, location, shouldSuggestJoin]
       properties:
         category: { type: string }
         subcategorySlug: { type: string }
         conditionSlug: { type: string, nullable: true }
-        neutralSummary: { type: string }
-        locationLabel: { type: string }
-        locationConfidence: { type: number, minimum: 0, maximum: 1 }
-        temporalType: { type: string }
-    ExistingClusterCandidate:
-      type: object
-      properties:
-        clusterId: { type: string, format: uuid }
-        summary: { type: string }
-        locationLabel: { type: string }
-        rawConfirmationCount: { type: integer }
-    SignalPreviewResponse:
-      type: object
-      properties:
-        candidates:
-          type: array
-          items: { $ref: '#/components/schemas/SignalCandidate' }
-        existingClusterCandidates:
-          type: array
-          items: { $ref: '#/components/schemas/ExistingClusterCandidate' }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1 }
+        location: { $ref: '#/components/schemas/SignalLocation' }
+        temporalType: { type: string, nullable: true }
+        neutralSummary: { type: string, nullable: true }
+        shouldSuggestJoin: { type: boolean }
     SignalSubmitRequest:
       type: object
-      required: [candidate, deviceFingerprint, idempotencyKey]
+      description: |
+        Mirrors `SignalSubmitRequestDto`. Flat shape — no nested `candidate`
+        wrapper. `joinClusterId` does NOT exist on the backend.
+      required:
+        [idempotencyKey, deviceHash, freeText, category, subcategorySlug,
+         conditionConfidence, locationConfidence, locationSource]
       properties:
-        candidate: { $ref: '#/components/schemas/SignalCandidate' }
-        joinClusterId: { type: string, format: uuid, nullable: true }
-        deviceFingerprint: { type: string }
         idempotencyKey: { type: string }
-    ParticipationRequest:
+        deviceHash: { type: string }
+        freeText: { type: string }
+        category: { type: string }
+        subcategorySlug: { type: string }
+        conditionSlug: { type: string, nullable: true }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1 }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        locationLabel: { type: string, nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
+        locationConfidence: { type: number, minimum: 0, maximum: 1 }
+        locationSource: { type: string }
+        temporalType: { type: string, nullable: true }
+        neutralSummary: { type: string, nullable: true }
+        sourceLanguage: { type: string, nullable: true }
+        spatialCellId: { type: string, nullable: true }
+    SignalSubmitResponse:
       type: object
-      required: [type, idempotencyKey]
+      required: [signalEventId, createdAt]
+      properties:
+        signalEventId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    # ── Clusters / Participation ─────────────────────────────────────
+    ClusterResponse:
+      type: object
+      description: |
+        Mirrors `Hali.Contracts.Clusters.ClusterResponseDto`. CIVIS internals
+        (civis_score, wrab, sds, macf, raw_confirmation_count, account_id,
+        device_id) are intentionally NOT present.
+      required:
+        [id, state, category, affectedCount, observingCount, createdAt, updatedAt, officialPosts]
+      properties:
+        id: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [unconfirmed, active, possible_restoration, resolved]
+        category: { type: string }
+        subcategorySlug: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        affectedCount: { type: integer }
+        observingCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        possibleRestorationAt: { type: string, format: date-time, nullable: true }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        officialPosts:
+          type: array
+          items: { $ref: '#/components/schemas/OfficialPostResponse' }
+        myParticipation:
+          oneOf:
+            - $ref: '#/components/schemas/MyParticipation'
+            - type: 'null'
+          description: |
+            Per-caller participation snapshot. Null for unauthenticated callers
+            or callers with no participation row on this cluster. Used by the
+            mobile UI to gate the "Add Further Context" and restoration-response
+            CTAs server-side. The same gating is also enforced at the trust
+            boundary in POST /v1/clusters/{id}/context and
+            POST /v1/clusters/{id}/restoration-response.
+    MyParticipation:
+      type: object
+      description: |
+        Mirrors `Hali.Contracts.Clusters.MyParticipationDto`. Server's verdict
+        on what the calling user may currently do on this cluster.
+      required: [type, createdAt, canAddContext, canRespondToRestoration]
       properties:
         type:
           type: string
-          enum: [affected, observing, no_longer_affected, restoration_yes, restoration_no, restoration_unsure]
-        contextText: { type: string, maxLength: 150, nullable: true }
-        idempotencyKey: { type: string }
+          enum:
+            [affected, observing, no_longer_affected,
+             restoration_yes, restoration_no, restoration_unsure]
+        createdAt: { type: string, format: date-time }
+        canAddContext:
+          type: boolean
+          description: |
+            True iff type=affected AND now is within ContextEditWindowMinutes
+            (default 2) of createdAt. Mobile must gate "Add Further Context"
+            on this flag — local timing alone is not sufficient.
+        canRespondToRestoration:
+          type: boolean
+          description: |
+            True iff type=affected. Mobile must only show the restoration
+            response CTA when this is true.
+    ParticipationRequest:
+      type: object
+      description: |
+        Mirrors `ParticipationRequestDto`. `type` accepts only the three core
+        participation values. Restoration votes use the dedicated endpoint
+        `POST /v1/clusters/{id}/restoration-response`.
+      required: [type, deviceHash]
+      properties:
+        type:
+          type: string
+          enum: [affected, observing, no_longer_affected]
+        deviceHash: { type: string }
+        idempotencyKey: { type: string, nullable: true }
+    ContextRequest:
+      type: object
+      required: [text, deviceHash]
+      properties:
+        text: { type: string }
+        deviceHash: { type: string }
+    RestorationResponseRequest:
+      type: object
+      description: |
+        Mirrors `RestorationResponseRequestDto`. Field is `response`, not
+        `type`, and the accepted values are domain terms, not `restoration_*`.
+      required: [response, deviceHash]
+      properties:
+        response:
+          type: string
+          enum: [still_affected, restored, not_sure]
+        deviceHash: { type: string }
+
+    # ── Official Posts ───────────────────────────────────────────────
     OfficialPostCreateRequest:
       type: object
-      required: [officialPostType, title, body, scopes]
+      description: |
+        Mirrors `CreateOfficialPostRequestDto`. The geo-scope is passed as
+        the flat fields `localityId` / `corridorName` — there is no `scopes[]`
+        array on the backend.
+      required: [type, category, title, body]
       properties:
-        officialPostType:
+        type:
           type: string
           enum: [live_update, scheduled_disruption, advisory_public_notice]
-        category: { type: string, nullable: true }
+        category: { type: string }
         title: { type: string, maxLength: 220 }
         body: { type: string, maxLength: 5000 }
         startsAt: { type: string, format: date-time, nullable: true }
         endsAt: { type: string, format: date-time, nullable: true }
         relatedClusterId: { type: string, format: uuid, nullable: true }
-        scopes:
-          type: array
-          items:
-            type: object
-            properties:
-              localityId: { type: string, format: uuid, nullable: true }
-              corridorName: { type: string, nullable: true }
+        isRestorationClaim: { type: boolean, default: false }
+        localityId: { type: string, format: uuid, nullable: true }
+        corridorName: { type: string, nullable: true }
+    OfficialPostResponse:
+      type: object
+      required:
+        [id, institutionId, type, category, title, body, status,
+         isRestorationClaim, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        institutionId: { type: string, format: uuid }
+        type: { type: string }
+        category: { type: string }
+        title: { type: string }
+        body: { type: string }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        status: { type: string }
+        relatedClusterId: { type: string, format: uuid, nullable: true }
+        isRestorationClaim: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    # ── Users ────────────────────────────────────────────────────────
+    NotificationSettings:
+      type: object
+      properties:
+        clusterActivated: { type: boolean }
+        restorationPrompt: { type: boolean }
+        clusterResolved: { type: boolean }
+    UserMeResponse:
+      type: object
+      required: [id, status, createdAt, notificationSettings]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, nullable: true }
+        phoneE164: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        notificationSettings:
+          $ref: '#/components/schemas/NotificationSettings'
+
+    # ── Home Feed ────────────────────────────────────────────────────
     PagedSection:
       type: object
       description: A paginated section of home feed items

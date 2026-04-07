@@ -18,7 +18,32 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
                 .Annotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
                 .Annotation("Npgsql:Enum:official_post_type", "advisory_public_notice,live_update,scheduled_disruption")
                 .Annotation("Npgsql:Enum:official_post_type.official_post_type", "live_update,scheduled_disruption,advisory_public_notice")
-                .Annotation("Npgsql:PostgresExtension:postgis", ",,");
+                .Annotation("Npgsql:PostgresExtension:postgis", ",,")
+                // civic_category (both schemas), official_post_type (default), and postgis
+                // already created by Signals/Auth/Advisories-InitialCreate contexts
+                .OldAnnotation("Npgsql:Enum:civic_category", "electricity,environment,governance,infrastructure,roads,safety,transport,water")
+                .OldAnnotation("Npgsql:Enum:civic_category.civic_category", "roads,water,electricity,transport,safety,environment,governance,infrastructure")
+                .OldAnnotation("Npgsql:Enum:official_post_type", "advisory_public_notice,live_update,scheduled_disruption")
+                .OldAnnotation("Npgsql:PostgresExtension:postgis", ",,");
+
+            // Ensure shared types exist (InitialCreate may be skipped due to shared migration ID)
+            migrationBuilder.Sql(@"
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                                   WHERE t.typname = 'civic_category' AND n.nspname = 'public') THEN
+                        CREATE TYPE civic_category AS ENUM (
+                            'electricity', 'environment', 'governance', 'infrastructure',
+                            'roads', 'safety', 'transport', 'water');
+                    END IF;
+                END $$;");
+            migrationBuilder.Sql(@"
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                                   WHERE t.typname = 'official_post_type' AND n.nspname = 'public') THEN
+                        CREATE TYPE official_post_type AS ENUM (
+                            'advisory_public_notice', 'live_update', 'scheduled_disruption');
+                    END IF;
+                END $$;");
 
             migrationBuilder.CreateTable(
                 name: "institution_jurisdictions",

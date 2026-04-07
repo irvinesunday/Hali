@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -65,6 +66,52 @@ public class NominatimGeocodingService : IGeocodingService
 			await _redis.StringSetAsync(cacheKey, serialized, CacheTtl);
 		}
 		return result;
+	}
+
+	public async Task<IReadOnlyList<GeocodingCandidate>> SearchAsync(string query, CancellationToken ct = default)
+	{
+		if (string.IsNullOrWhiteSpace(query))
+			return Array.Empty<GeocodingCandidate>();
+
+		var encoded = Uri.EscapeDataString(query.Trim());
+		var url = $"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&countrycodes=ke&limit=5";
+
+		using var req = new HttpRequestMessage(HttpMethod.Get, url);
+		req.Headers.Add("User-Agent", "Hali/1.0 (civic signal platform)");
+
+		try
+		{
+			using var response = await _http.SendAsync(req, ct);
+
+			if (!response.IsSuccessStatusCode)
+			{
+				_logger.LogWarning("Nominatim forward search returned {Status} for {Query}", response.StatusCode, query);
+				return Array.Empty<GeocodingCandidate>();
+			}
+
+			var json = await response.Content.ReadAsStringAsync(ct);
+			using var doc = JsonDocument.Parse(json);
+			if (doc.RootElement.ValueKind != JsonValueKind.Array)
+				return Array.Empty<GeocodingCandidate>();
+
+			var list = new List<GeocodingCandidate>();
+			foreach (var el in doc.RootElement.EnumerateArray())
+			{
+				var displayName = el.TryGetProperty("display_name", out var dn) ? dn.GetString() : null;
+				var latStr = el.TryGetProperty("lat", out var la) ? la.GetString() : null;
+				var lonStr = el.TryGetProperty("lon", out var lo) ? lo.GetString() : null;
+				if (displayName is null || latStr is null || lonStr is null) continue;
+				if (!double.TryParse(latStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lat)) continue;
+				if (!double.TryParse(lonStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lon)) continue;
+				list.Add(new GeocodingCandidate(displayName, lat, lon));
+			}
+			return list;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Nominatim forward search failed or response could not be parsed for {Query}", query);
+			return Array.Empty<GeocodingCandidate>();
+		}
 	}
 
 	private GeocodingResult? ParseNominatimResponse(string json)
