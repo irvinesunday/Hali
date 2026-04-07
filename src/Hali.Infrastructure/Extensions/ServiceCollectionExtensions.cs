@@ -29,17 +29,32 @@ public static class ServiceCollectionExtensions
 {
 	public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
 	{
-		var authDataSource = HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Auth")!);
-		services.AddDbContext<AuthDbContext>(opts => opts.UseNpgsql(authDataSource));
+		// Build all NpgsqlDataSources up front and hand them to a singleton
+		// holder so the DI container owns + disposes the connection pools
+		// on host shutdown (each DbContext resolves its data source from DI).
+		var dataSources = new HaliDataSources(
+			auth: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Auth")!),
+			signals: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Signals")!, useNetTopologySuite: true),
+			clusters: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Clusters")!, useNetTopologySuite: true),
+			participation: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Participation")!),
+			advisories: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Advisories")!, useNetTopologySuite: true),
+			notifications: HaliNpgsqlDataSourceFactory.Build(
+				config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!));
+		services.AddSingleton(dataSources);
 
-		var signalsDataSource = HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Signals")!, useNetTopologySuite: true);
-		services.AddDbContext<SignalsDbContext>(opts => opts.UseNpgsql(signalsDataSource, npgsql => npgsql.UseNetTopologySuite()));
+		services.AddDbContext<AuthDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth));
 
-		var clustersDataSource = HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Clusters")!, useNetTopologySuite: true);
-		services.AddDbContext<ClustersDbContext>(opts => opts.UseNpgsql(clustersDataSource, npgsql => npgsql.UseNetTopologySuite()));
+		services.AddDbContext<SignalsDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Signals,
+				npgsql => npgsql.UseNetTopologySuite()));
 
-		var participationDataSource = HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Participation")!);
-		services.AddDbContext<ParticipationDbContext>(opts => opts.UseNpgsql(participationDataSource));
+		services.AddDbContext<ClustersDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Clusters,
+				npgsql => npgsql.UseNetTopologySuite()));
+
+		services.AddDbContext<ParticipationDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Participation));
 
 		string redisUrl = config["Redis:Url"] ?? "localhost:6379";
 		services.AddSingleton((Func<IServiceProvider, IConnectionMultiplexer>)((IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl)));
@@ -64,14 +79,14 @@ public static class ServiceCollectionExtensions
 		services.Configure<CivisOptions>(config.GetSection("Civis"));
 		services.AddScoped<IParticipationRepository, ParticipationRepository>();
 
-		var advisoriesDataSource = HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Advisories")!, useNetTopologySuite: true);
-		services.AddDbContext<AdvisoriesDbContext>(opts => opts.UseNpgsql(advisoriesDataSource, npgsql => npgsql.UseNetTopologySuite()));
+		services.AddDbContext<AdvisoriesDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Advisories,
+				npgsql => npgsql.UseNetTopologySuite()));
 		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
 
 		// Notifications
-		var notificationsDataSource = HaliNpgsqlDataSourceFactory.Build(
-			config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!);
-		services.AddDbContext<NotificationsDbContext>(opts => opts.UseNpgsql(notificationsDataSource));
+		services.AddDbContext<NotificationsDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Notifications));
 		services.AddScoped<INotificationRepository, NotificationRepository>();
 		services.AddScoped<IFollowRepository, FollowRepository>();
 		services.AddHttpClient<ExpoPushNotificationService>();

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Auth;
 using Hali.Application.Notifications;
 using Hali.Application.Signals;
 using Hali.Contracts.Notifications;
@@ -23,21 +24,27 @@ public class LocalitiesController : ControllerBase
     private readonly IGeocodingService _geocoding;
     private readonly ILocalityLookupRepository _localities;
     private readonly IDatabase _redis;
+    private readonly IRateLimiter _rateLimiter;
     private readonly ILogger<LocalitiesController> _logger;
 
     private static readonly TimeSpan SearchCacheTtl = TimeSpan.FromHours(1);
+    private const int MaxSearchQueryLength = 80;
+    private const int SearchRateLimitMaxRequests = 30;
+    private static readonly TimeSpan SearchRateLimitWindow = TimeSpan.FromMinutes(1);
 
     public LocalitiesController(
         IFollowService follows,
         IGeocodingService geocoding,
         ILocalityLookupRepository localities,
         IDatabase redis,
+        IRateLimiter rateLimiter,
         ILogger<LocalitiesController> logger)
     {
         _follows = follows;
         _geocoding = geocoding;
         _localities = localities;
         _redis = redis;
+        _rateLimiter = rateLimiter;
         _logger = logger;
     }
 
@@ -95,6 +102,19 @@ public class LocalitiesController : ControllerBase
             return BadRequest(new { error = "Query must be at least 2 characters.", code = "query_too_short" });
 
         var query = q.Trim();
+        if (query.Length > MaxSearchQueryLength)
+            return BadRequest(new { error = $"Query must be at most {MaxSearchQueryLength} characters.", code = "query_too_long" });
+
+        // Anonymous endpoint — rate limit per client IP to bound DoS surface
+        // (each call may trigger an upstream Nominatim request + PostGIS lookup).
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var rateKey = $"ratelimit:locality_search:{clientIp}";
+        var allowed = await _rateLimiter.IsAllowedAsync(rateKey, SearchRateLimitMaxRequests, SearchRateLimitWindow, ct);
+        if (!allowed)
+        {
+            return StatusCode(429, new { error = "Too many requests.", code = "rate_limited" });
+        }
+
         var cacheKey = $"locality_search:{query.ToLowerInvariant()}";
 
         var cached = await _redis.StringGetAsync(cacheKey);
@@ -147,7 +167,7 @@ public class LocalitiesController : ControllerBase
     {
         if (string.IsNullOrEmpty(raw)) return raw;
         // Nominatim display_name is a long comma-joined string. Keep the
-        // first 2–3 segments which give the area + city context.
+        // first 2 segments which give the area + city context.
         var parts = raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         return parts.Length <= 2 ? raw : string.Join(", ", parts.Take(2));
     }

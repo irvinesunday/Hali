@@ -4,7 +4,6 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using Hali.Application.Signals;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
@@ -74,31 +73,22 @@ public class NominatimGeocodingService : IGeocodingService
 		if (string.IsNullOrWhiteSpace(query))
 			return Array.Empty<GeocodingCandidate>();
 
-		var encoded = HttpUtility.UrlEncode(query.Trim());
+		var encoded = Uri.EscapeDataString(query.Trim());
 		var url = $"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&countrycodes=ke&limit=5";
 
 		using var req = new HttpRequestMessage(HttpMethod.Get, url);
 		req.Headers.Add("User-Agent", "Hali/1.0 (civic signal platform)");
 
-		HttpResponseMessage response;
 		try
 		{
-			response = await _http.SendAsync(req, ct);
-		}
-		catch (Exception ex)
-		{
-			_logger.LogWarning(ex, "Nominatim forward search failed for {Query}", query);
-			return Array.Empty<GeocodingCandidate>();
-		}
+			using var response = await _http.SendAsync(req, ct);
 
-		if (!response.IsSuccessStatusCode)
-		{
-			_logger.LogWarning("Nominatim forward search returned {Status} for {Query}", response.StatusCode, query);
-			return Array.Empty<GeocodingCandidate>();
-		}
+			if (!response.IsSuccessStatusCode)
+			{
+				_logger.LogWarning("Nominatim forward search returned {Status} for {Query}", response.StatusCode, query);
+				return Array.Empty<GeocodingCandidate>();
+			}
 
-		try
-		{
 			var json = await response.Content.ReadAsStringAsync(ct);
 			using var doc = JsonDocument.Parse(json);
 			if (doc.RootElement.ValueKind != JsonValueKind.Array)
@@ -119,7 +109,7 @@ public class NominatimGeocodingService : IGeocodingService
 		}
 		catch (Exception ex)
 		{
-			_logger.LogWarning(ex, "Failed to parse Nominatim search response");
+			_logger.LogWarning(ex, "Nominatim forward search failed or response could not be parsed for {Query}", query);
 			return Array.Empty<GeocodingCandidate>();
 		}
 	}
