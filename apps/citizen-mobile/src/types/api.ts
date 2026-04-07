@@ -111,6 +111,29 @@ export type ClusterState =
   | 'resolved'
   | 'recurring_context';
 
+export type ParticipationType =
+  | 'affected'
+  | 'observing'
+  | 'no_longer_affected'
+  | 'restoration_yes'
+  | 'restoration_no'
+  | 'restoration_unsure';
+
+/**
+ * Per-caller participation snapshot returned by GET /v1/clusters/{id}.
+ * Server is the source of truth for whether the two restricted CTAs may be
+ * shown — the UI MUST gate on these flags rather than on local state.
+ *
+ * Mirrors `Hali.Contracts.Clusters.MyParticipationDto` and is null for
+ * unauthenticated callers or callers with no participation row.
+ */
+export interface MyParticipation {
+  type: ParticipationType;
+  createdAt: string;
+  canAddContext: boolean;
+  canRespondToRestoration: boolean;
+}
+
 export interface ClusterResponse {
   id: string;
   state: ClusterState;
@@ -126,6 +149,7 @@ export interface ClusterResponse {
   possibleRestorationAt: string | null;
   resolvedAt: string | null;
   officialPosts: OfficialPostResponse[];
+  myParticipation: MyParticipation | null;
 }
 
 // ─── Home ─────────────────────────────────────────────────────────────────────

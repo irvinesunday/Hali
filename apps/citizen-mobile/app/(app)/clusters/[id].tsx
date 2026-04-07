@@ -157,13 +157,19 @@ export default function ClusterDetailScreen(): React.ReactElement {
       setContextSubmitted(true);
     } catch (err) {
       // Server-side window check is the source of truth — surface the
-      // specific error if we somehow submitted late.
+      // specific error if we somehow submitted late. The 422 envelope now
+      // uses code=policy_blocked with a specific reason string; we still
+      // accept the legacy direct codes for forward compatibility.
       if (err instanceof Error) {
         if (/context_edit_window_expired/.test(err.message)) {
           setContextError('The 2-minute context window has closed.');
         } else if (/context_requires_affected/.test(err.message)) {
           setContextError(
             "You need to mark yourself as affected before adding context.",
+          );
+        } else if (/policy_blocked/.test(err.message)) {
+          setContextError(
+            'You can no longer add context to this cluster.',
           );
         } else {
           setContextError(err.message);
@@ -191,9 +197,22 @@ export default function ClusterDetailScreen(): React.ReactElement {
   }
 
   const cluster = clusterQuery.data;
+
+  // Server is the source of truth for both restricted CTAs. The local
+  // `localParticipation` / `windowOpen` state is kept as a UX hint (for the
+  // brief gap between mutation success and refetch) but is NOT sufficient
+  // on its own — see PR #50 follow-up Task 3 + the matching server-side
+  // 422 policy_blocked check in ClustersController.
+  const myP = cluster.myParticipation;
   const isPossibleRestoration = cluster.state === 'possible_restoration';
+  // Restoration response CTA: only when the caller is currently affected.
+  // Without `myParticipation` (unauthenticated or never participated) the
+  // banner is hidden even if the cluster is in possible_restoration.
+  const canShowRestorationBanner =
+    isPossibleRestoration && myP?.type === 'affected';
+  // Add Further Context: server's canAddContext is authoritative.
   const showContextBlock =
-    localParticipation === 'affected' && windowOpen && !contextSubmitted;
+    myP?.canAddContext === true && !contextSubmitted;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -230,8 +249,10 @@ export default function ClusterDetailScreen(): React.ReactElement {
           observingCount={cluster.observingCount}
         />
 
-        {/* Restoration banner — only when state === possible_restoration */}
-        {isPossibleRestoration && (
+        {/* Restoration banner — gated by myParticipation.type === 'affected'.
+            Server enforces the same rule on POST and returns 422
+            policy_blocked / restoration_requires_affected_participation. */}
+        {canShowRestorationBanner && (
           <RestorationBanner
             onPress={() =>
               router.push(`/(modals)/restoration/${cluster.id}`)

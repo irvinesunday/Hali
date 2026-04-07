@@ -28,6 +28,14 @@ public class ParticipationRepository : IParticipationRepository
 			select p).FirstOrDefaultAsync(ct);
 	}
 
+	public Task<Hali.Domain.Entities.Participation.Participation?> GetMostRecentByAccountAsync(Guid clusterId, Guid accountId, CancellationToken ct)
+	{
+		return (from p in _db.Participations
+			where p.ClusterId == clusterId && p.AccountId == accountId
+			orderby p.CreatedAt descending
+			select p).FirstOrDefaultAsync(ct);
+	}
+
 	public async Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
 	{
 		List<Hali.Domain.Entities.Participation.Participation> existing = await _db.Participations.Where((Hali.Domain.Entities.Participation.Participation p) => p.ClusterId == clusterId && p.DeviceId == deviceId).ToListAsync(ct);

@@ -58,21 +58,30 @@ public class ParticipationService : IParticipationService
 
 	public async Task RecordRestorationResponseAsync(Guid clusterId, Guid deviceId, Guid? accountId, string response, CancellationToken ct)
 	{
-		if (1 == 0)
+		// Server-side gating: the caller must currently hold an `affected`
+		// participation on this cluster. The mobile app gates the CTA on
+		// myParticipation.canRespondToRestoration; this re-check enforces
+		// the rule at the trust boundary, not just the UI.
+		// Looked up by device first (matches how the controller resolves
+		// the caller); falls back to account_id if no device row exists.
+		var current = await _participationRepo.GetByDeviceAsync(clusterId, deviceId, ct);
+		if (current == null && accountId.HasValue)
 		{
+			current = await _participationRepo.GetMostRecentByAccountAsync(clusterId, accountId.Value, ct);
 		}
+		if (current == null || current.ParticipationType != ParticipationType.Affected)
+		{
+			throw new InvalidOperationException("RESTORATION_REQUIRES_AFFECTED");
+		}
+
 		ParticipationType participationType = response switch
 		{
-			"restored" => ParticipationType.RestorationYes, 
-			"still_affected" => ParticipationType.Affected, 
-			"not_sure" => ParticipationType.RestorationUnsure, 
-			_ => throw new InvalidOperationException("RESTORATION_INVALID_RESPONSE"), 
+			"restored" => ParticipationType.RestorationYes,
+			"still_affected" => ParticipationType.Affected,
+			"not_sure" => ParticipationType.RestorationUnsure,
+			_ => throw new InvalidOperationException("RESTORATION_INVALID_RESPONSE"),
 		};
-		if (1 == 0)
-		{
-		}
-		ParticipationType type = participationType;
-		await RecordParticipationAsync(clusterId, deviceId, accountId, type, null, ct);
+		await RecordParticipationAsync(clusterId, deviceId, accountId, participationType, null, ct);
 		await EvaluateRestorationAsync(clusterId, ct);
 	}
 

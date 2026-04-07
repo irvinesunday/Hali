@@ -24,6 +24,15 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 		return Task.FromResult(result);
 	}
 
+	public Task<Hali.Domain.Entities.Participation.Participation?> GetMostRecentByAccountAsync(Guid clusterId, Guid accountId, CancellationToken ct)
+	{
+		Hali.Domain.Entities.Participation.Participation result = (from x in _store
+			where x.ClusterId == clusterId && x.AccountId == accountId
+			orderby x.CreatedAt descending
+			select x).FirstOrDefault();
+		return Task.FromResult(result);
+	}
+
 	public Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
 	{
 		_store.RemoveAll((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && x.DeviceId == deviceId);

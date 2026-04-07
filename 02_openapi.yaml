@@ -372,8 +372,10 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '422':
           description: |
-            One of: device_not_found, context_requires_affected_participation,
-            context_edit_window_expired
+            One of:
+              - device_not_found
+              - policy_blocked (reason=context_requires_affected_participation)
+              - policy_blocked (reason=context_edit_window_expired)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -402,7 +404,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '422':
-          description: invalid_restoration_response or device_not_found
+          description: |
+            One of:
+              - invalid_restoration_response
+              - device_not_found
+              - policy_blocked (reason=restoration_requires_affected_participation)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -617,10 +623,14 @@ components:
       type: object
       description: |
         Standard error envelope. Most endpoints return `{ error }`; some 422
-        responses additionally include a stable `code` for programmatic handling.
+        responses additionally include a stable `code` for programmatic
+        handling. When `code` is `policy_blocked`, an optional `reason` field
+        carries the specific sub-reason (e.g.
+        `context_edit_window_expired`).
       properties:
         error: { type: string }
         code: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
 
     TokenResponse:
       type: object
@@ -739,6 +749,41 @@ components:
         officialPosts:
           type: array
           items: { $ref: '#/components/schemas/OfficialPostResponse' }
+        myParticipation:
+          oneOf:
+            - $ref: '#/components/schemas/MyParticipation'
+            - type: 'null'
+          description: |
+            Per-caller participation snapshot. Null for unauthenticated callers
+            or callers with no participation row on this cluster. Used by the
+            mobile UI to gate the "Add Further Context" and restoration-response
+            CTAs server-side. The same gating is also enforced at the trust
+            boundary in POST /v1/clusters/{id}/context and
+            POST /v1/clusters/{id}/restoration-response.
+    MyParticipation:
+      type: object
+      description: |
+        Mirrors `Hali.Contracts.Clusters.MyParticipationDto`. Server's verdict
+        on what the calling user may currently do on this cluster.
+      required: [type, createdAt, canAddContext, canRespondToRestoration]
+      properties:
+        type:
+          type: string
+          enum:
+            [affected, observing, no_longer_affected,
+             restoration_yes, restoration_no, restoration_unsure]
+        createdAt: { type: string, format: date-time }
+        canAddContext:
+          type: boolean
+          description: |
+            True iff type=affected AND now is within ContextEditWindowMinutes
+            (default 2) of createdAt. Mobile must gate "Add Further Context"
+            on this flag — local timing alone is not sufficient.
+        canRespondToRestoration:
+          type: boolean
+          description: |
+            True iff type=affected. Mobile must only show the restoration
+            response CTA when this is true.
     ParticipationRequest:
       type: object
       description: |
