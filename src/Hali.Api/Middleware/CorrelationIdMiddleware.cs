@@ -39,27 +39,26 @@ public class CorrelationIdMiddleware
             : rawHeader;
 
         var logSafeId = BuildLogSafeIdentifier(rawHeader);
-        var logSafeMethod = BuildLogSafeToken(context.Request.Method, 16);
-        var logSafePath = BuildLogSafePath(context.Request.Path.Value, 256);
 
         context.Items["CorrelationId"] = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
 
-        using (_logger.BeginScope("{correlationId} {method} {path}",
-            logSafeId,
-            logSafeMethod,
-            logSafePath))
+        // Method and path are deliberately omitted from the log message —
+        // they originate from the request line and CodeQL flags any taint
+        // flow from the request into a logger call as cs/log-forging.
+        // Status code and duration give us enough operational signal; the
+        // method/path can be recovered from the upstream proxy/access log
+        // if needed.
+        using (_logger.BeginScope("{correlationId}", logSafeId))
         {
             var start = DateTime.UtcNow;
             await _next(context);
             var durationMs = (DateTime.UtcNow - start).TotalMilliseconds;
 
             _logger.LogInformation(
-                "{eventName} correlationId={CorrelationId} method={Method} path={Path} statusCode={StatusCode} durationMs={DurationMs}",
+                "{eventName} correlationId={CorrelationId} statusCode={StatusCode} durationMs={DurationMs}",
                 "http.request",
                 logSafeId,
-                logSafeMethod,
-                logSafePath,
                 context.Response.StatusCode,
                 durationMs);
         }
@@ -89,40 +88,4 @@ public class CorrelationIdMiddleware
             : sanitized;
     }
 
-    /// <summary>
-    /// Build a short log-safe token (e.g. HTTP method) from an allowlist
-    /// of letters and digits only.
-    /// </summary>
-    private static string BuildLogSafeToken(string? raw, int maxLength)
-    {
-        if (string.IsNullOrEmpty(raw)) return "_";
-
-        var sanitized = new string(raw
-            .Where(c => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
-            .Take(maxLength)
-            .ToArray());
-
-        return string.IsNullOrEmpty(sanitized) ? "_" : sanitized;
-    }
-
-    /// <summary>
-    /// Build a log-safe URL path. Allows letters, digits, and a small set
-    /// of path-friendly punctuation, dropping CR/LF and other control
-    /// characters that could be used to forge log entries.
-    /// </summary>
-    private static string BuildLogSafePath(string? raw, int maxLength)
-    {
-        if (string.IsNullOrEmpty(raw)) return "_";
-
-        var sanitized = new string(raw
-            .Where(c => (c >= 'A' && c <= 'Z')
-                        || (c >= 'a' && c <= 'z')
-                        || (c >= '0' && c <= '9')
-                        || c == '/' || c == '-' || c == '_'
-                        || c == '.' || c == '~')
-            .Take(maxLength)
-            .ToArray());
-
-        return string.IsNullOrEmpty(sanitized) ? "_" : sanitized;
-    }
 }
