@@ -508,7 +508,7 @@ These instruction docs are mandatory reading at the listed trigger points:
 - Read `nlp_extraction_prompt.md` before modifying CSI-NLP extraction prompts, schemas, or the structured output contract.
 - Read `mobile_screen_inventory.md` before adding, removing, or restructuring screens in `apps/citizen-mobile`.
 
-(`docs/arch/COPILOT_RESOLUTION_SKILL.md` is wired separately in PR #70.)
+(`docs/arch/COPILOT_RESOLUTION_SKILL.md` is maintained separately.)
 
 ## Architecture Reference Docs
 
