@@ -20,10 +20,12 @@ export const Spacing = {
   '3xl': 32,
   /** 48dp */
   '4xl': 48,
+  /** 96dp */
+  '6xl': 96,
 } as const;
 
 /** Horizontal padding for all full-width screen content */
 export const ScreenPaddingH = Spacing.lg;
 
 /** Vertical padding at bottom of scrollable screens (above nav bar) */
-export const ScreenPaddingBottom = 96;
+export const ScreenPaddingBottom = Spacing['6xl'];

@@ -3,7 +3,10 @@
  *
  * Font: Geist (sans-serif) loaded via @expo-google-fonts/geist.
  * Scale derived from the web MVP's Tailwind classes.
- * All sizes in dp (density-independent pixels).
+ * FontSize values are in dp (density-independent pixels).
+ * LineHeightMultiplier values are ratios — multiply by FontSize to get an
+ * absolute dp value for React Native's TextStyle.lineHeight:
+ *   lineHeight: FontSize.body * LineHeightMultiplier.normal  // → 21
  */
 
 export const FontFamily = {
@@ -32,7 +35,8 @@ export const FontSize = {
   micro: 10,
 } as const;
 
-export const LineHeight = {
+/** Ratio multipliers — use as: lineHeight = FontSize.* * LineHeightMultiplier.* */
+export const LineHeightMultiplier = {
   tight: 1.2,
   snug: 1.35,
   normal: 1.5,

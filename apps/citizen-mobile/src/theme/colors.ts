@@ -38,8 +38,12 @@ export const Colors = {
 
   // ── Condition badge colours ────────────────────────────────────────────
   // Each entry: { bg, text, border }
-  // Used by ConditionBadge component — must map every condition slug
-  // that CSI-NLP can return. Add new slugs here as taxonomy expands.
+  // Keys are palette names (amber, orange, red, …), not condition slugs.
+  // Condition labels (free-text strings from CSI-NLP) are mapped to these
+  // palette keys by getConditionBadgePalette() below. When CSI-NLP returns
+  // a new condition label, add its matching clause in that function — do not
+  // add new palette keys here unless the condition genuinely requires a
+  // distinct colour family.
   conditionBadge: {
     // Power / water outages — amber
     amber: {
@@ -145,7 +149,7 @@ export function getConditionBadgePalette(
   ) return 'sky';
 
   if (
-    c.includes('noise') || c.includes('noisy') || c.includes('loud')
+    c.includes('noise') || c.includes('noisy') || /\bloud\b/.test(c)
   ) return 'violet';
 
   if (

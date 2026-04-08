@@ -4,11 +4,15 @@
  * Six animations ported from the web MVP's globals.css keyframes.
  * All use withTiming or withRepeat/withSequence from react-native-reanimated.
  *
- * Usage:
- *   const style = useAnimatedStyle(() => Animations.pulseSoft(opacity, scale));
+ * Usage — imperative helpers start or trigger animations on shared values:
+ *   startPulseSoft(opacity, scale);
+ *   triggerCountPop(scale);
  *
- * Each export is a hook-ready config object, not a pre-built hook.
- * Screens and components call useAnimatedStyle with these configs.
+ * Separate *Config exports can be used when building animated styles:
+ *   fadeUpConfig.opacity / fadeUpConfig.translateY
+ *
+ * This module exports imperative animation helpers (`start*` / `trigger*`)
+ * plus separate `*Config` objects. It does not export pre-built hooks.
  */
 
 import {
@@ -16,6 +20,7 @@ import {
   withRepeat,
   withSequence,
   Easing,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 /**
@@ -28,7 +33,7 @@ export const pulseSoftConfig = {
   easing: Easing.inOut(Easing.ease),
 };
 
-export function startPulseSoft(opacityValue: { value: number }, scaleValue: { value: number }) {
+export function startPulseSoft(opacityValue: SharedValue<number>, scaleValue: SharedValue<number>) {
   opacityValue.value = withRepeat(
     withSequence(
       withTiming(0.5, pulseSoftConfig),
@@ -52,7 +57,7 @@ export function startPulseSoft(opacityValue: { value: number }, scaleValue: { va
  * scale 1→1.15→1, 300ms.
  * Used by: animated count displays in ClusterDetail.
  */
-export function triggerCountPop(scaleValue: { value: number }) {
+export function triggerCountPop(scaleValue: SharedValue<number>) {
   scaleValue.value = withSequence(
     withTiming(1.15, { duration: 150, easing: Easing.out(Easing.ease) }),
     withTiming(1, { duration: 150, easing: Easing.in(Easing.ease) }),
@@ -80,8 +85,8 @@ export const fadeUpConfig = {
 };
 
 export function startFadeUp(
-  opacityValue: { value: number },
-  translateYValue: { value: number },
+  opacityValue: SharedValue<number>,
+  translateYValue: SharedValue<number>,
 ) {
   opacityValue.value = withTiming(1, {
     duration: fadeUpConfig.opacity.duration,
@@ -104,9 +109,9 @@ export const modalContentConfig = {
 };
 
 export function startModalContent(
-  opacityValue: { value: number },
-  translateYValue: { value: number },
-  scaleValue: { value: number },
+  opacityValue: SharedValue<number>,
+  translateYValue: SharedValue<number>,
+  scaleValue: SharedValue<number>,
 ) {
   opacityValue.value = withTiming(1, modalContentConfig);
   translateYValue.value = withTiming(0, modalContentConfig);
@@ -118,7 +123,7 @@ export function startModalContent(
  * scale 1→1.03→1, 3s infinite ease-in-out.
  * Used by: FAB component.
  */
-export function startBreathe(scaleValue: { value: number }) {
+export function startBreathe(scaleValue: SharedValue<number>) {
   scaleValue.value = withRepeat(
     withSequence(
       withTiming(1.03, {
@@ -146,8 +151,8 @@ export const slideInRightConfig = {
 };
 
 export function startSlideInRight(
-  opacityValue: { value: number },
-  translateXValue: { value: number },
+  opacityValue: SharedValue<number>,
+  translateXValue: SharedValue<number>,
 ) {
   opacityValue.value = withTiming(1, slideInRightConfig);
   translateXValue.value = withTiming(0, slideInRightConfig);

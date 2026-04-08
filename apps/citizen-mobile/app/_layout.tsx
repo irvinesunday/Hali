@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from '../src/context/AuthContext';
 import { LocalityProvider } from '../src/context/LocalityContext';
 import { ComposerProvider } from '../src/context/ComposerContext';
@@ -14,6 +15,8 @@ import {
   Geist_700Bold,
   useFonts,
 } from '@expo-google-fonts/geist';
+
+SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,8 +33,14 @@ export default function RootLayout() {
     Geist_700Bold,
   });
 
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
-    return null; // SplashScreen.preventAutoHideAsync() handles this
+    return null;
   }
 
   return (
