@@ -9,6 +9,15 @@ This checklist exists because Copilot and CI have repeatedly caught issues
 that should have been caught before the PR was opened. Every item below maps
 to a real past failure. Do not skip any item.
 
+### CI Failures
+- [ ] If CI fails on a push you made: fix the failure AND record a lesson in
+      LESSONS_LEARNED.md in the same commit that fixes the CI issue
+- [ ] CI failure lesson format: same template as Copilot lessons, with
+      "What Copilot flagged" replaced by "What CI reported"
+- [ ] Never push a second time to fix CI without first checking if the root
+      cause is already covered in LESSONS_LEARNED.md — if it is, note
+      "Existing lesson N reinforced" rather than creating a duplicate
+
 ### Formatting
 - [ ] C# files: run `dotnet format --verify-no-changes` — zero violations
 - [ ] TypeScript files: run `npx tsc --noEmit` — zero errors

@@ -564,3 +564,16 @@ In the same commit that fixes the issue:
 
 This is mandatory — not optional. The lesson must be recorded in the same
 commit as the fix so the fix and the lesson are permanently linked in history.
+
+### At the end of every session that included a git push
+
+Before declaring a session complete, check whether the pushed PR has any
+Copilot comments not yet recorded in `docs/arch/LESSONS_LEARNED.md`.
+
+Use the end-of-session check in `docs/arch/COPILOT_RESOLUTION_SKILL.md`
+(Situation B). If unrecorded lessons exist, append them and push the
+lesson commit to the PR branch before closing the session.
+
+This applies to ALL sessions — not just sessions explicitly about Copilot
+comments. A Phase B component PR, an integration test PR, a migration fix —
+all of them get the end-of-session check.

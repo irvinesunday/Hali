@@ -200,3 +200,95 @@ After all comments on a PR are processed, post a summary comment:
 
 All changes committed and pushed. Ready for re-review.
 ```
+
+---
+
+## Mandatory: Lesson Recording Step (runs at every PR close point)
+
+This step runs in TWO situations — not just when addressing Copilot comments:
+
+### Situation A: You just addressed Copilot comments on a PR
+After fixing code, replying to threads, and resolving conversations:
+
+1. Check if a lesson entry already exists for this PR:
+   ```bash
+   grep "## PR #<N>" docs/arch/LESSONS_LEARNED.md
+   ```
+
+2. If no entry exists, OR if this specific issue is not yet documented:
+   Append a new entry using the template in LESSONS_LEARNED.md.
+
+3. This append MUST happen in the same commit as the code fix.
+   Never commit the fix without the lesson. Never commit the lesson without the fix.
+
+### Situation B: You are finishing ANY session that pushed to a PR branch
+
+SKIP this check if Situation A already ran in this session.
+Situation A is considered to have run if the session prompt contained
+any of: "address Copilot", "fix Copilot", "resolve Copilot", or
+explicitly referenced COPILOT_RESOLUTION_SKILL.md as the primary task.
+In that case, all lessons were already captured — do not re-fetch.
+
+At the end of every session that included a `git push origin <branch>`,
+run the following before declaring the session complete:
+
+```bash
+# Get the PR number for the current branch
+BRANCH=$(git branch --show-current)
+PR_NUMBER=$(gh pr list \
+  --repo irvinesunday/Hali \
+  --head "$BRANCH" \
+  --state open \
+  --json number \
+  --jq '.[0].number' 2>/dev/null)
+
+if [ -n "$PR_NUMBER" ]; then
+  echo "Checking PR #$PR_NUMBER for unrecorded Copilot comments..."
+
+  # Fetch all Copilot inline comments
+  gh api repos/irvinesunday/Hali/pulls/${PR_NUMBER}/comments \
+    --jq '.[] | select(.user.login | test("copilot";"i")) |
+          "COMMENT: " + .path + " | " + (.body | split("\n")[0])' \
+    2>/dev/null
+
+  # Fetch all Copilot review bodies
+  gh api repos/irvinesunday/Hali/pulls/${PR_NUMBER}/reviews \
+    --jq '.[] | select(.user.login | test("copilot";"i")) |
+          select(.body != "") |
+          "REVIEW: " + (.body | split("\n")[0])' \
+    2>/dev/null
+fi
+```
+
+If this output shows Copilot comments that are NOT yet in LESSONS_LEARNED.md:
+  - Append the lessons NOW, before the session ends
+  - Commit them to the current branch with message:
+    `docs: record Copilot lessons from PR #N`
+  - Push to the PR branch
+
+If the PR has no Copilot comments, or all are already recorded: continue normally.
+
+### What a lesson entry must contain
+
+```markdown
+## PR #N — [PR title]
+
+### Lesson [sequential number]: [one-line description]
+**File:** `path/to/file` (or "PR-level" if not file-specific)
+**What Copilot flagged:** [direct quote or close paraphrase]
+**Root cause:** [why did Claude Code generate this — be specific]
+**Fix applied:** [what changed]
+**Rule in CODING_STANDARDS.md:** [existing rule name, or "New rule added: [text]"]
+```
+
+### What counts as a lesson worth recording
+
+RECORD:
+- Any Copilot inline review comment on a file
+- Any Copilot PR-level review body with a specific concern
+- Any CI failure caused by code Claude Code generated
+
+DO NOT RECORD:
+- Copilot comments that say "Looks good" or are purely positive
+- Dependabot PR activity
+- Comments on files Claude Code did not touch in this PR
