@@ -498,3 +498,10 @@ When any two documents conflict, this is the resolution order:
 5. 02_openapi.yaml for route names
 6. Everything else (older .docx files, earlier .md files) — reference only
 
+## Copilot Review Comments
+
+Before addressing any Copilot review comment on any PR, read
+`docs/arch/COPILOT_RESOLUTION_SKILL.md` in full. Every step in that
+file is mandatory. Follow the skill file's exact review, thread-
+reply, and resolution procedure, including its required checks and
+all affected fixes. Do not skip the reply or resolve steps.
