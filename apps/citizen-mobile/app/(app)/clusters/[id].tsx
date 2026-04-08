@@ -2,32 +2,16 @@
 //
 // Cluster detail screen.
 //
-// Loads GET /v1/clusters/{id} via the useCluster hook (which unwraps
-// the Result<T, ApiError> from src/api/clusters.ts).
-//
-// Participation rules implemented here:
-//
-//   - The cluster response does NOT tell the client whether the current
-//     user has already voted Affected/Observing. So participation state
-//     is session-scoped: the user only sees their own state if they
-//     tapped a button during this session.
-//
-//   - "Add Further Context" appears ONLY after the user taps "I'm Affected"
-//     and ONLY within the 2-minute backend window. We track the timestamp
-//     locally (the cluster response doesn't expose it either) and re-render
-//     once a second so the affordance disappears at exactly t+2:00.
-//     If the user manages to submit late we still gracefully handle the
-//     server-side 422 context_edit_window_expired.
-//
-//   - Restoration banner: shown only when state === 'possible_restoration'.
-//     The backend does NOT return restoration vote counts in the cluster
-//     response, so we cannot show "72% of affected people say resolved" —
-//     just a status banner with a CTA into the restoration modal.
-//
-//   - Official posts render alongside citizen content (always after the
-//     participation actions, never replacing the citizen view).
+// Participation rules (do not change):
+//   - Participation state is session-scoped (API does not echo it back).
+//   - "Add Further Context" only inside the 2-minute window, only after Affected.
+//   - Restoration banner only when state === 'possible_restoration' AND
+//     myParticipation.type === 'affected'.
+//   - Official posts render alongside citizen content, never replacing it.
+//   - "I'm Observing" is hidden for experiential categories (electricity, water).
+//   - Unauthenticated users are navigated to auth when they attempt to participate.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -39,28 +23,50 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ArrowLeft, ChevronRight } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
+
 import { useCluster, useParticipation, useAddContext } from '../../../src/hooks/useClusters';
+import { useAuth } from '../../../src/context/AuthContext';
 import { ClusterStateBadge } from '../../../src/components/clusters/ClusterStateBadge';
 import { ParticipationBar } from '../../../src/components/cluster/ParticipationBar';
 import { Loading } from '../../../src/components/common/Loading';
+import { Button } from '../../../src/components/common/Button';
+import {
+  CategoryIconCircle,
+  SectionHeader,
+  OfficialUpdateRow,
+  FeedbackButton,
+} from '../../../src/components/shared';
+
 import {
   formatRelativeTime,
   formatCategoryLabel,
+  getCategoryInstitutionName,
 } from '../../../src/utils/formatters';
 import {
   isContextWindowOpen,
   secondsRemaining,
 } from '../../../src/utils/contextWindow';
 import { CONTEXT_TEXT_MAX_LENGTH } from '../../../src/config/constants';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+  ScreenPaddingH,
+  ScreenPaddingBottom,
+} from '../../../src/theme';
 import type {
-  ClusterResponse,
   OfficialPostResponse,
   ParticipationType,
 } from '../../../src/types/api';
+
+// ─── Experiential categories — no "I'm Observing" option ─────────────────────
+const EXPERIENTIAL_CATEGORIES = new Set(['electricity', 'water']);
 
 type LocalParticipation = 'affected' | 'observing' | null;
 
@@ -75,16 +81,19 @@ async function getDeviceHash(): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, parts);
 }
 
+// ─── Screen ──────────────────────────────────────────────────────────────────
+
 export default function ClusterDetailScreen(): React.ReactElement {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { authState } = useAuth();
 
   const clusterId = id ?? '';
   const clusterQuery = useCluster(clusterId);
   const participationMutation = useParticipation(clusterId);
   const contextMutation = useAddContext(clusterId);
 
-  // ── Session-local participation state ─────────────────────────────────────
+  // ── Session-local participation state ────────────────────────────────────
   const [localParticipation, setLocalParticipation] =
     useState<LocalParticipation>(null);
   const [affectedAt, setAffectedAt] = useState<number | null>(null);
@@ -92,23 +101,28 @@ export default function ClusterDetailScreen(): React.ReactElement {
   const [contextText, setContextText] = useState('');
   const [contextSubmitted, setContextSubmitted] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [participationError, setParticipationError] = useState<string | null>(
-    null,
-  );
+  const [participationError, setParticipationError] = useState<string | null>(null);
 
-  // Tick the clock once per second while the context window is open so the
-  // "Add Further Context" affordance disappears exactly at the boundary.
+  // Clock tick for the context window countdown
   const windowOpen = isContextWindowOpen(affectedAt, now);
   useEffect(() => {
-    if (affectedAt === null) return;
-    if (!windowOpen) return;
+    if (affectedAt === null || !windowOpen) return;
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [affectedAt, windowOpen]);
 
+  // ── Auth gate ──────────────────────────────────────────────────────────────
+  const requireAuth = useCallback((): boolean => {
+    if (authState.status === 'authenticated') return true;
+    // Navigate to phone auth — Expo Router will return here on back.
+    router.push('/(auth)/phone');
+    return false;
+  }, [authState.status, router]);
+
   // ── Participation handler ─────────────────────────────────────────────────
   const handleParticipate = useCallback(
     async (type: ParticipationType): Promise<void> => {
+      if (!requireAuth()) return;
       setParticipationError(null);
       try {
         const deviceHash = await getDeviceHash();
@@ -116,12 +130,7 @@ export default function ClusterDetailScreen(): React.ReactElement {
           Crypto.CryptoDigestAlgorithm.SHA256,
           `${clusterId}:${type}:${Date.now()}`,
         );
-        await participationMutation.mutateAsync({
-          type,
-          deviceHash,
-          idempotencyKey,
-        });
-
+        await participationMutation.mutateAsync({ type, deviceHash, idempotencyKey });
         if (type === 'affected') {
           setLocalParticipation('affected');
           setAffectedAt(Date.now());
@@ -143,7 +152,7 @@ export default function ClusterDetailScreen(): React.ReactElement {
         );
       }
     },
-    [clusterId, participationMutation],
+    [clusterId, participationMutation, requireAuth],
   );
 
   // ── Context handler ───────────────────────────────────────────────────────
@@ -156,21 +165,13 @@ export default function ClusterDetailScreen(): React.ReactElement {
       await contextMutation.mutateAsync({ text: trimmed, deviceHash });
       setContextSubmitted(true);
     } catch (err) {
-      // Server-side window check is the source of truth — surface the
-      // specific error if we somehow submitted late. The 422 envelope now
-      // uses code=policy_blocked with a specific reason string; we still
-      // accept the legacy direct codes for forward compatibility.
       if (err instanceof Error) {
         if (/context_edit_window_expired/.test(err.message)) {
           setContextError('The 2-minute context window has closed.');
         } else if (/context_requires_affected/.test(err.message)) {
-          setContextError(
-            "You need to mark yourself as affected before adding context.",
-          );
+          setContextError('You need to mark yourself as affected before adding context.');
         } else if (/policy_blocked/.test(err.message)) {
-          setContextError(
-            'You can no longer add context to this cluster.',
-          );
+          setContextError('You can no longer add context to this cluster.');
         } else {
           setContextError(err.message);
         }
@@ -180,16 +181,14 @@ export default function ClusterDetailScreen(): React.ReactElement {
     }
   }, [contextText, contextMutation]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────
   if (clusterQuery.isLoading && !clusterQuery.data) {
     return <Loading />;
   }
   if (clusterQuery.isError || !clusterQuery.data) {
     return (
-      <ErrorState
-        message={
-          clusterQuery.error?.message ?? 'Could not load this cluster.'
-        }
+      <DetailErrorState
+        message={clusterQuery.error?.message ?? 'Could not load this cluster.'}
         onRetry={() => void clusterQuery.refetch()}
         onBack={() => router.back()}
       />
@@ -197,34 +196,25 @@ export default function ClusterDetailScreen(): React.ReactElement {
   }
 
   const cluster = clusterQuery.data;
-
-  // Server is the source of truth for both restricted CTAs. The local
-  // `localParticipation` / `windowOpen` state is kept as a UX hint (for the
-  // brief gap between mutation success and refetch) but is NOT sufficient
-  // on its own — see PR #50 follow-up Task 3 + the matching server-side
-  // 422 policy_blocked check in ClustersController.
   const myP = cluster.myParticipation;
+  const isExperiential = EXPERIENTIAL_CATEGORIES.has(cluster.category);
   const isPossibleRestoration = cluster.state === 'possible_restoration';
-  // Restoration response CTA: only when the caller is currently affected.
-  // Without `myParticipation` (unauthenticated or never participated) the
-  // banner is hidden even if the cluster is in possible_restoration.
-  const canShowRestorationBanner =
-    isPossibleRestoration && myP?.type === 'affected';
-  // Add Further Context: server's canAddContext is authoritative.
-  const showContextBlock =
-    myP?.canAddContext === true && !contextSubmitted;
+  const canShowRestorationBanner = isPossibleRestoration && myP?.type === 'affected';
+  const showContextBlock = myP?.canAddContext === true && !contextSubmitted;
+  const institutionName = getCategoryInstitutionName(cluster.category);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+
+      {/* ── Nav bar ──────────────────────────────────────────────── */}
       <View style={styles.navBar}>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={12}
-          accessible
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <ArrowLeft size={24} color={Colors.foreground} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.navTitle} numberOfLines={1}>
           {formatCategoryLabel(cluster.category)}
@@ -232,62 +222,92 @@ export default function ClusterDetailScreen(): React.ReactElement {
         <View style={styles.navSpacer} />
       </View>
 
-      <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>
-            {cluster.title ?? formatCategoryLabel(cluster.category)}
-          </Text>
-          <ClusterStateBadge state={cluster.state} />
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+
+        {/* ── Header block ─────────────────────────────────────── */}
+        <View style={styles.headerBlock}>
+          <CategoryIconCircle category={cluster.category} size="lg" />
+          <View style={styles.headerText}>
+            <Text style={styles.title}>
+              {cluster.title ?? formatCategoryLabel(cluster.category)}
+            </Text>
+            <View style={styles.badgeRow}>
+              <ClusterStateBadge state={cluster.state} />
+              {/* TODO: render ConditionBadge here once ClusterResponse exposes
+                  a dominantConditionSlug field (currently only subcategorySlug
+                  is available, which is not a condition label). */}
+            </View>
+          </View>
         </View>
 
+        {/* ── Summary ──────────────────────────────────────────── */}
         {cluster.summary !== null && cluster.summary !== '' && (
           <Text style={styles.summary}>{cluster.summary}</Text>
         )}
 
+        {/* ── Institution attribution ───────────────────────────── */}
+        <Text style={styles.institution}>
+          {institutionName} · {formatRelativeTime(cluster.updatedAt)}
+        </Text>
+
+        {/* ── Participation counts ──────────────────────────────── */}
         <ParticipationBar
           affectedCount={cluster.affectedCount}
           observingCount={cluster.observingCount}
         />
 
-        {/* Restoration banner — gated by myParticipation.type === 'affected'.
-            Server enforces the same rule on POST and returns 422
-            policy_blocked / restoration_requires_affected_participation. */}
+        {/* ── Restoration banner ────────────────────────────────── */}
         {canShowRestorationBanner && (
           <RestorationBanner
-            onPress={() =>
-              router.push(`/(modals)/restoration/${cluster.id}`)
-            }
+            onPress={() => router.push(`/(modals)/restoration/${cluster.id}`)}
           />
         )}
 
-        {/* Action buttons */}
-        <View style={styles.actions}>
-          <Text style={styles.actionsTitle}>How does this affect you?</Text>
+        {/* ── Participation actions ─────────────────────────────── */}
+        <View style={styles.actionsBlock}>
+          <Text style={styles.actionsLabel}>How does this affect you?</Text>
           <View style={styles.actionRow}>
-            <ActionButton
+            <Button
               label="I'm Affected"
-              isActive={localParticipation === 'affected'}
-              isDisabled={participationMutation.isPending}
+              variant={localParticipation === 'affected' ? 'primary' : 'secondary'}
+              size="sm"
+              loading={
+                participationMutation.isPending &&
+                participationMutation.variables?.type === 'affected'
+              }
+              disabled={participationMutation.isPending}
               onPress={() => void handleParticipate('affected')}
+              style={styles.actionBtn}
             />
-            <ActionButton
-              label="I'm Observing"
-              isActive={localParticipation === 'observing'}
-              isDisabled={participationMutation.isPending}
-              onPress={() => void handleParticipate('observing')}
-            />
+            {!isExperiential && (
+              <Button
+                label="I'm Observing"
+                variant={localParticipation === 'observing' ? 'primary' : 'secondary'}
+                size="sm"
+                loading={
+                  participationMutation.isPending &&
+                  participationMutation.variables?.type === 'observing'
+                }
+                disabled={participationMutation.isPending}
+                onPress={() => void handleParticipate('observing')}
+                style={styles.actionBtn}
+              />
+            )}
           </View>
 
           {localParticipation !== null && (
             <TouchableOpacity
               onPress={() => void handleParticipate('no_longer_affected')}
               disabled={participationMutation.isPending}
-              style={styles.ghostButton}
-              accessible
+              style={styles.ghostCta}
               accessibilityRole="button"
               accessibilityLabel="No longer affected"
             >
-              <Text style={styles.ghostButtonText}>No longer affected</Text>
+              <Text style={styles.ghostCtaText}>No longer affected</Text>
             </TouchableOpacity>
           )}
 
@@ -298,13 +318,11 @@ export default function ClusterDetailScreen(): React.ReactElement {
           )}
         </View>
 
-        {/* Add Further Context — only inside the 2-minute window */}
+        {/* ── Add Further Context ───────────────────────────────── */}
         {showContextBlock && (
           <ContextBlock
             text={contextText}
-            onChangeText={(t) =>
-              setContextText(t.slice(0, CONTEXT_TEXT_MAX_LENGTH))
-            }
+            onChangeText={(t) => setContextText(t.slice(0, CONTEXT_TEXT_MAX_LENGTH))}
             secondsLeft={secondsRemaining(affectedAt, now)}
             onSubmit={() => void handleSubmitContext()}
             isPending={contextMutation.isPending}
@@ -313,69 +331,35 @@ export default function ClusterDetailScreen(): React.ReactElement {
         )}
 
         {contextSubmitted && (
-          <Text style={styles.contextDone}>
-            Context submitted. Thank you.
-          </Text>
+          <Text style={styles.contextDone}>Context submitted. Thank you.</Text>
         )}
 
-        {/* Official posts — alongside, never replacing citizen content */}
+        {/* ── Official posts ────────────────────────────────────── */}
         {cluster.officialPosts.length > 0 && (
           <View style={styles.officialSection}>
-            <Text style={styles.sectionTitle}>Official response</Text>
-            {cluster.officialPosts.map((post) => (
-              <OfficialPostCard key={post.id} post={post} />
-            ))}
+            <SectionHeader label="Official Response" />
+            <View style={styles.officialList}>
+              {cluster.officialPosts.map((post) => (
+                <OfficialUpdateRow
+                  key={post.id}
+                  institutionName={getCategoryInstitutionName(post.category)}
+                  message={post.title}
+                />
+              ))}
+            </View>
           </View>
         )}
 
-        <Text style={styles.updated}>
-          Updated {formatRelativeTime(cluster.updatedAt)}
-        </Text>
       </ScrollView>
+
+      {/* ── Feedback button ───────────────────────────────────── */}
+      <FeedbackButton screen="detail" clusterId={clusterId} />
+
     </SafeAreaView>
   );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
-
-function ActionButton({
-  label,
-  isActive,
-  isDisabled,
-  onPress,
-}: {
-  label: string;
-  isActive: boolean;
-  isDisabled: boolean;
-  onPress: () => void;
-}): React.ReactElement {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.actionBtn,
-        isActive ? styles.actionBtnActive : styles.actionBtnInactive,
-        isDisabled && styles.actionBtnDisabled,
-      ]}
-      onPress={onPress}
-      disabled={isDisabled}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: isActive, disabled: isDisabled }}
-    >
-      <Text
-        style={[
-          styles.actionBtnText,
-          isActive
-            ? styles.actionBtnTextActive
-            : styles.actionBtnTextInactive,
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
 
 function RestorationBanner({
   onPress,
@@ -386,20 +370,17 @@ function RestorationBanner({
     <TouchableOpacity
       style={styles.restorationBanner}
       onPress={onPress}
-      accessible
       accessibilityRole="button"
       accessibilityLabel="Has this been resolved?"
       accessibilityHint="Open the restoration response prompt"
     >
       <View style={styles.restorationTextWrap}>
-        <Text style={styles.restorationTitle}>
-          Voting is open — has this been resolved?
-        </Text>
+        <Text style={styles.restorationTitle}>Voting is open — has this been resolved?</Text>
         <Text style={styles.restorationSub}>
           Let us know if service has been restored for you.
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#1E40AF" />
+      <ChevronRight size={18} color={Colors.emerald} strokeWidth={2} />
     </TouchableOpacity>
   );
 }
@@ -431,39 +412,29 @@ function ContextBlock({
         <Text style={styles.contextTimer}>{timeLabel} left</Text>
       </View>
       <Text style={styles.contextSub}>
-        Optional — describe what you&apos;re experiencing (max{' '}
-        {CONTEXT_TEXT_MAX_LENGTH} chars).
+        Optional — describe what you&apos;re experiencing (max {CONTEXT_TEXT_MAX_LENGTH} chars).
       </Text>
       <TextInput
         style={styles.contextInput}
         value={text}
         onChangeText={onChangeText}
         placeholder="e.g. Road completely blocked, cars diverting through side streets…"
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={Colors.faintForeground}
         multiline
         numberOfLines={3}
         textAlignVertical="top"
         editable={!isPending}
-        accessible
         accessibilityLabel="Further context text"
       />
       <Text style={styles.contextCounter}>
         {text.length}/{CONTEXT_TEXT_MAX_LENGTH}
       </Text>
-      <TouchableOpacity
-        style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
+      <Button
+        label="Submit context"
         onPress={onSubmit}
         disabled={!canSubmit}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel="Submit context"
-      >
-        {isPending ? (
-          <ActivityIndicator color="#FFFFFF" size="small" />
-        ) : (
-          <Text style={styles.submitBtnText}>Submit context</Text>
-        )}
-      </TouchableOpacity>
+        loading={isPending}
+      />
       {error !== null && (
         <Text style={styles.errorText} accessibilityRole="alert">
           {error}
@@ -473,23 +444,7 @@ function ContextBlock({
   );
 }
 
-function OfficialPostCard({
-  post,
-}: {
-  post: OfficialPostResponse;
-}): React.ReactElement {
-  return (
-    <View style={styles.officialCard}>
-      <Text style={styles.officialTitle}>{post.title}</Text>
-      <Text style={styles.officialBody}>{post.body}</Text>
-      <Text style={styles.officialTime}>
-        {formatRelativeTime(post.createdAt)}
-      </Text>
-    </View>
-  );
-}
-
-function ErrorState({
+function DetailErrorState({
   message,
   onRetry,
   onBack,
@@ -503,22 +458,13 @@ function ErrorState({
       <View style={styles.errorContainer}>
         <Text style={styles.errorTitle}>Couldn&apos;t load this cluster</Text>
         <Text style={styles.errorBody}>{message}</Text>
-        <TouchableOpacity
-          style={styles.primaryCta}
-          onPress={onRetry}
-          accessible
-          accessibilityRole="button"
-        >
-          <Text style={styles.primaryCtaText}>Try again</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.secondaryCta}
+        <Button label="Try again" onPress={onRetry} style={styles.errorCta} />
+        <Button
+          label="Go back"
+          variant="ghost"
           onPress={onBack}
-          accessible
-          accessibilityRole="button"
-        >
-          <Text style={styles.secondaryCtaText}>Go back</Text>
-        </TouchableOpacity>
+          style={styles.errorCta}
+        />
       </View>
     </SafeAreaView>
   );
@@ -527,157 +473,192 @@ function ErrorState({
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
+
+  // Nav bar
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: ScreenPaddingH,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.border,
   },
   navTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: Spacing.sm,
   },
   navSpacer: { width: 24 },
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
-  titleRow: {
+
+  // Content
+  content: {
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing.lg,
+    paddingBottom: ScreenPaddingBottom,
+    gap: Spacing.lg,
+  },
+
+  // Header block
+  headerBlock: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: Spacing.md,
   },
+  headerText: { flex: 1, gap: Spacing.sm },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    flex: 1,
+    fontSize: FontSize.title,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
   },
-  summary: { fontSize: 15, color: '#374151', lineHeight: 22 },
-  actions: { gap: 10 },
-  actionsTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  actionRow: { flexDirection: 'row', gap: 10 },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+
+  // Summary + meta
+  summary: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    lineHeight: FontSize.body * 1.5,
+  },
+  institution: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+  },
+
+  // Participation actions
+  actionsBlock: { gap: Spacing.md },
+  actionsLabel: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.mutedForeground,
+  },
+  actionRow: { flexDirection: 'row', gap: Spacing.md },
+  actionBtn: { flex: 1 },
+  ghostCta: { paddingVertical: Spacing.sm, alignItems: 'center' },
+  ghostCtaText: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.medium,
+    color: Colors.mutedForeground,
+  },
+  errorText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.destructive,
+  },
+
+  // Restoration banner
+  restorationBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-  },
-  actionBtnActive: {
-    backgroundColor: '#1a3a2f',
-    borderColor: '#1a3a2f',
-  },
-  actionBtnInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#1a3a2f',
-  },
-  actionBtnDisabled: { opacity: 0.6 },
-  actionBtnText: { fontSize: 15, fontWeight: '600' },
-  actionBtnTextActive: { color: '#FFFFFF' },
-  actionBtnTextInactive: { color: '#1a3a2f' },
-  ghostButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  ghostButtonText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  errorText: { fontSize: 14, color: '#DC2626' },
-  contextBlock: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
+    justifyContent: 'space-between',
+    backgroundColor: Colors.emeraldSubtle,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: '#BBF7D0',
+    borderColor: Colors.emerald + '40',
+  },
+  restorationTextWrap: { flex: 1 },
+  restorationTitle: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.emerald,
+  },
+  restorationSub: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.emerald,
+    marginTop: 2,
+    opacity: 0.8,
+  },
+
+  // Context block
+  contextBlock: {
+    backgroundColor: Colors.emeraldSubtle,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.emerald + '40',
   },
   contextHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  contextTitle: { fontSize: 16, fontWeight: '600', color: '#166534' },
-  contextTimer: { fontSize: 13, color: '#166534', fontVariant: ['tabular-nums'] },
-  contextSub: { fontSize: 13, color: '#166534' },
+  contextTitle: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.emerald,
+  },
+  contextTimer: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.emerald,
+    fontVariant: ['tabular-nums'],
+  },
+  contextSub: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.emerald,
+    opacity: 0.9,
+  },
   contextInput: {
     borderWidth: 1.5,
-    borderColor: '#86EFAC',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#FFFFFF',
+    borderColor: Colors.emerald + '60',
+    borderRadius: Radius.sm,
+    padding: Spacing.md,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.foreground,
+    backgroundColor: Colors.card,
     minHeight: 80,
   },
-  contextCounter: { fontSize: 12, color: '#6B7280', textAlign: 'right' },
+  contextCounter: {
+    fontSize: FontSize.micro,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+    textAlign: 'right',
+  },
   contextDone: {
-    fontSize: 14,
-    color: '#166534',
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.emerald,
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  submitBtn: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: { backgroundColor: '#9CA3AF' },
-  submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  restorationBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  restorationTextWrap: { flex: 1 },
-  restorationTitle: { fontSize: 15, fontWeight: '600', color: '#1E40AF' },
-  restorationSub: { fontSize: 13, color: '#1E3A8A', marginTop: 2 },
-  officialSection: { gap: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  officialCard: {
-    backgroundColor: '#FFFBEB',
-    borderRadius: 10,
-    padding: 14,
-    gap: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: '#F59E0B',
-  },
-  officialTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  officialBody: { fontSize: 14, color: '#374151', lineHeight: 20 },
-  officialTime: { fontSize: 12, color: '#9CA3AF' },
-  updated: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
+
+  // Official section
+  officialSection: { gap: Spacing.md },
+  officialList: { gap: Spacing.sm },
+
+  // Error state
   errorContainer: {
     flex: 1,
-    padding: 24,
-    gap: 12,
+    padding: ScreenPaddingH,
+    gap: Spacing.md,
     justifyContent: 'center',
   },
-  errorTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
-  errorBody: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
-  primaryCta: {
-    marginTop: 12,
-    backgroundColor: '#1a3a2f',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
+  errorTitle: {
+    fontSize: FontSize.title,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
   },
-  primaryCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  secondaryCta: { paddingVertical: 12, alignItems: 'center' },
-  secondaryCtaText: { fontSize: 14, color: '#6B7280' },
+  errorBody: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    lineHeight: FontSize.body * 1.5,
+  },
+  errorCta: { marginTop: Spacing.xs },
 });
