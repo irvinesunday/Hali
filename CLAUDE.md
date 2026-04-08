@@ -504,7 +504,7 @@ When any two documents conflict, this is the resolution order:
 
 These instruction docs are mandatory reading at the listed trigger points:
 
-- Read `mvp_locked_decisions.md` before changing any locked architectural, schema, or auth decision — this is the locked-decisions authority referenced by COPILOT_RESOLUTION_SKILL.
+- Read `mvp_locked_decisions.md` before changing any locked architectural, schema, or auth decision — this is the locked-decisions authority referenced by `docs/arch/COPILOT_RESOLUTION_SKILL.md`.
 - Read `nlp_extraction_prompt.md` before modifying CSI-NLP extraction prompts, schemas, or the structured output contract.
 - Read `mobile_screen_inventory.md` before adding, removing, or restructuring screens in `apps/citizen-mobile`.
 
