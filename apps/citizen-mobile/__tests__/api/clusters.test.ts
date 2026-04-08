@@ -56,6 +56,7 @@ function makeCluster(overrides: Partial<ClusterResponse> = {}): ClusterResponse 
     possibleRestorationAt: null,
     resolvedAt: null,
     officialPosts: [],
+    myParticipation: null,
     ...overrides,
   };
 }

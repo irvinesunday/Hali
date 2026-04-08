@@ -6,16 +6,25 @@ import {
   StyleSheet,
   type TouchableOpacityProps,
 } from 'react-native';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+} from '../../theme';
 
 interface ButtonProps extends TouchableOpacityProps {
   label: string;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive';
+  size?: 'md' | 'sm';
   loading?: boolean;
 }
 
 export function Button({
   label,
   variant = 'primary',
+  size = 'md',
   loading = false,
   disabled,
   style,
@@ -27,9 +36,11 @@ export function Button({
     <TouchableOpacity
       style={[
         styles.base,
+        size === 'sm' && styles.sm,
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
         variant === 'ghost' && styles.ghost,
+        variant === 'destructive' && styles.destructive,
         isDisabled && styles.disabled,
         style,
       ]}
@@ -39,16 +50,18 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' ? '#fff' : '#1a3a2f'}
+          color={variant === 'primary' ? Colors.primaryForeground : Colors.primary}
           size="small"
         />
       ) : (
         <Text
           style={[
             styles.label,
+            size === 'sm' && styles.labelSm,
             variant === 'primary' && styles.labelPrimary,
             variant === 'secondary' && styles.labelSecondary,
             variant === 'ghost' && styles.labelGhost,
+            variant === 'destructive' && styles.labelDestructive,
           ]}
         >
           {label}
@@ -60,32 +73,31 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
   },
-  primary: {
-    backgroundColor: '#1a3a2f',
+  sm: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    minHeight: 36,
   },
-  secondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#1a3a2f',
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-  },
-  disabled: {
-    opacity: 0.45,
-  },
+  primary:     { backgroundColor: Colors.primary },
+  secondary:   { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.primary },
+  ghost:       { backgroundColor: 'transparent' },
+  destructive: { backgroundColor: Colors.destructive },
+  disabled:    { opacity: 0.45 },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    letterSpacing: 0.1,
   },
-  labelPrimary: { color: '#fff' },
-  labelSecondary: { color: '#1a3a2f' },
-  labelGhost: { color: '#1a3a2f' },
+  labelSm:          { fontSize: FontSize.badge },
+  labelPrimary:     { color: Colors.primaryForeground },
+  labelSecondary:   { color: Colors.primary },
+  labelGhost:       { color: Colors.primary },
+  labelDestructive: { color: Colors.primaryForeground },
 });
