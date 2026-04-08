@@ -232,6 +232,383 @@ blocks, not indented prose.
 
 ---
 
+## PR #29 — docs(arch): institution dashboard canonical spec v1.1
+
+### Lesson 16: Spec referenced non-existent external documents
+**File:** `docs/arch/hali_institution_dashboard_canonical_spec.md`
+**What Copilot flagged:** The spec cited `Hali_05_Repository_Engineering_Conventions_Claude_Seed.docx` and `Hali_03_API_Contracts_Client_Interaction_Spec.docx` which do not exist in the repository. Reviewers/implementers have no way to access those references.
+**Root cause:** Spec was ported from an external authoring context (Word docs) without replacing external citations with in-repo authority links.
+**Fix applied:** Replaced doc references with pointers to in-repo authorities (`claude.md`, `mvp_locked_decisions.md`, `02_openapi.yaml`).
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "never reference an external or non-repo document; always link to an in-repo authority"
+
+---
+
+### Lesson 17: Spec introduced endpoints not declared in OpenAPI
+**File:** `docs/arch/hali_institution_dashboard_canonical_spec.md`
+**What Copilot flagged:** The spec's API dependency table listed `GET /v1/institutions/dashboard/summary` and `GET /v1/institutions/dashboard/clusters`, plus `POST /v1/institutions/updates`, none of which existed in `02_openapi.yaml`. Implementers would build against undeclared routes.
+**Root cause:** The spec was written as a design aspirational document without being reconciled against the existing OpenAPI contract. New routes were invented inline without marking them as "proposed".
+**Fix applied:** Flagged proposed endpoints explicitly in the spec as requiring an OpenAPI contract update before implementation.
+**Rule added:** Pre-Commit Checklist → OpenAPI spec consistency → "any endpoint named in a spec or arch doc that is not in 02_openapi.yaml must be marked 'proposed' with a note that it requires an OpenAPI + backend change"
+
+---
+
+### Lesson 18: Idempotency mechanism inconsistency between spec and implementation
+**File:** `docs/arch/hali_institution_dashboard_canonical_spec.md`
+**What Copilot flagged:** The institution spec required an `Idempotency-Key` request header, but the existing API contract uses `idempotencyKey` in the JSON body. The two mechanisms are incompatible; a client would implement the wrong one.
+**Root cause:** The spec author used header-based idempotency (common in some APIs) without checking the existing API contract's established pattern.
+**Fix applied:** Updated spec to use `idempotencyKey` in the request body, consistent with all other mutation endpoints.
+**Rule added:** Pre-Commit Checklist → Contracts and types → "idempotency key goes in the request body as `idempotencyKey` — never in an `Idempotency-Key` header"
+
+---
+
+### Lesson 19: Spec referenced a non-existent schema table (`institution_memberships`)
+**File:** `docs/arch/hali_institution_dashboard_canonical_spec.md`
+**What Copilot flagged:** The spec's auth scoping section described `institution_memberships` as controlling access, but no such table exists; institution scope is encoded directly in `accounts.institution_id`.
+**Root cause:** The spec described a planned multi-membership model without noting that it was not yet implemented and would require a schema migration.
+**Fix applied:** Updated auth scoping section to match the actual data model, with explicit "planned schema change" callout.
+**Rule added:** Pre-Commit Checklist → Migrations → "if a spec references a DB table/column that does not exist in the current schema, mark it explicitly as a planned schema change"
+
+---
+
+## PR #31 — docs(arch): add citizen mobile app canonical spec v1.1
+
+### Lesson 20: Spec version numbers hardcoded in example UI copy
+**File:** `docs/arch/hali_citizen_mvp_canonical_spec.md`
+**What Copilot flagged:** The Profile screen footer example showed "Hali v1.0" while the document itself was v1.1. Hardcoded version strings in example UI copy cause doc/product drift every time the version increments.
+**Root cause:** Wrote a concrete example string with a literal version number without considering that the doc version and app version evolve independently.
+**Fix applied:** Removed literal version numbers from UI copy examples; noted that the app version is rendered dynamically from build metadata.
+**Rule added:** When writing UI copy examples in spec documents, do not hardcode version numbers — use a placeholder like `[app_version]` instead.
+
+---
+
+### Lesson 21: Spec allowed states not tracked in the actual `SignalState` enum
+**File:** `docs/arch/hali_citizen_mvp_canonical_spec.md`
+**What Copilot flagged:** The spec listed only four cluster states (`unconfirmed | active | possible_restoration | resolved`), but the backend's `SignalState` enum also includes `expired` and `suppressed`. Clients built from the spec alone would not handle these states.
+**Root cause:** The spec was written from product documentation that predated the backend implementation, which added additional operational states.
+**Fix applied:** Added the full enum surface to the spec with notes on how `expired` and `suppressed` should be rendered in the citizen app UI.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "enum values in UI specs must match the full set of values in the backend enum, or explicitly document which subset is exposed"
+
+---
+
+## PR #32 — docs: consolidated architecture pack
+
+### Lesson 22: Participation index predicate used wrong column for deduplication
+**File:** `docs/arch/01_schema_reference.md`, `docs/arch/03_phase1_backend.md`, `Hali_Platform_Reconciliation_v1.md`, `docs/arch/00_session_patch_notes.md`
+**What Copilot flagged:** The partial unique index `ix_participations_device_cluster_type` was predicated on `WHERE idempotency_key IS NOT NULL`, but idempotency keys are optional — so the index does not prevent duplicate participations when `idempotency_key` is NULL. The correct predicate to enforce "one participation type per device per cluster" is `WHERE device_id IS NOT NULL`.
+**Root cause:** Index was designed to serve double-duty (both replay protection and deduplication). Using `idempotency_key` as the predicate only covers the idempotency case. The deduplication concern requires `device_id`.
+**Fix applied:** Updated the index predicate across all documentation to `WHERE device_id IS NOT NULL`. Noted that idempotency replay protection uses a separate index on `idempotency_key`.
+**Rule added:** When designing partial unique indexes for deduplication, the predicate must guard the uniqueness columns (`device_id`, `cluster_id`, `participation_type`) — not the idempotency field.
+
+---
+
+### Lesson 23: CIVIS pseudocode referenced undefined local variables
+**File:** `docs/arch/05_civis_engine.md`
+**What Copilot flagged:** In `ComputeTemporalDecay`, the variable `category` was used but not defined in scope. In `ComputeSds`, `config.GetEvaluationHorizonMinutes(category)` also referenced `category` which was not a parameter. The pseudocode was not implementable as written.
+**Root cause:** Pseudocode was drafted at a high level without verifying that every referenced identifier was in scope or passed as a parameter.
+**Fix applied:** Added `category` as an explicit parameter to both methods in the spec pseudocode; updated callers.
+**Rule added:** CIVIS pseudocode in `docs/arch/05_civis_engine.md` must compile logically — every referenced variable must be defined in scope or passed as a parameter.
+
+---
+
+### Lesson 24: Queue event name in worker pipeline did not match the queue key table
+**File:** `docs/arch/06_worker_pipelines.md`
+**What Copilot flagged:** The clustering step emitted `signal.nlp_enriched → queue:cluster-linking`, but neither the event type nor the queue name appeared in the document's own "Queue key mapping" table. This leaves routing ambiguous for implementers.
+**Root cause:** The step was written in isolation without cross-checking the queue key table defined earlier in the same document.
+**Fix applied:** Added `signal.nlp_enriched` event type and `queue:cluster-linking` queue to the mapping table.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "every queue name and event type referenced in a worker pipeline doc must appear in the queue key mapping table of the same document"
+
+---
+
+### Lesson 25: NLP confidence clamp ceiling inconsistent with confidence cap policy
+**File:** `docs/arch/09_nlp_integration.md`
+**What Copilot flagged:** `Math.Clamp(..., 0.0m, 1.0m)` clamped to 1.0, but a separate policy rule in the same doc stated CSI-NLP must never return confidence > 0.95. The two values were inconsistent — either the clamp ceiling or the policy cap needed to be updated.
+**Root cause:** The clamp was written as a default range without checking the domain-specific max confidence rule documented a few lines later.
+**Fix applied:** Updated clamp to `Math.Clamp(..., 0.0m, 0.95m)` to be consistent with the max confidence policy.
+**Rule added:** Pre-Commit Checklist → Contracts and types → "NLP confidence values must be clamped to [0.0, 0.95], not [0.0, 1.0]"
+
+---
+
+### Lesson 26: Enum value in API contract example did not match schema enum definition
+**File:** `docs/arch/09_nlp_integration.md`, `docs/arch/02_api_contracts.md`
+**What Copilot flagged:** Both the NLP output example and the API contract preview candidate used `locationPrecisionType: "road_landmark"`, but the schema enum for `location_precision_type` is `area|road|junction|landmark|facility|pin`. The example value was invalid.
+**Root cause:** The example value was written from memory of the intended types without checking the canonical enum in `01_schema_reference.md`.
+**Fix applied:** Updated both example values to `"landmark"`, which is a valid enum value.
+**Rule added:** Pre-Commit Checklist → OpenAPI spec consistency → "example/sample values in docs and API contracts must use only values from the canonical schema enum, not invented synonyms"
+
+---
+
+### Lesson 27: Duplicate instruction entrypoint — `claude.md` and `CLAUDE.md` coexisting
+**File:** `CONSOLIDATION_GUIDE.md`, `claude.md`, `CLAUDE.md`
+**What Copilot flagged:** The repo contained both `claude.md` (lowercase, legacy) and `CLAUDE.md` (uppercase, canonical). The consolidation guide instructed removing the old file on case-sensitive filesystems, but it remained. On Linux (the CI/CD host) these are two separate files, creating two instruction entrypoints with potentially conflicting content.
+**Root cause:** The consolidation script was not run or the deletion step was skipped. Both files accumulated separate changes over subsequent PRs.
+**Fix applied:** Removed `claude.md`; designated `CLAUDE.md` as the sole instruction entrypoint.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "there must be exactly one `CLAUDE.md` at the repo root; `claude.md` must not exist"
+
+---
+
+### Lesson 28: Coordinate formatting in NLP prompt not culture-invariant
+**File:** `docs/arch/09_nlp_integration.md`
+**What Copilot flagged:** Coordinate values were formatted with `UserLatitude?.ToString()`, which is culture-sensitive and may emit commas as decimal separators on locales using European number formats (e.g., `1,234` instead of `1.234`). This can break NLP prompt parsing.
+**Root cause:** Used the default `ToString()` overload for numeric types without specifying `CultureInfo.InvariantCulture`.
+**Fix applied:** Updated coordinate formatting to use `ToString("F6", CultureInfo.InvariantCulture)`.
+**Rule added:** C# conventions → "always use `CultureInfo.InvariantCulture` when converting numeric types to strings for external system consumption (API payloads, NLP prompts, log messages)"
+
+---
+
+## PR #34 — Chore/pr template claude md update
+
+### Lesson 29: CI job count hardcoded in a checklist
+**File:** `claude.md`
+**What Copilot flagged:** The PR checklist item "All 6 CI jobs are green" was outdated — the actual CI pipeline had grown to more than 6 jobs. The hardcoded count would cause contributors to miss failures in newer jobs.
+**Root cause:** Wrote the checklist with a concrete job count at a point in time without accounting for future pipeline additions.
+**Fix applied:** Changed to "All required CI jobs are green" — no hardcoded count.
+**Rule added:** Pre-Commit Checklist → never hardcode a count of CI jobs in checklists or documentation; use "all required" instead.
+
+---
+
+### Lesson 30: Branching strategy rule internally contradicted itself
+**File:** `claude.md`
+**What Copilot flagged:** The branching section stated that `main` is updated via a release PR from `develop`, then immediately said "never use `--base main`". This contradiction would cause implementers to break the release process.
+**Root cause:** An absolute rule ("never use `--base main`") was written without carving out the legitimate exception (release PRs).
+**Fix applied:** Qualified the rule: "never use `--base main` for feature/fix/chore PRs; only release PRs from `develop` may target `main`".
+**Rule added:** When writing absolute rules in documentation, always check whether the rule has legitimate exceptions and document them.
+
+---
+
+## PR #38 — Merge develop to main
+
+### Lesson 31: Backend runtime version stated as .NET 9 when codebase targets .NET 10
+**File:** `CLAUDE.md`, `.github/instructions/hali.instructions.md`
+**What Copilot flagged:** Multiple locations in `CLAUDE.md` described the backend as ".NET 9", but all project files target `net10.0` and CI uses `DOTNET_VERSION=10.0.x`. Contributors reading the docs would install the wrong SDK.
+**Root cause:** The docs were drafted before the final SDK version was confirmed, and were not updated when the target framework was changed to net10.0.
+**Fix applied:** Updated all ".NET 9" references to ".NET 10" in CLAUDE.md and the GitHub Copilot instructions file.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "verify that all .NET version references in docs match the `TargetFramework` in `*.csproj` files before committing"
+
+---
+
+### Lesson 32: GitHub Copilot instruction file contradicted arch doc on refresh token storage
+**File:** `.github/instructions/hali.instructions.md`
+**What Copilot flagged:** The Copilot instructions file said reviewers should not suggest storing refresh tokens in cookies, but `docs/arch/07_auth_implementation.md` explicitly requires httpOnly cookies for web surfaces. This would cause Copilot to incorrectly dismiss correct suggestions for Phase 2 web auth.
+**Root cause:** The Copilot instructions file was written for Phase 1 (mobile-only, no cookies) without adding a Phase 2 carve-out.
+**Fix applied:** Updated instructions to allow httpOnly cookies for web surfaces per the arch doc, while still prohibiting localStorage.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "Copilot/GitHub instruction files must not contradict `docs/arch/` files on security-critical topics"
+
+---
+
+### Lesson 33: Offline queue helper omitted idempotency key on the online fast path
+**File:** `docs/arch/04_phase1_mobile.md`
+**What Copilot flagged:** The `enqueueOrSubmit` helper only attached `idempotencyKey` to queued (offline) items during flush, but submitted the raw body without a key on the online path. Since the API contract requires `idempotencyKey` on all mutations, a timed-out request could not be safely retried.
+**Root cause:** The idempotency key was generated only at flush time, treating it as an offline-queue-only concern rather than a property of every mutation request.
+**Fix applied:** Updated the helper to generate `idempotencyKey` upfront and include it in both the online submit and the queued item so retries reuse the same key.
+**Rule added:** Pre-Commit Checklist → Contracts and types → "every mutation request must include `idempotencyKey` on both the online and offline code paths"
+
+---
+
+### Lesson 34: Signal composer character limit inconsistent between mobile spec and citizen MVP spec
+**File:** `docs/arch/04_phase1_mobile.md`
+**What Copilot flagged:** The mobile spec allowed 500 characters for the report composer input, but the citizen MVP spec (`hali_citizen_mvp_canonical_spec.md` §10.3) locked it to 150 characters. Both documents would drive different UI implementations.
+**Root cause:** Two spec documents were updated independently without cross-checking character limits.
+**Fix applied:** Aligned `04_phase1_mobile.md` to the locked 150-character limit.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "composer/input character limits must be consistent between `04_phase1_mobile.md` and `hali_citizen_mvp_canonical_spec.md`"
+
+---
+
+## PR #39 — chore: add self-healing CI skill and mandatory iteration rule
+
+### Lesson 35: SELF_HEALING_SKILL.md documented an unsupported `dotnet ef` flag
+**File:** `docs/arch/SELF_HEALING_SKILL.md`
+**What Copilot flagged:** The fix table instructed adding `--idempotent` to `dotnet ef database update`, but that flag is not supported by `database update` — it is a flag for `dotnet ef migrations script`. Following this guidance would produce a CLI error.
+**Root cause:** The `--idempotent` flag from `migrations script` was incorrectly applied to the `database update` command from memory without verifying CLI documentation.
+**Fix applied:** Corrected the fix table to use `dotnet ef migrations script --idempotent` for generating an idempotent SQL script, or describe the correct approach for repairing `__EFMigrationsHistory`.
+**Rule added:** Before documenting any CLI command in architecture or skill files, verify the command and all flags against official documentation or `--help` output.
+
+---
+
+### Lesson 36: CI step order example ran `dotnet ef` without `--no-build` after an explicit build step
+**File:** `docs/arch/SELF_HEALING_SKILL.md`
+**What Copilot flagged:** The "Step order for .NET CI jobs" example ran an explicit `dotnet build` and then `dotnet ef database update` without `--no-build`, triggering a second build. The text immediately below the example stated "Never use `--no-build` unless the build step ran in the same job earlier" — which contradicted the example, since the build *had* just run.
+**Root cause:** The example was written without checking whether it matched the accompanying rule. The rule and example described opposite behavior.
+**Fix applied:** Updated the example to add `--no-build` to the EF call when a prior build step is present in the same job.
+**Rule added:** C# conventions → "when a `dotnet build` step precedes a `dotnet ef` step in the same CI job, always pass `--no-build` to the EF command to avoid redundant builds"
+
+---
+
+### Lesson 37: Fix table hardcoded a branch name for merge conflict resolution
+**File:** `docs/arch/SELF_HEALING_SKILL.md`
+**What Copilot flagged:** The fix-table row for "Merge conflict" instructed `git merge origin/develop`, but PRs can target branches other than `develop` (e.g., release PRs target `main`). Merging from `develop` on a non-develop-targeting branch would introduce wrong history.
+**Root cause:** The instruction was written assuming all feature branches target `develop`, without acknowledging the release PR flow.
+**Fix applied:** Updated the fix table to reference "the PR's actual base branch" rather than hardcoding `origin/develop`.
+**Rule added:** When writing git remediation steps in documentation, always refer to the PR's base branch dynamically rather than hardcoding `develop` or `main`.
+
+---
+
+## PR #55 — fix(localities): display names in ward picker and home feed
+
+### Lesson 38: Using `System.Web.HttpUtility.UrlEncode` on .NET 10 target
+**File:** `src/Hali.Infrastructure/Signals/NominatimGeocodingService.cs`
+**What Copilot flagged:** The service used `System.Web.HttpUtility.UrlEncode`, which is not available on net10.0 without adding the `System.Web.HttpUtility` NuGet package. The build would fail.
+**Root cause:** `HttpUtility.UrlEncode` is a common URL-encoding utility from .NET Framework days. On modern .NET, it requires an explicit package reference that was not added.
+**Fix applied:** Replaced with `Uri.EscapeDataString(...)`, which is available on all .NET targets without additional packages.
+**Rule added:** Pre-Commit Checklist → C# conventions → "never use `System.Web.HttpUtility` — use `Uri.EscapeDataString` or `System.Net.WebUtility` for URL encoding on net10.0"
+
+---
+
+### Lesson 39: `HttpResponseMessage` not disposed after use
+**File:** `src/Hali.Infrastructure/Signals/NominatimGeocodingService.cs`
+**What Copilot flagged:** The `HttpResponseMessage` returned from `_http.SendAsync` was never disposed, which keeps the underlying connection/socket open longer than necessary and can cause resource exhaustion under load.
+**Root cause:** The response object was treated as a simple data holder rather than a disposable resource that wraps a network stream.
+**Fix applied:** Wrapped the response in `using var response = await _http.SendAsync(...)` to guarantee disposal after reading content.
+**Rule added:** Pre-Commit Checklist → C# conventions → "always wrap `HttpResponseMessage` in a `using` statement to ensure the response and its content stream are disposed"
+
+---
+
+### Lesson 40: GroupBy deduplication could silently discard a non-null `DisplayLabel`
+**File:** `src/Hali.Application/Notifications/FollowService.cs`
+**What Copilot flagged:** `GroupBy(...).Select(g => g.First())` for deduping follows could pick an entry with a null `DisplayLabel` over a later entry with a valid one, depending on input order. The result would be a follow row that silently lost its label.
+**Root cause:** `First()` was used for deduplication without considering that different duplicates may have different non-null field values.
+**Fix applied:** Changed to `g.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.DisplayLabel)) ?? g.First()` so the non-null label is preserved.
+**Rule added:** Pre-Commit Checklist → C# conventions → "when deduplicating with GroupBy, use a predicate that preserves the most data (non-null fields) rather than always picking `First()`"
+
+---
+
+### Lesson 41: Input length not validated before persisting to a length-constrained column
+**File:** `src/Hali.Api/Controllers/LocalitiesController.cs`
+**What Copilot flagged:** `dto.Items[i].DisplayLabel` was passed through to the DB without validating that it was within the column's `HasMaxLength(160)` constraint. Oversized input would cause a `DbUpdateException` (500 error) rather than a clean 400/422.
+**Root cause:** The DTO and controller were written without matching the `[MaxLength]` annotation to the EF Core fluent configuration. The API boundary did not enforce what the DB layer required.
+**Fix applied:** Added `[MaxLength(160)]` to `DisplayLabel` in the DTO so ASP.NET model validation rejects oversized values with 400 before they reach the DB.
+**Rule added:** Pre-Commit Checklist → Contracts and types → "every DTO field that maps to a `HasMaxLength(N)` EF column must have a matching `[MaxLength(N)]` DataAnnotation"
+
+---
+
+## PR #56 — fix(auth): register PostgreSQL custom enums with Npgsql
+
+### Lesson 42: NpgsqlDataSource not registered in DI — won't be disposed on shutdown
+**File:** `src/Hali.Infrastructure/Extensions/ServiceCollectionExtensions.cs`
+**What Copilot flagged:** `NpgsqlDataSource` instances were constructed inside `AddInfrastructure` and captured in lambdas, but not registered in the DI container. The host would never call `Dispose` on them, leaving the connection pool alive after shutdown.
+**Root cause:** The data source was wired into `UseNpgsql()` as a captured closure rather than a DI singleton, bypassing the container's lifetime management.
+**Fix applied:** Registered each `NpgsqlDataSource` as a singleton in the DI container so the `ServiceProvider` disposes it on shutdown.
+**Rule added:** Pre-Commit Checklist → C# conventions → "any `IDisposable`/`IAsyncDisposable` infrastructure object (NpgsqlDataSource, HttpClient, etc.) must be registered in the DI container to ensure proper disposal"
+
+---
+
+### Lesson 43: PR scope not reflected in PR description
+**File:** `02_openapi.yaml` (PR-level comment)
+**What Copilot flagged:** The PR description focused only on the Npgsql enum mapping fix, but the PR also introduced a new `/v1/localities/search` endpoint, changed the `followed` response shape, added `display_label` DB persistence, and added a new migration. Reviewers had no way to assess the full scope.
+**Root cause:** The PR was originally scoped as a small fix and grew during implementation without the description being updated.
+**Fix applied:** Updated the PR description to enumerate all changed areas (enum fix, new endpoint, response shape change, migration).
+**Rule added:** Pre-Commit Checklist → "update the PR description to enumerate all changed areas before requesting review — the description must match the actual diff scope"
+
+---
+
+## PR #57 — fix: resolve unresolved Copilot comments from PR #55
+
+### Lesson 44: Unit test covered null but not empty string / whitespace for same guard
+**File:** `tests/Hali.Tests.Unit/Notifications/FollowServiceTests.cs`
+**What Copilot flagged:** The new dedupe logic used `IsNullOrWhiteSpace` to check `DisplayLabel`, but the unit test only covered the null→non-null case. Empty string and whitespace inputs were not tested, so a regression restoring the old behaviour for those cases would go undetected.
+**Root cause:** Test was written to cover the failing case (null) that was reported, without extending to the other values the guard handles.
+**Fix applied:** Added test cases for `""` and `" "` (whitespace-only) DisplayLabel values to fully cover the `IsNullOrWhiteSpace` branch.
+**Rule added:** Pre-Commit Checklist → TEST → "when a guard uses `IsNullOrWhiteSpace`, the test suite must cover null, empty string, and whitespace inputs independently"
+
+---
+
+## PR #60 — fix(security): resolve 23 CodeQL findings (log injection, PII, workflow perms)
+
+### Lesson 45: Workflow permissions over-granted at the workflow level instead of job level
+**File:** `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`
+**What Copilot flagged:** Both workflows granted `packages: write`, `id-token: write`, `pull-requests: write`, and `checks: write` at the top-level `permissions:` block, applying them to all jobs. Most jobs did not need these elevated permissions. Least-privilege requires scoping permissions to the specific jobs that need them.
+**Root cause:** Permissions were set at the workflow level for convenience during initial CI setup, without reviewing which permissions each job actually required.
+**Fix applied:** Moved elevated permissions to job-level `permissions:` blocks, granting only what each job needs. Removed `id-token: write` from workflows with no OIDC usage.
+**Rule added:** Pre-Commit Checklist → Security → "GitHub Actions permissions must be set at the job level, not the workflow level; grant only the minimum permission required for each job"
+
+---
+
+### Lesson 46: `issues: write` required to post PR comments via `github.rest.issues.createComment`
+**File:** `.github/workflows/ci.yml`
+**What Copilot flagged:** The `coverage-gate` job used `github.rest.issues.createComment(...)` to post coverage reports on PRs. This endpoint uses the Issues API and requires `issues: write`, but the workflow only granted `pull-requests: write`. The comment would fail silently with 403.
+**Root cause:** The Issues API and Pull Requests API share comment endpoints in GitHub's REST API, which is counterintuitive. `pull-requests: write` was assumed sufficient for PR comment posting.
+**Fix applied:** Granted `issues: write` to the `coverage-gate` job and removed the incorrect `pull-requests: write` from that job.
+**Rule added:** Pre-Commit Checklist → Security → "posting PR comments via `github.rest.issues.createComment` requires `issues: write`, not `pull-requests: write`"
+
+---
+
+### Lesson 47: Correlation ID echoed in response header without validation — HTTP header injection risk
+**File:** `src/Hali.Api/Middleware/CorrelationIdMiddleware.cs`
+**What Copilot flagged:** The middleware took the raw `X-Correlation-Id` header value and echoed it directly into the response header and `HttpContext.Items`. If the header contained control characters (CR/LF), this could cause header injection, runtime exceptions when setting the response header, and log-forging via the items dictionary.
+**Root cause:** The middleware was written to propagate the client correlation ID for observability without sanitizing the untrusted header value first.
+**Fix applied:** Added a `SanitizeCorrelationId` method that allows only `[A-Za-z0-9\-_]{1,64}` and replaces any non-conforming value with a new server-generated GUID.
+**Rule added:** Pre-Commit Checklist → Security → "any client-supplied header value that is echoed in a response header or written to logs must be validated/sanitized against an allowlist before use"
+
+---
+
+### Lesson 48: Stale code comment described behavior that was removed in the same commit
+**File:** `src/Hali.Api/Middleware/CorrelationIdMiddleware.cs`
+**What Copilot flagged:** A comment in `CorrelationIdMiddleware` stated that "method and path are rebuilt from an allowlist before they touch the logger", but the implementation had been changed to omit method/path entirely. The comment described non-existent behavior.
+**Root cause:** The comment was written for an earlier version of the middleware and not updated when the implementation was simplified.
+**Fix applied:** Removed the stale comment describing method/path sanitization.
+**Rule added:** Pre-Commit Checklist → "remove or update comments that describe removed or changed behavior in the same commit as the code change"
+
+---
+
+## PR #61 — chore: add dotnet format lint workflow
+
+### Lesson 49: `dotnet format` tool not installed in CI workflow before use
+**File:** `.github/workflows/lint.yml`
+**What Copilot flagged:** The lint workflow ran `dotnet format --verify-no-changes` without first installing the `dotnet-format` global tool. GitHub-hosted runners do not include `dotnet-format` by default, so the job would fail with "No executable found matching command 'dotnet-format'".
+**Root cause:** The workflow was written assuming `dotnet format` is available as a built-in `dotnet` subcommand without checking whether GitHub runners ship with it.
+**Fix applied:** Added a tool installation step before the format check; alternatively, used a tool manifest to restore it.
+**Rule added:** Pre-Commit Checklist → "any CI workflow using a .NET global tool must include an explicit `dotnet tool install` or `dotnet tool restore` step before invoking the tool"
+
+---
+
+### Lesson 50: CI workflow hardcoded .NET SDK version instead of using a shared env variable
+**File:** `.github/workflows/lint.yml`
+**What Copilot flagged:** The lint workflow hardcoded `10.0.x` for the .NET SDK version instead of referencing the shared `env.DOTNET_VERSION` variable used by `ci.yml` and `deploy.yml`. A future SDK version bump would require updating this file separately.
+**Root cause:** The workflow was written without checking how other workflows in the repo managed the SDK version.
+**Fix applied:** Defined `env: DOTNET_VERSION: "10.0.x"` in the workflow and updated the `actions/setup-dotnet` step to reference `${{ env.DOTNET_VERSION }}`.
+**Rule added:** Pre-Commit Checklist → "all GitHub Actions workflows must reference the .NET SDK version via a shared env variable, not a hardcoded string"
+
+---
+
+## PR #71 — docs: use full path for COPILOT_RESOLUTION_SKILL.md reference in DOC_AUDIT_REPORT
+
+### Lesson 51: Shell script in Markdown used escaped quotes inside fenced code block
+**File:** `docs/arch/DOC_AUDIT_REPORT.md`
+**What Copilot flagged:** The bash snippet in the doc contained unnecessarily escaped quotes (`basename \"$f\"`, `grep -q \"$n\"`). Inside a Markdown fenced code block, the quotes should be literal, not escaped. The escaped form is harder to copy/paste and harder to read.
+**Root cause:** Shell command was escaped as if it were being embedded in a JSON string or HTML attribute, not in a Markdown code block.
+**Fix applied:** Removed the backslash escaping from all quote characters in the fenced code block.
+**Rule added:** In Markdown fenced code blocks, use literal (unescaped) shell syntax. Only escape characters required by shell quoting rules, not by Markdown formatting.
+
+---
+
+### Lesson 52: File references in documentation used inconsistent path depth
+**File:** `docs/arch/DOC_AUDIT_REPORT.md`, `CLAUDE.md`
+**What Copilot flagged:** Several references to `COPILOT_RESOLUTION_SKILL.md` used only the filename without the `docs/arch/` prefix, while other references in the same document used the full path. Inconsistency makes automated audits and `grep`-based checks unreliable.
+**Root cause:** Some references were added quickly with just the filename, while others used the full path. No rule enforced consistency.
+**Fix applied:** Standardised all references to use the full path `docs/arch/COPILOT_RESOLUTION_SKILL.md`.
+**Rule added:** Pre-Commit Checklist → Cross-document consistency → "file references in Markdown docs must always use the full repo-relative path, not just the filename"
+
+---
+
+### Lesson 53: Parenthetical note hardcoded a PR number that would become stale after merge
+**File:** `CLAUDE.md`
+**What Copilot flagged:** A note in CLAUDE.md said "(wired separately in PR #70)", which would become stale and confusing once that PR merged. PR number references in documentation become orphaned references with no value after the PR closes.
+**Root cause:** Added a contextual note during PR authoring without considering that the note was tied to a transient state (an in-flight PR).
+**Fix applied:** Removed the PR number reference and replaced with a timeless reference to the doc path.
+**Rule added:** Never include PR numbers as inline references in permanent documentation files. They are valid in commit messages and changelogs, but not in arch docs or CLAUDE.md.
+
+---
+
+## PR #72 — test(integration): BLOCKING-1 — integration test suite
+
+### Lesson 54: Duplicate `public partial class Program` declaration across two files
+**File:** `src/Hali.Api/Program.cs`
+**What Copilot flagged:** `public partial class Program {}` was added to `Program.cs` to expose the type for `WebApplicationFactory<Program>` in integration tests, but the same declaration already existed in `src/Hali.Api/ProgramEntry.cs`. Two partial class declarations in different files for test-only exposure is confusing and raises ambiguity about which file is the canonical test entry point.
+**Root cause:** The integration test scaffolding added the partial class declaration to `Program.cs` without checking for an existing declaration elsewhere in the project.
+**Fix applied:** Removed the duplicate declaration from `Program.cs` and consolidated test-exposure in `ProgramEntry.cs`.
+**Rule added:** Before adding `public partial class Program` to `Program.cs`, search the project for existing declarations of the same class to avoid duplicates.
+
+---
+
 ## Template for future entries
 
 Copy this block when adding a new lesson:
