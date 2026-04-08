@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Default to least-privilege for the GITHUB_TOKEN. Individual jobs that
+# write to the API (e.g. coverage-gate posting a PR comment) escalate
+# their own permissions explicitly.
+permissions:
+  contents: read
+
 env:
   DOTNET_VERSION: "10.0.x"
   POSTGRES_DB: hali_test
@@ -230,6 +236,14 @@ jobs:
     name: "Coverage Gate"
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-test]
+    # Needs `pull-requests: write` so the coverage report comment can be
+    # posted via github.rest.issues.createComment (PR comments live on the
+    # issues API but use the pull-requests scope). `issues: write` is also
+    # granted for belt-and-braces compatibility with the issues endpoint.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -277,7 +291,7 @@ jobs:
       - name: Post PR comment
         if: github.event_name == 'pull_request'
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
