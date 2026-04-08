@@ -10,6 +10,7 @@ using Hali.Application.Notifications;
 using Hali.Application.Signals;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
@@ -179,5 +180,24 @@ public class LocalitiesController : ControllerBase
     {
         var raw = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
         return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// GET /v1/localities/resolve-by-coordinates
+    /// Resolves GPS coordinates to the nearest ward.
+    /// Only called when the user explicitly opts in to GPS-based locality detection.
+    /// The default first-launch flow uses /v1/localities/search (manual area picker).
+    /// </summary>
+    [HttpGet("resolve-by-coordinates")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult ResolveByCoordinates(
+        [FromQuery] double latitude,
+        [FromQuery] double longitude)
+    {
+        // TODO: implement via ILocalityService.ResolveByCoordinatesAsync
+        // Stub returns 404 until implemented — honest contract.
+        return NotFound();
     }
 }

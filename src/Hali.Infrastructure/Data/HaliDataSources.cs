@@ -19,6 +19,7 @@ public sealed class HaliDataSources : IAsyncDisposable, IDisposable
     public NpgsqlDataSource Participation { get; }
     public NpgsqlDataSource Advisories { get; }
     public NpgsqlDataSource Notifications { get; }
+    public NpgsqlDataSource Feedback { get; }
 
     public HaliDataSources(
         NpgsqlDataSource auth,
@@ -26,7 +27,8 @@ public sealed class HaliDataSources : IAsyncDisposable, IDisposable
         NpgsqlDataSource clusters,
         NpgsqlDataSource participation,
         NpgsqlDataSource advisories,
-        NpgsqlDataSource notifications)
+        NpgsqlDataSource notifications,
+        NpgsqlDataSource feedback)
     {
         Auth = auth;
         Signals = signals;
@@ -34,6 +36,7 @@ public sealed class HaliDataSources : IAsyncDisposable, IDisposable
         Participation = participation;
         Advisories = advisories;
         Notifications = notifications;
+        Feedback = feedback;
     }
 
     public void Dispose()
@@ -44,6 +47,7 @@ public sealed class HaliDataSources : IAsyncDisposable, IDisposable
         Participation.Dispose();
         Advisories.Dispose();
         Notifications.Dispose();
+        Feedback.Dispose();
     }
 
     public async ValueTask DisposeAsync()
@@ -54,5 +58,6 @@ public sealed class HaliDataSources : IAsyncDisposable, IDisposable
         await Participation.DisposeAsync();
         await Advisories.DisposeAsync();
         await Notifications.DisposeAsync();
+        await Feedback.DisposeAsync();
     }
 }
