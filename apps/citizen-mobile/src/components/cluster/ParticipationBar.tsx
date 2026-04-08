@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Colors, FontFamily, FontSize, Spacing, Radius } from '../../theme';
 
 export interface ParticipationBarProps {
   affectedCount: number;
@@ -43,13 +44,22 @@ export function ParticipationBar({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    padding: 16,
-    gap: 16,
+    backgroundColor: Colors.muted,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    gap: Spacing.lg,
   },
-  stat: { flex: 1, alignItems: 'center' },
-  count: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  label: { fontSize: 13, color: '#6B7280', marginTop: 2 },
-  divider: { width: 1, backgroundColor: '#E5E7EB' },
+  stat:    { flex: 1, alignItems: 'center' },
+  count: {
+    fontSize: 22,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+  },
+  label: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+  },
+  divider: { width: 1, backgroundColor: Colors.border },
 });
