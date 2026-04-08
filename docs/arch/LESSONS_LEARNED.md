@@ -1,18 +1,22 @@
 # Hali — Lessons Learned from Copilot Reviews
-#
-# This file is append-only. Never delete entries.
-# After every PR that generates Copilot review comments:
-#   1. Fix the issue in code
-#   2. Add an entry here in the same commit that fixes it
-#   3. Add or update the corresponding rule in CODING_STANDARDS.md
-#
-# Format:
-#   ## PR #N — short description
-#   **File:** path/to/file.cs
-#   **What Copilot flagged:** exact description
-#   **Root cause:** why it happened
-#   **Fix applied:** what was changed
-#   **Rule added to CODING_STANDARDS.md:** which checklist item this maps to
+
+This file is append-only. Never delete entries.
+
+After every PR that generates Copilot review comments:
+1. Fix the issue in code
+2. Add an entry here in the same commit that fixes it
+3. Add or update the corresponding rule in CODING_STANDARDS.md
+
+Entry format:
+
+```
+## PR #N — short description
+**File:** path/to/file.cs
+**What Copilot flagged:** exact description
+**Root cause:** why it happened
+**Fix applied:** what was changed
+**Rule added:** which checklist item this maps to
+```
 
 ---
 
@@ -21,9 +25,9 @@
 ### Lesson 1: Tabs instead of 4-space indentation (CI failure)
 **File:** `src/Hali.Api/Controllers/FeedbackController.cs`
 **What Copilot flagged:** WHITESPACE errors on lines 17–24, CI exited with code 2
-**Root cause:** Claude Code generated the file with tab characters. The project
-enforces 4-space indentation via `.editorconfig`. `dotnet format` detected
-8 violations and blocked the CI pipeline.
+**Root cause:** Claude Code generated the file with tab characters instead of the
+4-space indentation expected by the repository's formatting checks. `dotnet format`
+detected 8 violations and blocked the CI pipeline.
 **Fix applied:** Rewrote the file with correct 4-space indentation throughout.
 **Rule added:** Pre-Commit Checklist → Formatting → "run dotnet format --verify-no-changes"
 
@@ -111,6 +115,123 @@ version conflict.
 
 ---
 
+## PR #75 — chore(docs): CODING_STANDARDS + LESSONS_LEARNED
+
+### Lesson 7: Formatting enforcement referenced non-existent .editorconfig
+**File:** `docs/arch/CODING_STANDARDS.md`, `docs/arch/LESSONS_LEARNED.md`
+**What Copilot flagged:** Both files implied 4-space indentation was enforced by
+an `.editorconfig`, but this file does not exist in the repo. The rule and the
+Lesson 1 root cause were therefore incorrect.
+**Root cause:** Assumed .editorconfig as the source of enforcement without verifying
+the repo contained one. The actual enforcement mechanism is `dotnet format` defaults.
+**Fix applied:** Removed `.editorconfig` references. Reworded checklist items to
+describe the actual enforcement. Updated Lesson 1 root cause accordingly.
+**Rule added:** Pre-Commit Checklist → Formatting → "C# files: use spaces, not tabs; 4-space indentation"
+
+---
+
+### Lesson 8: Misleading `var` rule targeting something that cannot exist
+**File:** `docs/arch/CODING_STANDARDS.md` line 23
+**What Copilot flagged:** The rule "no var for public API surface types" is
+unactionable because `var` cannot appear in public method signatures or
+properties — only in local variables. The rule was too broad and confusing.
+**Root cause:** Wrote the rule at a high level of abstraction without verifying
+what `var` can actually appear in.
+**Fix applied:** Scoped the rule to local variables in controller/contract-related
+code where the type is not obvious from the right-hand side.
+**Rule added:** Pre-Commit Checklist → Contracts and types → explicit local type rule
+
+---
+
+### Lesson 9: Hardcoded relative path `../../theme` in checklist
+**File:** `docs/arch/CODING_STANDARDS.md` lines 48–50
+**What Copilot flagged:** `../../theme` hardcodes a relative path depth that
+will be incorrect for components at different nesting levels.
+**Root cause:** Copied a concrete import path from a specific component without
+thinking about the rule's generality.
+**Fix applied:** Changed to reference the canonical `src/theme` barrel module,
+letting each file use its own appropriate relative import.
+**Rule added:** Pre-Commit Checklist → React Native → theme barrel import rule
+
+---
+
+### Lesson 10: Validation rule contradicted existing controller patterns
+**File:** `docs/arch/CODING_STANDARDS.md` line 82
+**What Copilot flagged:** "Validation via DataAnnotations only, not manual
+if-checks" contradicts existing controllers that use manual checks for query
+params and cross-field constraints.
+**Root cause:** Stated an aspirational standard as an absolute rule without
+accounting for the cases where DataAnnotations cannot express the constraint.
+**Fix applied:** Narrowed the rule to DTO/body validation. Explicitly permits
+manual checks for query parameters and derived/cross-field constraints.
+**Rule added:** C# conventions → Controller rules → clarified validation rule
+
+---
+
+### Lesson 11: Null check rule was technically incorrect for nullable reference types
+**File:** `docs/arch/CODING_STANDARDS.md` line 93
+**What Copilot flagged:** "Never use == null guards" contradicts C# language
+semantics and existing repo usage. `??` and `?.` serve different purposes
+than explicit null checks.
+**Root cause:** Over-prescriptive phrasing that conflated null-coalescing
+operators (??/?) with null equality checks (== null / is null).
+**Fix applied:** Rewrote as a positive preference: "prefer `is null`/`is not null`
+for explicit null checks in new code" without banning `== null`.
+**Rule added:** C# conventions → Nullable reference types → updated null check guideline
+
+---
+
+### Lesson 12: Hard rules stated as absolute when legacy codebase contradicts them
+**File:** `docs/arch/CODING_STANDARDS.md` lines 127, 48–50
+**What Copilot flagged:** Rules like "never hardcode hex colours" are absolute
+but the current mobile codebase contains many hardcoded values. As written, the
+checklist would always fail on any file that touches existing components.
+**Root cause:** Rules were written for greenfield code but applied as
+repository-wide absolutes without acknowledging existing legacy code.
+**Fix applied:** Scoped the rules to "new or modified code" with an explicit note
+that legacy values may be migrated incrementally.
+**Rule added:** What never to do → scoped hardcode rule
+
+---
+
+### Lesson 13: Empty heading elements from `#` comment-style lines in Markdown
+**File:** `docs/arch/LESSONS_LEARNED.md` lines 1–15
+**What Copilot flagged:** Standalone `#` lines (e.g. `# This file is append-only`)
+render as empty `<h1>` elements in Markdown, producing odd TOC entries and
+unexpected formatting.
+**Root cause:** Used shell/Python comment syntax (`#`) to write prose instructions
+in a Markdown file, not realising `#` is a heading marker in Markdown.
+**Fix applied:** Converted the header block to regular prose paragraphs and a
+fenced code block for the entry format template.
+**Rule added:** When writing instruction prose in Markdown files, use regular
+paragraphs — not `#`-prefixed lines.
+
+---
+
+### Lesson 14: Inconsistent field names across entries and template
+**File:** `docs/arch/LESSONS_LEARNED.md` line 15
+**What Copilot flagged:** The format block at the top used `Rule added to
+CODING_STANDARDS.md:` but existing lesson entries used the shorter `Rule added:`.
+Inconsistency makes future entries harder to search.
+**Root cause:** Wrote the template with a long descriptive field name but used a
+shorter one when writing the actual entries.
+**Fix applied:** Standardised all entries and the template to `**Rule added:**`.
+**Rule added:** LESSONS_LEARNED.md template field names must match existing entries.
+
+---
+
+### Lesson 15: Minimum command lists not rendering as code blocks in CLAUDE.md
+**File:** `CLAUDE.md` lines 547–553
+**What Copilot flagged:** The "Minimum commands" sections used 2-space indentation,
+which does not reliably render as a code block in all Markdown renderers.
+**Root cause:** Used prose indentation rather than a fenced code block for
+command sequences.
+**Fix applied:** Wrapped each command sequence in a fenced code block.
+**Rule added:** When listing shell commands in Markdown, always use fenced code
+blocks, not indented prose.
+
+---
+
 ## Template for future entries
 
 Copy this block when adding a new lesson:
@@ -122,4 +243,4 @@ Copy this block when adding a new lesson:
 **What Copilot flagged:** exact description of the comment
 **Root cause:** why did Claude Code generate this incorrectly?
 **Fix applied:** what changed in the code
-**Rule added to CODING_STANDARDS.md:** which checklist item covers this now
+**Rule added:** which checklist item covers this now

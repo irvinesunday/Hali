@@ -12,7 +12,7 @@ to a real past failure. Do not skip any item.
 ### Formatting
 - [ ] C# files: run `dotnet format --verify-no-changes` — zero violations
 - [ ] TypeScript files: run `npx tsc --noEmit` — zero errors
-- [ ] No tabs in C# files — project enforces 4-space indentation
+- [ ] C# files: use spaces, not tabs; 4-space indentation throughout
 - [ ] No trailing whitespace
 
 ### Contracts and types
@@ -20,7 +20,8 @@ to a real past failure. Do not skip any item.
       → always use a typed DTO from Hali.Contracts
 - [ ] Every controller action that accepts a body has a corresponding DTO in Hali.Contracts
 - [ ] Every DTO has DataAnnotations ([Required], [MaxLength], [RegularExpression]) matching the OpenAPI schema
-- [ ] No `var` for public API surface types — use explicit types
+- [ ] For local variables in controller/contract-related code, do not use `var` when the type
+      is not obvious from the right-hand side — use an explicit local type where clarity matters
 
 ### Response codes and contracts
 - [ ] Every [ProducesResponseType] attribute on a controller action has corresponding
@@ -45,9 +46,10 @@ to a real past failure. Do not skip any item.
 - [ ] Never document a step in CLAUDE.md that is not implemented in the skill file it references
 
 ### React Native / TypeScript (citizen-mobile)
-- [ ] No hardcoded hex colour values — always import from `../../theme`
-- [ ] No hardcoded font sizes, spacing numbers, or border radius values
-      → always import from `../../theme`
+- [ ] No hardcoded hex colour values in new or modified code — import from the canonical theme
+      module (the `src/theme` barrel; use the appropriate relative import for the file's location)
+- [ ] No hardcoded font sizes, spacing numbers, or border radius values in new or modified code
+      → import from the theme barrel (`src/theme`)
 - [ ] No duplicate type declarations in src/types/api.ts
 - [ ] No `Animated` (old API) for new animations — use `react-native-reanimated`
 - [ ] All new components export from their module's barrel index file
@@ -79,7 +81,8 @@ to a real past failure. Do not skip any item.
 
 ### Controller rules
 - Controllers are thin — no business logic
-- Validation happens via DataAnnotations + ModelState, not manual if-checks
+- Prefer DataAnnotations + ModelState for request DTO/body validation; manual checks are
+  acceptable for query parameters and derived/cross-field constraints
 - Return types: IActionResult for flexibility, not specific types
 - Always use StatusCodes constants: `StatusCodes.Status200OK` not `200`
 
@@ -90,7 +93,8 @@ to a real past failure. Do not skip any item.
 
 ### Nullable reference types
 - All new C# files have nullable enabled (#nullable enable or via csproj)
-- Null checks use `??` and `?.` — never `== null` guards for nullable reference types
+- Use `??` and `?.` where appropriate; prefer `is null` / `is not null` for explicit null
+  checks in new C# code (over `== null` / `!= null`)
 
 ---
 
@@ -124,7 +128,8 @@ to a real past failure. Do not skip any item.
 - Never use `object` as a controller action parameter type
 - Never advertise a response code ([ProducesResponseType]) without logic to produce it
 - Never add a route to the OpenAPI spec without a corresponding controller action
-- Never hardcode hex colours or spacing in React Native components
+- Never hardcode hex colours or spacing in new or modified React Native code
+  (existing legacy values may be migrated incrementally)
 - Never modify existing EF Core migration Up()/Down() content
 - Never commit .env files
 - Never push directly to `main`

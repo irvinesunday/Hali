@@ -545,12 +545,16 @@ Run the Pre-Commit Checklist in `docs/arch/CODING_STANDARDS.md`.
 Every item must be checked. Do not commit if any item fails.
 
 Minimum commands before committing C# changes:
-  dotnet format --verify-no-changes
-  dotnet build
-  dotnet test (if tests exist for the changed module)
+```
+dotnet format --verify-no-changes
+dotnet build
+dotnet test   # if tests exist for the changed module
+```
 
 Minimum commands before committing TypeScript changes:
-  npx tsc --noEmit
+```
+npx tsc --noEmit
+```
 
 ### After addressing a Copilot review comment
 In the same commit that fixes the issue:
