@@ -98,6 +98,65 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies \
   -X POST -f body="<reason for skipping>"
 ```
 
+### Step 8 — Resolve the conversation thread via GraphQL
+
+Posting a reply does not mark the thread resolved — GitHub's branch ruleset
+on `develop` requires `required_review_thread_resolution`, so unresolved
+threads block merge even after all replies are posted. Always run the
+GraphQL `resolveReviewThread` mutation after replying.
+
+Get all review thread IDs for the PR. Use GraphQL variables to avoid
+hardcoding the repository coordinates — replace `{owner}`, `{repo}`, and
+`{pr_number}` with real values before running:
+
+```bash
+gh api graphql \
+  -F owner='{owner}' \
+  -F repo='{repo}' \
+  -F pr={pr_number} \
+  -f query='
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes { databaseId }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}'
+```
+
+`databaseId` on each thread's first comment corresponds to the comment ID
+used in the Step 7 REST call (`pulls/{pr}/comments/{id}`). Match on this
+value to confirm you are resolving only the threads you replied to.
+
+If `pageInfo.hasNextPage` is `true`, re-run the query passing
+`after: "END_CURSOR"` to `reviewThreads` until all threads have been
+retrieved.
+
+For each unresolved thread you addressed, resolve it using its node ID:
+
+```bash
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "THREAD_NODE_ID"}) {
+    thread { isResolved }
+  }
+}'
+```
+
+Replace `THREAD_NODE_ID` with the node `id` from the query above.
+
+Confirm `isResolved: true` is returned for each thread before proceeding
+to merge.
+
 ---
 
 ## Handling "Outdated" comments

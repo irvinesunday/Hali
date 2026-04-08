@@ -500,6 +500,14 @@ When any two documents conflict, this is the resolution order:
 
 ---
 
+## Copilot Review Comments
+
+Before addressing any Copilot review comment on any PR, read
+`docs/arch/COPILOT_RESOLUTION_SKILL.md` in full. Every step in that
+file is mandatory. Follow the skill file's exact review, thread-
+reply, and resolution procedure, including its required checks and
+all affected fixes. Do not skip the reply or resolve steps.
+
 ## Reference Skills
 
 These instruction docs are mandatory reading at the listed trigger points:
@@ -507,8 +515,6 @@ These instruction docs are mandatory reading at the listed trigger points:
 - Read `mvp_locked_decisions.md` before changing any locked architectural, schema, or auth decision — this is the locked-decisions authority referenced by `docs/arch/COPILOT_RESOLUTION_SKILL.md`.
 - Read `nlp_extraction_prompt.md` before modifying CSI-NLP extraction prompts, schemas, or the structured output contract.
 - Read `mobile_screen_inventory.md` before adding, removing, or restructuring screens in `apps/citizen-mobile`.
-
-(`docs/arch/COPILOT_RESOLUTION_SKILL.md` is maintained separately.)
 
 ## Architecture Reference Docs
 
@@ -525,4 +531,3 @@ The following are canonical reference documents — read them when working in th
 - `schema_patch_notes.md` — historical schema patch notes (supplements `docs/arch/01_schema_reference.md`)
 - `HANDOVER.md` — operator guide for running Claude Code build sessions
 - `SECURITY.md` — vulnerability reporting policy
-
