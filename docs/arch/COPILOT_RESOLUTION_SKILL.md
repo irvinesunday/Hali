@@ -240,9 +240,9 @@ PR_NUMBER=$(gh pr list \
   --head "$BRANCH" \
   --state open \
   --json number \
-  --jq '.[0].number' 2>/dev/null)
+  --jq '.[0].number // empty' 2>/dev/null)
 
-if [ -n "$PR_NUMBER" ]; then
+if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
   echo "Checking PR #$PR_NUMBER for unrecorded Copilot comments..."
 
   # Fetch all Copilot inline comments
@@ -278,7 +278,7 @@ If the PR has no Copilot comments, or all are already recorded: continue normall
 **What Copilot flagged:** [direct quote or close paraphrase]
 **Root cause:** [why did Claude Code generate this — be specific]
 **Fix applied:** [what changed]
-**Rule in CODING_STANDARDS.md:** [existing rule name, or "New rule added: [text]"]
+**Rule added:** [text of new rule or existing rule name this reinforces]
 ```
 
 ### What counts as a lesson worth recording

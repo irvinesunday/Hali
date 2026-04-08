@@ -609,6 +609,31 @@ blocks, not indented prose.
 
 ---
 
+## PR #77 — chore(docs): wire lesson recording to every PR close point
+
+### Lesson 56: jq `// empty` guard needed when extracting PR number from gh pr list
+**File:** `docs/arch/COPILOT_RESOLUTION_SKILL.md`
+**What Copilot flagged:** `gh pr list ... --jq '.[0].number'` outputs the literal string `null` when no matching PR is found. Because `null` is non-empty, the subsequent `if [ -n "$PR_NUMBER" ]` guard passes and the script hits invalid API endpoints with `null` as the PR number.
+**Root cause:** Shell guard `[ -n "$VAR" ]` tests string non-emptiness, not JSON null. When jq produces `null` (a valid JSON output, not an empty string), the shell variable is set to the four-character string `"null"` and the guard incorrectly evaluates to true.
+**Fix applied:** Changed `--jq '.[0].number'` to `--jq '.[0].number // empty'` so jq emits nothing when the field is absent, and added `&& [ "$PR_NUMBER" != "null" ]` as a belt-and-suspenders guard against the literal string `"null"`.
+**Rule added:** When using `gh pr list ... --jq '.[0].field'` in shell scripts, always append `// empty` to the jq expression and guard the variable against the literal string `"null"` before use.
+
+### Lesson 57: Lesson template field names must match the canonical template in LESSONS_LEARNED.md
+**File:** `docs/arch/COPILOT_RESOLUTION_SKILL.md`
+**What Copilot flagged:** The lesson-entry template in the new Situation B section used `**Rule in CODING_STANDARDS.md:**` but the canonical template (LESSONS_LEARNED.md lines 12–19) uses `**Rule added:**`. Divergent field names break searchability and grep patterns that look for consistent headings.
+**Root cause:** The template was written ad hoc in the skill file without cross-checking the established template in LESSONS_LEARNED.md.
+**Fix applied:** Changed `**Rule in CODING_STANDARDS.md:** [existing rule name, or "New rule added: [text]"]` to `**Rule added:** [text of new rule or existing rule name this reinforces]` to match the canonical field name.
+**Rule added:** Any lesson-entry template written outside LESSONS_LEARNED.md must use identical field names to the canonical template — verify against the `## Template for future entries` block before publishing.
+
+### Lesson 58: File references in documentation must use full repo-relative paths
+**File:** `docs/arch/CODING_STANDARDS.md`
+**What Copilot flagged:** The new CI Failures checklist section referenced `LESSONS_LEARNED.md` without the repo-relative prefix, violating the rule already in CODING_STANDARDS.md: "File references in Markdown docs must use the full repo-relative path."
+**Root cause:** The rule exists as a checklist item but was not applied when writing the new section in the same file — Claude Code did not re-check the checklist against the new content before committing.
+**Fix applied:** Updated both bare `LESSONS_LEARNED.md` references to `docs/arch/LESSONS_LEARNED.md`.
+**Rule added:** Existing rule reinforced: "File references in Markdown docs must use the full repo-relative path, not just the filename."
+
+---
+
 ## Template for future entries
 
 Copy this block when adding a new lesson:
