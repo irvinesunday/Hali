@@ -50,13 +50,16 @@ public class NominatimGeocodingService : IGeocodingService
 		}
 		catch (Exception ex)
 		{
-			Exception ex2 = ex;
-			_logger.LogWarning(ex2, "Nominatim request failed for {Lat},{Lng}", latitude, longitude);
+			// Do not include caller-supplied coordinates in the log message —
+			// they are user PII (CodeQL cs/exposure-of-private-information).
+			// The exception itself is logged for diagnostics; coordinates are
+			// redacted.
+			_logger.LogWarning(ex, "Nominatim reverse geocode request failed (coordinates redacted)");
 			return null;
 		}
 		if (!response.IsSuccessStatusCode)
 		{
-			_logger.LogWarning("Nominatim returned {Status} for {Lat},{Lng}", response.StatusCode, latitude, longitude);
+			_logger.LogWarning("Nominatim reverse geocode returned {Status} (coordinates redacted)", response.StatusCode);
 			return null;
 		}
 		GeocodingResult result = ParseNominatimResponse(await response.Content.ReadAsStringAsync(ct));
@@ -85,7 +88,9 @@ public class NominatimGeocodingService : IGeocodingService
 
 			if (!response.IsSuccessStatusCode)
 			{
-				_logger.LogWarning("Nominatim forward search returned {Status} for {Query}", response.StatusCode, query);
+				// Do not log the user-supplied query — it is private input
+				// (CodeQL cs/exposure-of-private-information).
+				_logger.LogWarning("Nominatim forward search returned {Status} (query redacted)", response.StatusCode);
 				return Array.Empty<GeocodingCandidate>();
 			}
 
@@ -109,7 +114,7 @@ public class NominatimGeocodingService : IGeocodingService
 		}
 		catch (Exception ex)
 		{
-			_logger.LogWarning(ex, "Nominatim forward search failed or response could not be parsed for {Query}", query);
+			_logger.LogWarning(ex, "Nominatim forward search failed or response could not be parsed (query redacted)");
 			return Array.Empty<GeocodingCandidate>();
 		}
 	}

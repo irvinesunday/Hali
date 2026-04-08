@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Api.Logging;
 using Hali.Application.Auth;
 using Hali.Application.Notifications;
 using Hali.Application.Signals;
@@ -87,9 +88,11 @@ public class LocalitiesController : ControllerBase
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
         var count = dto.Items.Count > 0 ? dto.Items.Count : dto.LocalityIds.Count;
+        // Log a non-reversible hash of the account id rather than the raw
+        // GUID (CodeQL cs/cleartext-storage-of-sensitive-information).
         _logger.LogInformation(
-            "{eventName} correlationId={CorrelationId} accountId={AccountId} count={Count}",
-            "locality.follows_updated", correlationId, accountId, count);
+            "{eventName} correlationId={CorrelationId} accountHash={AccountHash} count={Count}",
+            "locality.follows_updated", correlationId, AccountLogIdentifier.Hash(accountId), count);
 
         return NoContent();
     }
