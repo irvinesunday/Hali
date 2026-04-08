@@ -145,3 +145,7 @@ app.MapGet("/health", async (Microsoft.Extensions.Diagnostics.HealthChecks.Healt
 });
 
 app.Run();
+
+// Expose Program as a public partial class so that WebApplicationFactory<Program>
+// in the integration test project can reference it without InternalsVisibleTo.
+public partial class Program { }
