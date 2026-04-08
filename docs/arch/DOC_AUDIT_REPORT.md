@@ -23,7 +23,7 @@ root, classified by whether `CLAUDE.md` references its filename.
 
 ### ACTIVE_SKILL — added under "Reference Skills"
 
-- `mvp_locked_decisions.md` — locked-decisions authority referenced by `COPILOT_RESOLUTION_SKILL.md`. Must be consulted before changing any locked decision.
+- `mvp_locked_decisions.md` — locked-decisions authority referenced by `docs/arch/COPILOT_RESOLUTION_SKILL.md`. Must be consulted before changing any locked decision.
 - `nlp_extraction_prompt.md` — defines the bounded structured-extraction contract for CSI-NLP. Must be read before touching extraction prompts/schemas.
 - `mobile_screen_inventory.md` — locks the Phase 1 mobile screen set. Must be read before adding/removing/restructuring citizen-mobile screens.
 
