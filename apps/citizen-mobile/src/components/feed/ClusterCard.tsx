@@ -8,10 +8,8 @@ import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ClusterStateBadge } from '../clusters/ClusterStateBadge';
-import {
-  formatRelativeTime,
-  formatCategoryLabel,
-} from '../../utils/formatters';
+import { formatRelativeTime, formatCategoryLabel } from '../../utils/formatters';
+import { Colors, FontFamily, FontSize, Spacing, Radius, Shadows } from '../../theme';
 import type { ClusterResponse } from '../../types/api';
 
 export interface ClusterCardProps {
@@ -21,30 +19,24 @@ export interface ClusterCardProps {
 export function ClusterCard({ cluster }: ClusterCardProps): React.ReactElement {
   const router = useRouter();
 
-  const onPress = (): void => {
-    router.push(`/(app)/clusters/${cluster.id}`);
-  };
-
   return (
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.8}
-      onPress={onPress}
+      onPress={() => router.push(`/(app)/clusters/${cluster.id}`)}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={
-        cluster.title ?? formatCategoryLabel(cluster.category)
-      }
+      accessibilityLabel={cluster.title ?? formatCategoryLabel(cluster.category)}
       accessibilityHint="Open cluster details"
     >
       <View style={styles.header}>
-        <Text style={styles.category} numberOfLines={1}>
+        <Text style={styles.title} numberOfLines={2}>
           {cluster.title ?? formatCategoryLabel(cluster.category)}
         </Text>
         <ClusterStateBadge state={cluster.state} />
       </View>
 
-      {cluster.summary !== null && cluster.summary !== '' ? (
+      {cluster.summary ? (
         <Text style={styles.summary} numberOfLines={2}>
           {cluster.summary}
         </Text>
@@ -54,9 +46,7 @@ export function ClusterCard({ cluster }: ClusterCardProps): React.ReactElement {
         <Text style={styles.meta}>
           {cluster.affectedCount} affected · {cluster.observingCount} observing
         </Text>
-        <Text style={styles.time}>
-          {formatRelativeTime(cluster.updatedAt)}
-        </Text>
+        <Text style={styles.time}>{formatRelativeTime(cluster.updatedAt)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -64,38 +54,45 @@ export function ClusterCard({ cluster }: ClusterCardProps): React.ReactElement {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.card,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: Spacing.sm,
   },
-  category: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
+  title: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
     flex: 1,
   },
   summary: {
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    lineHeight: FontSize.body * 1.5,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  meta: { fontSize: 13, color: '#6B7280' },
-  time: { fontSize: 12, color: '#9CA3AF' },
+  meta: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+  },
+  time: {
+    fontSize: FontSize.micro,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+  },
 });

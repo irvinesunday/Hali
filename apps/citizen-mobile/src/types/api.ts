@@ -130,14 +130,6 @@ export type ClusterState =
   | 'resolved'
   | 'recurring_context';
 
-export type ParticipationType =
-  | 'affected'
-  | 'observing'
-  | 'no_longer_affected'
-  | 'restoration_yes'
-  | 'restoration_no'
-  | 'restoration_unsure';
-
 /**
  * Per-caller participation snapshot returned by GET /v1/clusters/{id}.
  * Server is the source of truth for whether the two restricted CTAs may be
