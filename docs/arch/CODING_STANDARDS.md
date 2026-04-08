@@ -31,12 +31,21 @@ to a real past failure. Do not skip any item.
 - [ ] Every route declared in the OpenAPI spec has a corresponding controller action
 - [ ] Every controller action has a route declared in the OpenAPI spec
       → these two must stay in sync — the spec is the authority
+- [ ] Every DTO field that maps to a `HasMaxLength(N)` EF Core column has a matching
+      `[MaxLength(N)]` DataAnnotation so the API boundary enforces length before the DB does
+- [ ] Idempotency key is in the request body as `idempotencyKey` — never in an
+      `Idempotency-Key` header; applies to both online and offline code paths
 
 ### OpenAPI spec consistency
 - [ ] After any spec change: verify the changed endpoint has a matching controller action
 - [ ] After adding a controller action: verify a matching spec entry exists
 - [ ] Enum values in spec match enum values in C# (case-sensitive)
 - [ ] Required fields in spec match [Required] attributes in DTOs
+- [ ] Example/sample values in docs and API contracts use only valid schema enum values
+      (not invented synonyms — check `docs/arch/01_schema_reference.md` for the canonical set)
+- [ ] Any endpoint named in a spec or arch doc that is not in `02_openapi.yaml` must be
+      marked "proposed" with a note that it requires an OpenAPI + backend change
+- [ ] NLP confidence values are clamped to [0.0, 0.95], not [0.0, 1.0]
 
 ### Cross-document consistency
 - [ ] If a procedure is described in two places (e.g. CLAUDE.md and a skill file),
@@ -44,6 +53,19 @@ to a real past failure. Do not skip any item.
       → if CLAUDE.md summarises a procedure, it must defer to the skill file
          not partially re-document it with different wording
 - [ ] Never document a step in CLAUDE.md that is not implemented in the skill file it references
+- [ ] Never reference an external or non-repo document; always link to an in-repo authority
+- [ ] File references in Markdown docs must use the full repo-relative path, not just the filename
+- [ ] There must be exactly one `CLAUDE.md` at the repo root; `claude.md` must not exist
+- [ ] All .NET version references in docs must match the `TargetFramework` in `*.csproj` files
+- [ ] Copilot/GitHub instruction files must not contradict `docs/arch/` files on security-critical topics
+- [ ] Composer/input character limits must be consistent across all spec docs
+      (check `04_phase1_mobile.md` against `hali_citizen_mvp_canonical_spec.md`)
+- [ ] Enum values in UI specs must match the full set of values in the backend enum,
+      or explicitly document which subset is exposed and how to handle the others
+- [ ] Never include PR numbers as inline references in permanent documentation files
+      (PR numbers belong in commit messages and changelogs, not in arch docs)
+- [ ] Comments in source code that describe implementation behavior must be removed
+      or updated in the same commit when the implementation changes
 
 ### React Native / TypeScript (citizen-mobile)
 - [ ] No hardcoded hex colour values in new or modified code — import from the canonical theme
@@ -59,15 +81,29 @@ to a real past failure. Do not skip any item.
 - [ ] No secrets, tokens, or API keys in any committed file
 - [ ] No .env files committed
 - [ ] [AllowAnonymous] is explicit on every public endpoint — not implied by absence of [Authorize]
+- [ ] GitHub Actions permissions are set at the job level, not the workflow level;
+      grant only the minimum permission required per job
+- [ ] Posting PR comments via `github.rest.issues.createComment` requires `issues: write`,
+      not `pull-requests: write`
+- [ ] Any client-supplied header value echoed in a response header or written to logs
+      must be validated/sanitized against an allowlist before use (prevents header injection and log forging)
 
 ### Migrations
 - [ ] Never modify an existing migration's Up() or Down() method
 - [ ] Every new migration has a meaningful name (not Migration1, Migration2)
 - [ ] Migration can be reversed — verify Down() is correct
+- [ ] If a spec or arch doc references a DB table/column that does not exist in the
+      current schema, mark it explicitly as a planned schema change before implementation
 
 ### Outbox pattern
 - [ ] Every cluster state mutation writes an outbox event in the same DB transaction
 - [ ] No fire-and-forget state changes — every state change has a traceable event
+
+### Test coverage
+- [ ] When a guard uses `IsNullOrWhiteSpace`, the test suite covers null, empty string,
+      and whitespace inputs independently
+- [ ] New behavior that changes service-layer method signatures or semantics has
+      corresponding unit tests — not just integration tests
 
 ---
 
@@ -95,6 +131,27 @@ to a real past failure. Do not skip any item.
 - All new C# files have nullable enabled (#nullable enable or via csproj)
 - Use `??` and `?.` where appropriate; prefer `is null` / `is not null` for explicit null
   checks in new C# code (over `== null` / `!= null`)
+
+### Resource disposal
+- Always wrap `HttpResponseMessage` in a `using` statement to ensure the response and
+  its content stream are disposed after reading
+- Any `IDisposable`/`IAsyncDisposable` infrastructure object (NpgsqlDataSource, HttpClient, etc.)
+  must be registered in the DI container — not captured in a closure — to ensure proper disposal
+
+### String formatting
+- Always use `CultureInfo.InvariantCulture` when converting numeric types to strings for
+  external system consumption (API payloads, NLP prompts, log messages)
+- Never use `System.Web.HttpUtility` — use `Uri.EscapeDataString` or `System.Net.WebUtility`
+  for URL encoding on net10.0
+
+### Collection operations
+- When deduplicating with `GroupBy`, use a predicate that preserves the most data
+  (non-null fields) rather than always picking `First()`
+  → prefer: `g.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.Field)) ?? g.First()`
+
+### EF Core
+- When a `dotnet build` step precedes a `dotnet ef` step in the same CI job,
+  always pass `--no-build` to the EF command to avoid redundant builds
 
 ---
 
@@ -134,3 +191,20 @@ to a real past failure. Do not skip any item.
 - Never commit .env files
 - Never push directly to `main`
 - Never merge a PR with failing CI checks
+- Never use `System.Web.HttpUtility` for URL encoding — use `Uri.EscapeDataString`
+- Never echo an unvalidated client-supplied header value into a response header or log
+- Never grant GitHub Actions permissions at the workflow level — use job-level permissions
+- Never use `--idempotent` with `dotnet ef database update` — it is not a valid flag for that command
+- Never hardcode a count of CI jobs in documentation; use "all required CI jobs" instead
+- Never reference external (non-repo) documents in architecture docs; link to in-repo files only
+- Never include PR numbers as inline references in permanent documentation (use timeless references)
+- Never hardcode a branch name (`develop`, `main`) in git remediation steps — reference
+  "the PR's actual base branch" instead
+
+## GitHub Actions rules
+
+- [ ] All CI workflows reference the .NET SDK version via a shared `env.DOTNET_VERSION` variable
+- [ ] Any CI workflow using a .NET global tool includes an explicit `dotnet tool install`
+      or `dotnet tool restore` step before invoking the tool
+- [ ] PR description is updated to reflect the actual diff scope before review is requested
+- [ ] Shell commands in Markdown fenced code blocks use literal (unescaped) shell syntax
