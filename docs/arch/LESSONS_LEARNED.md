@@ -238,7 +238,7 @@ blocks, not indented prose.
 **File:** `docs/arch/hali_institution_dashboard_canonical_spec.md`
 **What Copilot flagged:** The spec cited `Hali_05_Repository_Engineering_Conventions_Claude_Seed.docx` and `Hali_03_API_Contracts_Client_Interaction_Spec.docx` which do not exist in the repository. Reviewers/implementers have no way to access those references.
 **Root cause:** Spec was ported from an external authoring context (Word docs) without replacing external citations with in-repo authority links.
-**Fix applied:** Replaced doc references with pointers to in-repo authorities (`claude.md`, `mvp_locked_decisions.md`, `02_openapi.yaml`).
+**Fix applied:** Replaced doc references with pointers to in-repo authorities (`CLAUDE.md`, `mvp_locked_decisions.md`, `02_openapi.yaml`).
 **Rule added:** Pre-Commit Checklist → Cross-document consistency → "never reference an external or non-repo document; always link to an in-repo authority"
 
 ---
@@ -358,7 +358,7 @@ blocks, not indented prose.
 ## PR #34 — Chore/pr template claude md update
 
 ### Lesson 29: CI job count hardcoded in a checklist
-**File:** `claude.md`
+**File:** `claude.md` (legacy — since replaced by `CLAUDE.md`)
 **What Copilot flagged:** The PR checklist item "All 6 CI jobs are green" was outdated — the actual CI pipeline had grown to more than 6 jobs. The hardcoded count would cause contributors to miss failures in newer jobs.
 **Root cause:** Wrote the checklist with a concrete job count at a point in time without accounting for future pipeline additions.
 **Fix applied:** Changed to "All required CI jobs are green" — no hardcoded count.
@@ -367,7 +367,7 @@ blocks, not indented prose.
 ---
 
 ### Lesson 30: Branching strategy rule internally contradicted itself
-**File:** `claude.md`
+**File:** `claude.md` (legacy — since replaced by `CLAUDE.md`)
 **What Copilot flagged:** The branching section stated that `main` is updated via a release PR from `develop`, then immediately said "never use `--base main`". This contradiction would cause implementers to break the release process.
 **Root cause:** An absolute rule ("never use `--base main`") was written without carving out the legitimate exception (release PRs).
 **Fix applied:** Qualified the rule: "never use `--base main` for feature/fix/chore PRs; only release PRs from `develop` may target `main`".
