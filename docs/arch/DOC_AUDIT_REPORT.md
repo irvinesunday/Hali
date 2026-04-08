@@ -58,7 +58,7 @@ root, classified by whether `CLAUDE.md` references its filename.
 ```bash
 while IFS= read -r f; do
   n=$(basename "$f")
-  if grep -q "$n" CLAUDE.md; then echo "WIRED: $f"; else echo "ORPHAN: $f"; fi
+  if grep -Fq -- "$n" CLAUDE.md; then echo "WIRED: $f"; else echo "ORPHAN: $f"; fi
 done < <(find docs/ -name "*.md" | sort)
 ```
 
