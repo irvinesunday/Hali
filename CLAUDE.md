@@ -498,3 +498,31 @@ When any two documents conflict, this is the resolution order:
 5. 02_openapi.yaml for route names
 6. Everything else (older .docx files, earlier .md files) — reference only
 
+---
+
+## Reference Skills
+
+These instruction docs are mandatory reading at the listed trigger points:
+
+- Read `mvp_locked_decisions.md` before changing any locked architectural, schema, or auth decision — this is the locked-decisions authority referenced by COPILOT_RESOLUTION_SKILL.
+- Read `nlp_extraction_prompt.md` before modifying CSI-NLP extraction prompts, schemas, or the structured output contract.
+- Read `mobile_screen_inventory.md` before adding, removing, or restructuring screens in `apps/citizen-mobile`.
+
+(`docs/arch/COPILOT_RESOLUTION_SKILL.md` is wired separately in PR #70.)
+
+## Architecture Reference Docs
+
+The following are canonical reference documents — read them when working in their respective domains:
+
+- `docs/arch/README.md` — index of the docs/arch/ canon
+- `docs/arch/hali_citizen_mvp_canonical_spec.md` — Phase 1 citizen mobile UX/architecture freeze
+- `docs/arch/hali_institution_dashboard_canonical_spec.md` — Phase 2 institution dashboard freeze
+- `docs/arch/hali_ops_internal_dashboard_canonical_spec_v2.md` — Phase 3 Hali ops dashboard freeze
+- `docs/runbooks/*.md` — incident response runbooks (read when touching the corresponding subsystem or responding to alerts)
+- `docs/staging-env-guide.md` — staging environment / GitHub Environment secrets reference
+- `04_queue_topic_definitions.md` — domain event and queue topic catalog
+- `05_redis_job_config.md` — Redis usage and worker queue config
+- `schema_patch_notes.md` — historical schema patch notes (supplements `docs/arch/01_schema_reference.md`)
+- `HANDOVER.md` — operator guide for running Claude Code build sessions
+- `SECURITY.md` — vulnerability reporting policy
+
