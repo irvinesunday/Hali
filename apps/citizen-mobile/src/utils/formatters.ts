@@ -28,3 +28,22 @@ export function formatCategoryLabel(slug: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
+
+/**
+ * Returns a human-readable institution name for a civic category.
+ * Used to populate OfficialUpdateRow when the API does not return
+ * institution names directly. Nairobi-context defaults for MVP.
+ */
+export function getCategoryInstitutionName(category: string | null): string {
+  switch (category?.toLowerCase()) {
+    case 'electricity': return 'Kenya Power';
+    case 'water':       return 'Nairobi Water';
+    case 'roads':
+    case 'transport':   return 'KURA / KeNHA';
+    case 'environment':
+    case 'governance':  return 'Nairobi County';
+    case 'safety':      return 'County Government';
+    case 'infrastructure': return 'County Government';
+    default:            return 'Institution';
+  }
+}
