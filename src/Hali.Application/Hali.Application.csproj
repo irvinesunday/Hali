@@ -7,7 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
     <ProjectReference Include="..\Hali.Contracts\Hali.Contracts.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.17.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
   </ItemGroup>
