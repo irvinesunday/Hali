@@ -98,6 +98,51 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies \
   -X POST -f body="<reason for skipping>"
 ```
 
+### Step 8 — Resolve the conversation thread via GraphQL
+
+Posting a reply does not mark the thread resolved — GitHub's branch ruleset
+on `develop` requires `required_review_thread_resolution`, so unresolved
+threads block merge even after all replies are posted. Always run the
+GraphQL `resolveReviewThread` mutation after replying.
+
+Get all review thread IDs for the PR:
+
+```bash
+gh api graphql -f query='
+query {
+  repository(owner: "irvinesunday", name: "Hali") {
+    pullRequest(number: PR_NUMBER) {
+      reviewThreads(first: 50) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes { databaseId }
+          }
+        }
+      }
+    }
+  }
+}'
+```
+
+For each unresolved thread you addressed, resolve it using its node ID:
+
+```bash
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "THREAD_NODE_ID"}) {
+    thread { isResolved }
+  }
+}'
+```
+
+Replace `PR_NUMBER` with the actual PR number and `THREAD_NODE_ID` with
+the node ID from the query above.
+
+Confirm `isResolved: true` is returned for each thread before proceeding
+to merge.
+
 ---
 
 ## Handling "Outdated" comments

@@ -503,7 +503,7 @@ When any two documents conflict, this is the resolution order:
 Before addressing any Copilot review comment on any PR, read
 `docs/arch/COPILOT_RESOLUTION_SKILL.md` in full. Every step in that
 file is mandatory — classify the comment, check locked decisions,
-fix all affected surfaces, reply with the commit SHA, and resolve
-the conversation thread via GraphQL. Do not skip the reply or
-resolve steps.
+fix all affected surfaces, reply with the commit SHA, and follow
+the skill file's exact thread-reply and resolution procedure. Do
+not skip the reply or resolve steps.
 
