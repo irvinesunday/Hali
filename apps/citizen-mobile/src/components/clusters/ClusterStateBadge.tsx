@@ -16,11 +16,11 @@ const STATE_LABELS: Record<ClusterState, string> = {
 };
 
 const STATE_COLORS: Record<ClusterState, { bg: string; text: string }> = {
-  unconfirmed:          { bg: '#FEF9C3', text: '#854D0E' },
-  active:               { bg: Colors.primarySubtle, text: Colors.primary },
-  possible_restoration: { bg: Colors.emeraldSubtle, text: Colors.emerald },
-  resolved:             { bg: Colors.muted, text: Colors.mutedForeground },
-  recurring_context:    { bg: '#EDE9FE', text: '#5B21B6' },
+  unconfirmed:          { bg: Colors.conditionBadge.amber.bg,   text: Colors.conditionBadge.amber.text },
+  active:               { bg: Colors.primarySubtle,              text: Colors.primary },
+  possible_restoration: { bg: Colors.emeraldSubtle,              text: Colors.emerald },
+  resolved:             { bg: Colors.muted,                      text: Colors.mutedForeground },
+  recurring_context:    { bg: Colors.conditionBadge.violet.bg,  text: Colors.conditionBadge.violet.text },
 };
 
 export function ClusterStateBadge({ state }: ClusterStateBadgeProps) {

@@ -28,6 +28,7 @@ export function OfficialUpdateRow({
       activeOpacity={0.7}
       disabled={!onPress}
       accessibilityRole="button"
+      accessibilityState={{ disabled: !onPress }}
       accessibilityLabel={`${institutionName}: ${message}`}
     >
       <Building2 size={14} color={Colors.mutedForeground} strokeWidth={2} />

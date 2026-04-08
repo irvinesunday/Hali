@@ -3,6 +3,8 @@ import { TouchableOpacity, StyleSheet, AccessibilityInfo } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  cancelAnimation,
+  withTiming,
 } from 'react-native-reanimated';
 import { Plus } from 'lucide-react-native';
 import { startBreathe, Colors, Shadows, Spacing } from '../../theme';
@@ -15,9 +17,15 @@ export function FAB({ onPress }: FABProps) {
   const scale = useSharedValue(1);
 
   useEffect(() => {
+    let cancelled = false;
     AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
-      if (!reduceMotion) startBreathe(scale);
+      if (!reduceMotion && !cancelled) startBreathe(scale);
     });
+    return () => {
+      cancelled = true;
+      cancelAnimation(scale);
+      scale.value = withTiming(1, { duration: 150 });
+    };
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({

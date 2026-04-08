@@ -5,26 +5,14 @@ import {
   AlertTriangle,
   Droplets,
   Trash2,
-  Volume2,
   Shield,
   Globe,
   Building,
 } from 'lucide-react-native';
 import { Colors, Radius } from '../../theme';
 
-type CivicCategory =
-  | 'electricity'
-  | 'roads'
-  | 'transport'
-  | 'water'
-  | 'environment'
-  | 'safety'
-  | 'governance'
-  | 'infrastructure'
-  | string;
-
 interface CategoryIconCircleProps {
-  category: CivicCategory;
+  category: string;
   size?: 'md' | 'lg';
 }
 

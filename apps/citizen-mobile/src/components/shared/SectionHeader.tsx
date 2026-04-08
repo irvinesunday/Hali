@@ -9,7 +9,7 @@ interface SectionHeaderProps {
 export function SectionHeader({ label }: SectionHeaderProps) {
   return (
     <Text style={styles.label} accessibilityRole="header">
-      {label.toUpperCase()}
+      {label}
     </Text>
   );
 }
@@ -20,5 +20,6 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.medium,
     color: Colors.mutedForeground,
     letterSpacing: LetterSpacing.wide,
+    textTransform: 'uppercase',
   },
 });

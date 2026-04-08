@@ -43,29 +43,27 @@ export function FeedbackSheet({
   const handleSubmit = async () => {
     if (!rating) return;
     setSubmitting(true);
-    try {
-      await apiRequest('/v1/feedback', {
-        method: 'POST',
-        body: {
-          rating,
-          text: text.trim() || null,
-          screen,
-          clusterId: clusterId ?? null,
-          platform: Platform.OS,
-        },
-      });
-    } catch {
-      // Fire and forget — never block the user on feedback failure
-    } finally {
-      setSubmitting(false);
-      setSubmitted(true);
-      setTimeout(() => {
-        setSubmitted(false);
-        setRating(null);
-        setText('');
-        onClose();
-      }, 1200);
-    }
+    // apiRequest returns a Result and never throws — no try/catch needed.
+    // Fire-and-forget UX: always show the success state regardless of outcome;
+    // feedback failure must never block or alarm the user.
+    await apiRequest('/v1/feedback', {
+      method: 'POST',
+      body: {
+        rating,
+        text: text.trim() || null,
+        screen,
+        clusterId: clusterId ?? null,
+        platform: Platform.OS,
+      },
+    });
+    setSubmitting(false);
+    setSubmitted(true);
+    setTimeout(() => {
+      setSubmitted(false);
+      setRating(null);
+      setText('');
+      onClose();
+    }, 1200);
   };
 
   return (

@@ -3,6 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  cancelAnimation,
+  withTiming,
 } from 'react-native-reanimated';
 import { startPulseSoft } from '../../theme';
 import { Colors, FontFamily, FontSize } from '../../theme';
@@ -27,7 +29,16 @@ export function LiveDot({ intensity = 'soft' }: LiveDotProps) {
   useEffect(() => {
     if (intensity !== 'dim') {
       startPulseSoft(opacity, scale);
+    } else {
+      cancelAnimation(opacity);
+      cancelAnimation(scale);
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value   = withTiming(1, { duration: 200 });
     }
+    return () => {
+      cancelAnimation(opacity);
+      cancelAnimation(scale);
+    };
   }, [intensity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
