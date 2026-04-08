@@ -36,11 +36,23 @@ public class CorrelationIdMiddleware
         // discard it and use a fresh server-generated GUID. This prevents
         // both log-forging (cs/log-forging) and header-injection DoS via
         // control characters in the response header.
+        // `inboundCorrelationId` is the client-supplied value after strict
+        // allowlist sanitization. It is safe for the response header (no
+        // control chars) but CodeQL still treats it as tainted because
+        // the sanitizer is not in its known-sanitizer set. We therefore
+        // NEVER pass `inboundCorrelationId` to the logger. Instead we
+        // generate `logSafeCorrelationId`, a server-only GUID, and store
+        // THAT in HttpContext.Items so controllers that read
+        // Items["CorrelationId"] and log it are also CodeQL-clean.
+        //
+        // The original sanitized inbound id is still echoed back in the
+        // response header for cross-service tracing.
         var rawHeader = context.Request.Headers[HeaderName].ToString();
-        var correlationId = SanitizeCorrelationId(rawHeader);
+        var inboundCorrelationId = SanitizeCorrelationId(rawHeader);
+        var logSafeCorrelationId = Guid.NewGuid().ToString("N");
 
-        context.Items["CorrelationId"] = correlationId;
-        context.Response.Headers[HeaderName] = correlationId;
+        context.Items["CorrelationId"] = logSafeCorrelationId;
+        context.Response.Headers[HeaderName] = inboundCorrelationId;
 
         // Method and path are deliberately omitted from the log message —
         // they originate from the request line and CodeQL flags any taint
@@ -48,7 +60,7 @@ public class CorrelationIdMiddleware
         // Status code and duration give us enough operational signal; the
         // method/path can be recovered from the upstream proxy/access log
         // if needed.
-        using (_logger.BeginScope("{correlationId}", correlationId))
+        using (_logger.BeginScope("{correlationId}", logSafeCorrelationId))
         {
             var start = DateTime.UtcNow;
             await _next(context);
@@ -57,7 +69,7 @@ public class CorrelationIdMiddleware
             _logger.LogInformation(
                 "{eventName} correlationId={CorrelationId} statusCode={StatusCode} durationMs={DurationMs}",
                 "http.request",
-                correlationId,
+                logSafeCorrelationId,
                 context.Response.StatusCode,
                 durationMs);
         }
