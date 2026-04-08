@@ -105,14 +105,20 @@ on `develop` requires `required_review_thread_resolution`, so unresolved
 threads block merge even after all replies are posted. Always run the
 GraphQL `resolveReviewThread` mutation after replying.
 
-Get all review thread IDs for the PR:
+Get all review thread IDs for the PR. Use GraphQL variables to avoid
+hardcoding the repository coordinates — replace `{owner}`, `{repo}`, and
+`{pr_number}` with real values before running:
 
 ```bash
-gh api graphql -f query='
-query {
-  repository(owner: "irvinesunday", name: "Hali") {
-    pullRequest(number: PR_NUMBER) {
-      reviewThreads(first: 50) {
+gh api graphql \
+  -F owner='{owner}' \
+  -F repo='{repo}' \
+  -F pr={pr_number} \
+  -f query='
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
         nodes {
           id
           isResolved
@@ -120,11 +126,20 @@ query {
             nodes { databaseId }
           }
         }
+        pageInfo { hasNextPage endCursor }
       }
     }
   }
 }'
 ```
+
+`databaseId` on each thread's first comment corresponds to the comment ID
+used in the Step 7 REST call (`pulls/{pr}/comments/{id}`). Match on this
+value to confirm you are resolving only the threads you replied to.
+
+If `pageInfo.hasNextPage` is `true`, re-run the query passing
+`after: "END_CURSOR"` to `reviewThreads` until all threads have been
+retrieved.
 
 For each unresolved thread you addressed, resolve it using its node ID:
 
@@ -137,8 +152,7 @@ mutation {
 }'
 ```
 
-Replace `PR_NUMBER` with the actual PR number and `THREAD_NODE_ID` with
-the node ID from the query above.
+Replace `THREAD_NODE_ID` with the node `id` from the query above.
 
 Confirm `isResolved: true` is returned for each thread before proceeding
 to merge.
