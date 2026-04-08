@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Api.Logging;
 using Hali.Application.Auth;
 using Hali.Contracts.Auth;
 using Hali.Contracts.Notifications;
@@ -68,9 +69,12 @@ public class UsersController : ControllerBase
         await _auth.UpdateAccountAsync(account, ct);
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
+        // Log a non-reversible hash of the account id rather than the raw
+        // GUID — CodeQL treats raw identifiers in logs as PII (cs/cleartext-
+        // storage-of-sensitive-information).
         _logger.LogInformation(
-            "{eventName} correlationId={CorrelationId} accountId={AccountId}",
-            "account.notification_settings_updated", correlationId, accountId);
+            "{eventName} correlationId={CorrelationId} accountHash={AccountHash}",
+            "account.notification_settings_updated", correlationId, AccountLogIdentifier.Hash(accountId));
 
         return NoContent();
     }

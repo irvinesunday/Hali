@@ -35,16 +35,21 @@ public class FollowService : IFollowService
         var ids = follows.Select(f => f.LocalityId).Distinct().ToList();
         var lookup = await _localities.GetByIdsAsync(ids, ct);
 
+        // Drop follows whose locality can no longer be resolved from the
+        // Signals DB. This can only happen if a locality row was deleted
+        // out from under us; returning a blank wardName would violate the
+        // API contract (wardName is required) and confuse the UI.
         return follows
+            .Where(f => lookup.ContainsKey(f.LocalityId))
             .Select(f =>
             {
-                lookup.TryGetValue(f.LocalityId, out var summary);
+                var summary = lookup[f.LocalityId];
                 return new FollowedLocalityDto
                 {
                     LocalityId = f.LocalityId,
                     DisplayLabel = f.DisplayLabel,
-                    WardName = summary?.WardName ?? string.Empty,
-                    CityName = summary?.CityName,
+                    WardName = summary.WardName,
+                    CityName = summary.CityName,
                 };
             })
             .ToList();
@@ -52,9 +57,13 @@ public class FollowService : IFollowService
 
     public async Task SetFollowedAsync(Guid accountId, IEnumerable<FollowEntry> entries, CancellationToken ct = default)
     {
+        // When the same localityId appears multiple times in the request,
+        // prefer the first entry that carries a non-empty DisplayLabel so
+        // a later null/blank entry does not silently clobber a meaningful
+        // label. Falls back to the first entry if none carry a label.
         var deduped = entries
             .GroupBy(e => e.LocalityId)
-            .Select(g => g.First())
+            .Select(g => g.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.DisplayLabel)) ?? g.First())
             .ToList();
 
         if (deduped.Count > MaxFollowedLocalities)
