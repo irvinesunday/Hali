@@ -15,10 +15,10 @@ public static class AccountLogIdentifier
     public static string Hash(Guid accountId)
     {
         var bytes = SHA256.HashData(accountId.ToByteArray());
-        // 12 hex chars (48 bits) is plenty for log correlation while
-        // preventing recovery of the original account id.
-        var sb = new StringBuilder(12);
-        for (int i = 0; i < 6; i++) sb.Append(bytes[i].ToString("x2"));
+        // 20 hex chars (80 bits) remains non-reversible while reducing
+        // collision risk for log correlation across larger account volumes.
+        var sb = new StringBuilder(20);
+        for (int i = 0; i < 10; i++) sb.Append(bytes[i].ToString("x2"));
         return sb.ToString();
     }
 
