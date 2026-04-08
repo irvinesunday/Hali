@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: Hali API
-  version: 0.4.0
+  version: 0.5.0
   summary: Civic signal and official update API for the Hali MVP
   description: |
     Spec repaired against the C# backend source in `src/Hali.Api/Controllers/*`
@@ -22,6 +22,7 @@ tags:
   - name: Home
   - name: Users
   - name: Devices
+  - name: Feedback
   - name: Admin
 paths:
   # ── Auth ────────────────────────────────────────────────────────────
@@ -271,6 +272,63 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/localities/resolve-by-coordinates:
+    get:
+      tags: [Localities]
+      summary: Resolve GPS coordinates to nearest ward — GPS opt-in only (public)
+      description: |
+        NOT called by default. Only called when the user explicitly opts in to
+        GPS-based locality detection. The default first-launch flow uses
+        /v1/localities/search (manual area picker).
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, format: double }
+      responses:
+        '200':
+          description: Nearest matched locality
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  localityId: { type: string, format: uuid }
+                  wardName: { type: string }
+                  cityName: { type: string, nullable: true }
+                  countryCode: { type: string }
+                  activeSignalCount: { type: integer }
+                  distanceMeters: { type: number }
+        '404':
+          description: No locality found for coordinates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/feedback:
+    post:
+      tags: [Feedback]
+      summary: Submit anonymous in-app feedback (public, rate-limited)
+      description: |
+        No auth required. Returns 202 immediately — fire and forget from client.
+        account_id captured server-side if request is authenticated, otherwise null.
+        Text capped at 300 chars server-side regardless of client input.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '202': { description: Feedback received }
+        '429': { description: Rate limit exceeded }
 
   # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:
@@ -681,6 +739,23 @@ components:
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
   schemas:
+    FeedbackRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: string
+          enum: [positive, neutral, negative]
+        text: { type: string, maxLength: 300, nullable: true }
+        screen:
+          type: string
+          nullable: true
+          enum: [home, detail, composer_step1, composer_step2, composer_step3, areas, profile, notification_settings]
+        clusterId: { type: string, format: uuid, nullable: true }
+        appVersion: { type: string, nullable: true }
+        platform: { type: string, enum: [ios, android], nullable: true }
+        sessionId: { type: string, format: uuid, nullable: true }
+
     ErrorResponse:
       type: object
       description: |

@@ -13,6 +13,7 @@ using Hali.Infrastructure.Data;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
+using Hali.Infrastructure.Data.Feedback;
 using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
 using Hali.Infrastructure.Data.Signals;
@@ -43,7 +44,9 @@ public static class ServiceCollectionExtensions
 			participation: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Participation")!),
 			advisories: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Advisories")!, useNetTopologySuite: true),
 			notifications: HaliNpgsqlDataSourceFactory.Build(
-				config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!));
+				config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!),
+			feedback: HaliNpgsqlDataSourceFactory.Build(
+				config.GetConnectionString("Feedback") ?? config.GetConnectionString("Auth")!));
 		services.AddSingleton(dataSources);
 
 		// NOTE: Npgsql enum mapping must be declared on BOTH the data source
@@ -119,6 +122,10 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IFollowRepository, FollowRepository>();
 		services.AddHttpClient<ExpoPushNotificationService>();
 		services.AddScoped<IPushNotificationService, ExpoPushNotificationService>();
+
+		// Feedback
+		services.AddDbContext<FeedbackDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Feedback));
 
 		return services;
 	}
