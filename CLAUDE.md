@@ -531,3 +531,36 @@ The following are canonical reference documents — read them when working in th
 - `schema_patch_notes.md` — historical schema patch notes (supplements `docs/arch/01_schema_reference.md`)
 - `HANDOVER.md` — operator guide for running Claude Code build sessions
 - `SECURITY.md` — vulnerability reporting policy
+
+## Code Quality — Mandatory Pre-Session and Pre-Commit Rules
+
+### Before writing any code in a session
+Read `docs/arch/CODING_STANDARDS.md` in full.
+Read `docs/arch/LESSONS_LEARNED.md` — especially the most recent 3 entries.
+These files contain concrete rules derived from real Copilot review failures.
+Ignoring them will produce the same errors again.
+
+### Before every git commit
+Run the Pre-Commit Checklist in `docs/arch/CODING_STANDARDS.md`.
+Every item must be checked. Do not commit if any item fails.
+
+Minimum commands before committing C# changes:
+```
+dotnet format --verify-no-changes
+dotnet build
+dotnet test   # if tests exist for the changed module
+```
+
+Minimum commands before committing TypeScript changes:
+```
+npx tsc --noEmit
+```
+
+### After addressing a Copilot review comment
+In the same commit that fixes the issue:
+1. Fix the code
+2. Append a new entry to `docs/arch/LESSONS_LEARNED.md` using the template
+3. Add or update the corresponding rule in `docs/arch/CODING_STANDARDS.md`
+
+This is mandatory — not optional. The lesson must be recorded in the same
+commit as the fix so the fix and the lesson are permanently linked in history.
