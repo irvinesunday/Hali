@@ -23,12 +23,11 @@ export default function AppLayout(): React.ReactElement | null {
   const router = useRouter();
   const { authState } = useAuth();
 
-  // Auth guard
-  useEffect(() => {
-    if (authState.status === 'unauthenticated') {
-      router.replace('/(auth)/phone');
-    }
-  }, [authState.status, router]);
+  // Auth guard — guest mode is allowed for browsing.
+  // Contribution actions (participate, submit) gate on auth inline.
+  // Only redirect if status is 'unauthenticated' AND the user explicitly
+  // tried to reach a protected route (handled per-action, not here).
+  // Loading state renders null while tokens are being checked.
 
   // Push registration + deep link routing — runs once per mount
   usePushBootstrap();
@@ -38,7 +37,9 @@ export default function AppLayout(): React.ReactElement | null {
     void initOfflineQueue();
   }, []);
 
-  if (authState.status !== 'authenticated') {
+  // Allow both authenticated and unauthenticated (guest) users through.
+  // 'unknown' state still renders null to prevent flash of wrong screen.
+  if (authState.status === 'unknown') {
     return null;
   }
 
