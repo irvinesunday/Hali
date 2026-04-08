@@ -26,7 +26,7 @@ jobs:
     name: Secret Scanning (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -39,7 +39,7 @@ jobs:
     name: OpenAPI Lint (Spectral)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Spectral
         run: npm install -g @stoplight/spectral-cli
       - name: Lint OpenAPI spec
@@ -54,8 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [secrets-scan, openapi-lint]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
@@ -65,8 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
       - name: Run unit tests with coverage
@@ -90,8 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
       - name: Run CIVIS tests
@@ -131,8 +131,8 @@ jobs:
       TEST_MAINTENANCE_CONNECTION_STRING: "Host=localhost;Port=5432;Database=postgres;Username=hali;Password=hali_test_password"
       TEST_REDIS_URL: "localhost:6379"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
       - name: Run integration tests with coverage
@@ -194,8 +194,8 @@ jobs:
       AfricasTalking__ApiKey: ${{ secrets.AFRICASTALKING_API_KEY }}
       AfricasTalking__Username: "sandbox"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - name: Setup Node for Dredd
         uses: actions/setup-node@v6
@@ -245,16 +245,16 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - name: Install reportgenerator
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: unit-coverage, path: ./coverage-raw/unit }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         continue-on-error: true
         with: { name: integration-coverage, path: ./coverage-raw/integration }
       - name: Merge coverage and generate report
@@ -347,8 +347,8 @@ jobs:
       TEST_MAINTENANCE_CONNECTION_STRING: "Host=localhost;Port=5432;Database=postgres;Username=hali;Password=hali_test_password"
       TEST_REDIS_URL: "localhost:6379"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "${{ env.DOTNET_VERSION }}" }
       - run: dotnet restore
       - name: Create schema and seed
