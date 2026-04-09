@@ -7,11 +7,13 @@ Usage: python search.py "<query>" [--domain <domain>] [--stack <stack>] [--max-r
        python search.py "<query>" --design-system --persist [-p "Project Name"] [--page "dashboard"]
 
 Domains: style, prompt, color, chart, landing, product, ux, typography
-Stacks: html-tailwind, react, nextjs
+Stacks: html-tailwind, react, nextjs, vue, svelte, react-native, nuxtjs, nuxt-ui,
+        astro, shadcn, swiftui, jetpack-compose, flutter
+Note: --domain and --stack are mutually exclusive. Run separate queries if you need both.
 
 Persistence (Master + Overrides pattern):
-  --persist    Save design system to design-system/MASTER.md
-  --page       Also create a page-specific override file in design-system/pages/
+  --persist    Save design system to design-system/<project_slug>/MASTER.md
+  --page       Also create a page-specific override file in design-system/<project_slug>/pages/
 """
 
 import argparse
@@ -70,6 +72,11 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory for persisted files (default: current directory)")
 
     args = parser.parse_args()
+
+    # --domain and --stack are mutually exclusive: stack search ignores domain,
+    # which silently produces wrong results. Fail loudly instead.
+    if args.stack and args.domain:
+        parser.error("--stack and --domain are mutually exclusive; run two separate queries.")
 
     # Design system takes priority
     if args.design_system:

@@ -13,16 +13,25 @@ before committing. You do not push code that would fail Copilot review.
 Before designing any genuinely new screen (not a token migration of an existing
 screen), run these queries against the installed skill database:
 
-```bash
-# UX patterns for this screen type
-python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
-  "<describe the screen in 4-6 words>" \
-  --domain ux --stack react-native -n 3
+Note: `--domain` and `--stack` are mutually exclusive in `search.py` — run them
+as separate commands. The stack search returns react-native specific layout
+guidance; the domain searches return UX/style patterns.
 
-# Layout/style patterns
+```bash
+# UX patterns for this screen type (domain search)
 python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
   "<describe the screen in 4-6 words>" \
-  --domain style --stack react-native -n 2
+  --domain ux -n 3
+
+# Layout/style patterns (domain search)
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
+  "<describe the screen in 4-6 words>" \
+  --domain style -n 2
+
+# React Native stack-specific layout guidance (stack search)
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
+  "<describe the screen in 4-6 words>" \
+  --stack react-native -n 2
 ```
 
 Read the results. Apply only patterns that:
