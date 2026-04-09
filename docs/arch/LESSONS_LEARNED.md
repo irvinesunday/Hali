@@ -1039,3 +1039,19 @@ the user is told instead of getting the wrong format.
 **Rule added:** Pre-Commit Checklist → CLI Tools → "If a flag has no
 effect in some mode, the parser must reject the combination. Never let
 a CLI silently ignore a user-supplied option."
+
+## PR #87 — docs(arch): UX retrospective review — Phases A-G vs skill database
+
+### Lesson 1: Use a single H1 per markdown document
+**File:** `docs/arch/UX_RETROSPECTIVE_REVIEW.md`
+**What Copilot flagged:** "The document starts with four separate H1 headings... renders oddly in TOCs and reduces semantic structure."
+**Root cause:** Generated metadata lines (Against …, Generated:, Stack:) as `#` headings instead of body text.
+**Fix applied:** Kept the title as the only H1; converted the three metadata lines to italicised body text.
+**Rule added:** Markdown docs → "One H1 per file. Subtitle/metadata lines belong in body text (italics) or as a smaller heading level."
+
+### Lesson 2: Use "dismissible", not "dismissable"
+**File:** `docs/arch/UX_RETROSPECTIVE_REVIEW.md`
+**What Copilot flagged:** "'dismissable' is nonstandard; 'dismissible' is the more common spelling for UI copy/docs."
+**Root cause:** Common misspelling slipped through.
+**Fix applied:** Replaced `dismissable` with `dismissible`.
+**Rule added:** Docs spelling → "Prefer `dismissible`, `accessible`, `collapsible` (-ible suffix) for UI vocabulary."
