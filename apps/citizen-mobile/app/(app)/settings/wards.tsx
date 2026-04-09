@@ -30,7 +30,10 @@ import {
 } from '../../../src/api/localities';
 import { useLocalityContext } from '../../../src/context/LocalityContext';
 import { Loading } from '../../../src/components/common/Loading';
-import { MAX_FOLLOWED_WARDS } from '../../../src/config/constants';
+import {
+  FEATURE_GPS_LOCALITY_OPT_IN,
+  MAX_FOLLOWED_WARDS,
+} from '../../../src/config/constants';
 import {
   Colors,
   FontFamily,
@@ -286,7 +289,9 @@ export default function WardsSettingsScreen(): React.ReactElement {
               accessibilityLabel="Area search"
             />
 
-            {/* GPS opt-in — only shown when not at capacity */}
+            {/* GPS opt-in — gated by feature flag until backend ships.
+                Backend endpoint is currently a stub returning 404. */}
+            {FEATURE_GPS_LOCALITY_OPT_IN && (
             <TouchableOpacity
               style={[styles.gpsButton, gpsLoading && styles.gpsButtonLoading]}
               onPress={() => void handleUseLocation()}
@@ -304,6 +309,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
                 {gpsLoading ? 'Finding your location…' : 'Use my current location'}
               </Text>
             </TouchableOpacity>
+            )}
 
             {searchQuery.isFetching && (
               <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.sm }} />

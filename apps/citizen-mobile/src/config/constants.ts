@@ -16,6 +16,12 @@ export const PARTICIPATION_LABELS = {
 } as const;
 
 export const MAX_FOLLOWED_WARDS = 5;
+
+// Feature flag — gates the GPS opt-in button on the wards settings screen.
+// The backend endpoint GET /v1/localities/resolve-by-coordinates is currently
+// a stub that always returns 404. Flip this to true once the backend is
+// implemented (see LocalitiesController.ResolveByCoordinates).
+export const FEATURE_GPS_LOCALITY_OPT_IN = false;
 export const SIGNAL_TEXT_MAX_LENGTH = 500;
 export const CONTEXT_TEXT_MAX_LENGTH = 150;
 // Location confidence gates for the signal composer:
