@@ -33,6 +33,7 @@ export const Colors = {
 
   // ── Semantic ───────────────────────────────────────────────────────────
   destructive: '#D4603A',    // oklch(0.60 0.15 30)
+  destructiveSubtle: '#FBEDE7', // destructive/10 equivalent — error backgrounds
   emerald: '#059669',        // restoration / calm / positive
   emeraldSubtle: '#ECFDF5',
 

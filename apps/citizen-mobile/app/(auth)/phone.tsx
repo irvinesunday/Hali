@@ -9,31 +9,34 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { requestOtp } from '../../src/api/auth';
+import { Button } from '../../src/components/common/Button';
 import { STRINGS } from '../../src/config/strings';
+import { normaliseKenyaPhone, isValidKenyaPhoneInput } from '../../src/utils/phone';
 import {
-  normaliseKenyaPhone,
-  isValidKenyaPhoneInput,
-} from '../../src/utils/phone';
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+  ScreenPaddingH,
+} from '../../src/theme';
 
 type ScreenState = 'idle' | 'loading' | 'error';
-
 const KENYA_PREFIX = '+254';
 
 export default function PhoneScreen(): React.ReactElement {
-  const [phoneInput, setPhoneInput] = useState<string>('');
+  const [phoneInput, setPhoneInput] = useState('');
   const [screenState, setScreenState] = useState<ScreenState>('idle');
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const isSubmittable =
-    screenState !== 'loading' && isValidKenyaPhoneInput(phoneInput);
+  const isSubmittable = screenState !== 'loading' && isValidKenyaPhoneInput(phoneInput);
 
   async function handleSubmit(): Promise<void> {
     const destination = normaliseKenyaPhone(phoneInput);
@@ -42,21 +45,13 @@ export default function PhoneScreen(): React.ReactElement {
     setScreenState('loading');
     setErrorMessage('');
 
-    const result = await requestOtp({
-      destination,
-      authMethod: 'phone_otp',
-    });
+    const result = await requestOtp({ destination, authMethod: 'phone_otp' });
 
     if (result.ok) {
       setScreenState('idle');
-      router.push({
-        pathname: '/(auth)/otp',
-        params: { destination },
-      });
+      router.push({ pathname: '/(auth)/otp', params: { destination } });
     } else {
       setScreenState('error');
-      // Auth rate limit comes back as HTTP 429 with { error: "..." } —
-      // no code field, so we detect by status instead.
       setErrorMessage(
         result.error.status === 429
           ? STRINGS.AUTH.OTP_RATE_LIMIT
@@ -66,157 +61,141 @@ export default function PhoneScreen(): React.ReactElement {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>{STRINGS.AUTH.PHONE_TITLE}</Text>
-        <Text style={styles.subtitle}>{STRINGS.AUTH.PHONE_SUBTITLE}</Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.container}>
+          <Text style={styles.title}>{STRINGS.AUTH.PHONE_TITLE}</Text>
+          <Text style={styles.subtitle}>{STRINGS.AUTH.PHONE_SUBTITLE}</Text>
 
-        <View style={styles.inputRow}>
-          <View
-            style={styles.prefixContainer}
-            accessible
-            accessibilityLabel="Country code Kenya plus two five four"
-          >
-            <Text style={styles.prefixText}>{KENYA_PREFIX}</Text>
+          <View style={styles.inputRow}>
+            <View
+              style={styles.prefixContainer}
+              accessible
+              accessibilityLabel="Country code Kenya plus two five four"
+            >
+              <Text style={styles.prefixText}>{KENYA_PREFIX}</Text>
+            </View>
+            <TextInput
+              style={styles.input}
+              value={phoneInput}
+              onChangeText={(text) => {
+                setPhoneInput(text);
+                if (screenState === 'error') {
+                  setScreenState('idle');
+                  setErrorMessage('');
+                }
+              }}
+              keyboardType="phone-pad"
+              placeholder={STRINGS.AUTH.PHONE_PLACEHOLDER}
+              placeholderTextColor={Colors.faintForeground}
+              maxLength={12}
+              returnKeyType="done"
+              onSubmitEditing={isSubmittable ? handleSubmit : undefined}
+              autoFocus
+              accessibilityLabel={STRINGS.AUTH.PHONE_INPUT_LABEL}
+              accessibilityHint={STRINGS.AUTH.PHONE_INPUT_HINT}
+              editable={screenState !== 'loading'}
+            />
           </View>
-          <TextInput
-            style={styles.input}
-            value={phoneInput}
-            onChangeText={(text) => {
-              setPhoneInput(text);
-              if (screenState === 'error') {
-                setScreenState('idle');
-                setErrorMessage('');
-              }
-            }}
-            keyboardType="phone-pad"
-            placeholder={STRINGS.AUTH.PHONE_PLACEHOLDER}
-            placeholderTextColor="#9CA3AF"
-            maxLength={12}
-            returnKeyType="done"
-            onSubmitEditing={isSubmittable ? handleSubmit : undefined}
-            autoFocus
-            accessible
-            accessibilityLabel={STRINGS.AUTH.PHONE_INPUT_LABEL}
-            accessibilityHint={STRINGS.AUTH.PHONE_INPUT_HINT}
-            editable={screenState !== 'loading'}
-          />
-        </View>
 
-        {screenState === 'error' && errorMessage !== '' && (
-          <Text
-            style={styles.errorText}
-            accessible
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
-          >
-            {errorMessage}
-          </Text>
-        )}
-
-        <TouchableOpacity
-          style={[styles.button, !isSubmittable && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={!isSubmittable}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={STRINGS.AUTH.PHONE_SUBMIT_LABEL}
-          accessibilityState={{
-            disabled: !isSubmittable,
-            busy: screenState === 'loading',
-          }}
-        >
-          {screenState === 'loading' ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <Text style={styles.buttonText}>{STRINGS.AUTH.PHONE_SUBMIT}</Text>
+          {screenState === 'error' && errorMessage !== '' && (
+            <Text
+              style={styles.errorText}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {errorMessage}
+            </Text>
           )}
-        </TouchableOpacity>
 
-        <Text style={styles.note}>{STRINGS.AUTH.PHONE_NOTE}</Text>
-      </View>
-    </KeyboardAvoidingView>
+          <Button
+            label={STRINGS.AUTH.PHONE_SUBMIT}
+            onPress={handleSubmit}
+            disabled={!isSubmittable}
+            loading={screenState === 'loading'}
+            accessibilityRole="button"
+            accessibilityLabel={STRINGS.AUTH.PHONE_SUBMIT_LABEL}
+            accessibilityState={{
+              disabled: !isSubmittable,
+              busy: screenState === 'loading',
+            }}
+          />
+
+          <Text style={styles.note}>{STRINGS.AUTH.PHONE_NOTE}</Text>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: Colors.card },
+  flex: { flex: 1 },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 64,
-    paddingBottom: 32,
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing['4xl'],
+    paddingBottom: Spacing['3xl'],
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    fontSize: 15,
-    color: '#6B7280',
-    marginBottom: 32,
-    lineHeight: 22,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    marginBottom: Spacing['3xl'],
+    lineHeight: FontSize.body * 1.5,
   },
   inputRow: {
     flexDirection: 'row',
     borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   prefixContainer: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    backgroundColor: Colors.muted,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
     justifyContent: 'center',
     borderRightWidth: 1,
-    borderRightColor: '#D1D5DB',
+    borderRightColor: Colors.border,
   },
   prefixText: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '600',
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
   },
   input: {
     flex: 1,
     fontSize: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    color: '#111827',
+    fontFamily: FontFamily.regular,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    color: Colors.foreground,
     letterSpacing: 0.5,
   },
   errorText: {
-    fontSize: 14,
-    color: '#DC2626',
-    marginBottom: 12,
-    marginTop: 4,
-  },
-  button: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.destructive,
+    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
   },
   note: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginTop: 20,
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+    marginTop: Spacing.xl,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: FontSize.bodySmall * 1.5,
   },
 });

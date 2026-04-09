@@ -18,64 +18,54 @@ import {
   Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft } from 'lucide-react-native';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import { verifyOtp } from '../../src/api/auth';
 import { useAuth } from '../../src/context/AuthContext';
+import { Button } from '../../src/components/common/Button';
 import { STRINGS } from '../../src/config/strings';
 import { decodeAccountIdFromJwt } from '../../src/utils/jwt';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+  ScreenPaddingH,
+} from '../../src/theme';
 
 type ScreenState = 'idle' | 'loading' | 'error';
-
 const OTP_LENGTH = 6;
 
-/**
- * Derive a stable device fingerprint hash using expo-crypto.
- * Uses Expo Device / Application identifiers that are available without
- * extra permissions. Returns a SHA-256 hex digest of the joined parts.
- *
- * NOTE: Do NOT use Node's `Buffer` in React Native — it is not available
- * in Hermes without a polyfill. Use expo-crypto instead.
- */
 async function getDeviceFingerprintHash(): Promise<string> {
-  const parts: string[] = [
+  const parts = [
     Device.modelName ?? 'unknown',
     Device.osName ?? 'unknown',
     Device.osVersion ?? 'unknown',
     Device.brand ?? 'unknown',
     Application.applicationId ?? 'unknown',
   ];
-  const joined = parts.join('|');
   return Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
-    joined,
+    parts.join('|'),
   );
-}
-
-function getPlatform(): string {
-  return Platform.OS; // 'ios' | 'android' | 'web'
-}
-
-function getAppVersion(): string {
-  return Application.nativeApplicationVersion ?? '1.0.0';
 }
 
 export default function OtpScreen(): React.ReactElement {
   const { destination } = useLocalSearchParams<{ destination: string }>();
   const { signIn } = useAuth();
 
-  const [otp, setOtp] = useState<string>('');
+  const [otp, setOtp] = useState('');
   const [screenState, setScreenState] = useState<ScreenState>('idle');
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const inputRef = useRef<TextInput>(null);
 
-  // Auto-focus on mount
   useEffect(() => {
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 300);
+    const timer = setTimeout(() => inputRef.current?.focus(), 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -102,13 +92,11 @@ export default function OtpScreen(): React.ReactElement {
       destination,
       otp,
       deviceFingerprintHash,
-      platform: getPlatform(),
-      appVersion: getAppVersion(),
+      platform: Platform.OS,
+      appVersion: Application.nativeApplicationVersion ?? '1.0.0',
     });
 
     if (result.ok) {
-      // The backend's /v1/auth/verify response does NOT include accountId —
-      // it's embedded in the JWT `sub` claim. Decode it client-side.
       const accountId = decodeAccountIdFromJwt(result.value.accessToken);
       if (accountId === null) {
         setScreenState('error');
@@ -138,10 +126,7 @@ export default function OtpScreen(): React.ReactElement {
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [otp, screenState, destination, signIn]);
 
-  // Auto-submit when 6 digits are entered.
-  // Dependency list is intentionally narrow — depending on `otp.length` rather
-  // than the full `otp` string avoids recreating the effect on each keystroke.
-  // handleSubmit is guarded by the length and screenState checks above.
+  // Auto-submit on 6th digit
   const otpLength = otp.length;
   useEffect(() => {
     if (otpLength === OTP_LENGTH && screenState === 'idle') {
@@ -156,138 +141,152 @@ export default function OtpScreen(): React.ReactElement {
       : destination ?? '';
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>{STRINGS.AUTH.OTP_TITLE}</Text>
-        <Text style={styles.subtitle}>
-          {STRINGS.AUTH.OTP_SUBTITLE_PREFIX}
-          <Text style={styles.destinationText}>{maskedDestination}</Text>
-        </Text>
-
-        {/* Hidden input that captures the keyboard */}
-        <TextInput
-          ref={inputRef}
-          style={styles.hiddenInput}
-          value={otp}
-          onChangeText={(text) => {
-            const clean = text.replace(/\D/g, '').slice(0, OTP_LENGTH);
-            setOtp(clean);
-            if (screenState === 'error') {
-              setScreenState('idle');
-              setErrorMessage('');
-            }
-          }}
-          keyboardType="number-pad"
-          maxLength={OTP_LENGTH}
-          autoComplete="one-time-code"
-          textContentType="oneTimeCode"
-          importantForAutofill="yes"
-          accessible
-          accessibilityLabel={STRINGS.AUTH.OTP_INPUT_LABEL}
-          editable={screenState !== 'loading'}
-        />
-
-        {/* Visible OTP boxes */}
-        <View style={styles.otpBoxRow}>
-          {Array.from({ length: OTP_LENGTH }).map((_, i) => {
-            const char = otp[i] ?? '';
-            const isActive = i === otp.length && screenState !== 'loading';
-            return (
-              <TouchableOpacity
-                key={i}
-                style={[
-                  styles.otpBox,
-                  isActive && styles.otpBoxActive,
-                  screenState === 'error' && styles.otpBoxError,
-                ]}
-                onPress={() => inputRef.current?.focus()}
-                accessible={false}
-              >
-                <Text style={styles.otpChar}>
-                  {screenState === 'loading' && char !== '' ? '•' : char}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {screenState === 'loading' && (
-          <ActivityIndicator
-            style={styles.loadingIndicator}
-            color="#1a3a2f"
-            size="small"
-            accessible
-            accessibilityLabel={STRINGS.AUTH.OTP_VERIFYING}
-          />
-        )}
-
-        {screenState === 'error' && errorMessage !== '' && (
-          <Text
-            style={styles.errorText}
-            accessible
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
-          >
-            {errorMessage}
-          </Text>
-        )}
-
-        {/* Manual submit fallback if auto-submit fails */}
-        {screenState !== 'loading' && otp.length === OTP_LENGTH && (
-          <TouchableOpacity
-            style={styles.button}
-            onPress={handleSubmit}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={STRINGS.AUTH.OTP_SUBMIT_LABEL}
-          >
-            <Text style={styles.buttonText}>{STRINGS.AUTH.OTP_SUBMIT}</Text>
-          </TouchableOpacity>
-        )}
-
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* Back button */}
         <TouchableOpacity
-          style={styles.resendContainer}
+          style={styles.backButton}
           onPress={() => router.back()}
-          accessible
+          hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={STRINGS.AUTH.OTP_RESEND}
+          accessibilityLabel="Back to phone entry"
         >
-          <Text style={styles.resendText}>{STRINGS.AUTH.OTP_RESEND}</Text>
+          <ArrowLeft size={24} color={Colors.foreground} strokeWidth={2} />
         </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+
+        <View style={styles.container}>
+          <Text style={styles.title}>{STRINGS.AUTH.OTP_TITLE}</Text>
+          <Text style={styles.subtitle}>
+            {STRINGS.AUTH.OTP_SUBTITLE_PREFIX}
+            <Text style={styles.destinationText}>{maskedDestination}</Text>
+          </Text>
+
+          {/* Hidden input captures the keyboard */}
+          <TextInput
+            ref={inputRef}
+            style={styles.hiddenInput}
+            value={otp}
+            onChangeText={(text) => {
+              const clean = text.replace(/\D/g, '').slice(0, OTP_LENGTH);
+              setOtp(clean);
+              if (screenState === 'error') {
+                setScreenState('idle');
+                setErrorMessage('');
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={OTP_LENGTH}
+            autoComplete="one-time-code"
+            textContentType="oneTimeCode"
+            importantForAutofill="yes"
+            accessibilityLabel={STRINGS.AUTH.OTP_INPUT_LABEL}
+            editable={screenState !== 'loading'}
+          />
+
+          {/* Visible OTP digit boxes */}
+          <View style={styles.otpBoxRow}>
+            {Array.from({ length: OTP_LENGTH }).map((_, i) => {
+              const char = otp[i] ?? '';
+              const isActive = i === otp.length && screenState !== 'loading';
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[
+                    styles.otpBox,
+                    isActive && styles.otpBoxActive,
+                    screenState === 'error' && styles.otpBoxError,
+                  ]}
+                  onPress={() => inputRef.current?.focus()}
+                  accessible={false}
+                >
+                  <Text style={styles.otpChar}>
+                    {screenState === 'loading' && char !== '' ? '•' : char}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {screenState === 'loading' && (
+            <ActivityIndicator
+              style={styles.loadingIndicator}
+              color={Colors.primary}
+              size="small"
+              accessibilityLabel={STRINGS.AUTH.OTP_VERIFYING}
+            />
+          )}
+
+          {screenState === 'error' && errorMessage !== '' && (
+            <Text
+              style={styles.errorText}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {errorMessage}
+            </Text>
+          )}
+
+          {/* Manual submit fallback */}
+          {screenState !== 'loading' && otp.length === OTP_LENGTH && (
+            <Button
+              label={STRINGS.AUTH.OTP_SUBMIT}
+              onPress={handleSubmit}
+              accessibilityLabel={STRINGS.AUTH.OTP_SUBMIT_LABEL}
+              style={styles.submitButton}
+            />
+          )}
+
+          <TouchableOpacity
+            style={styles.resendContainer}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel={STRINGS.AUTH.OTP_RESEND}
+          >
+            <Text style={styles.resendText}>{STRINGS.AUTH.OTP_RESEND}</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: Colors.card },
+  flex: { flex: 1 },
+  backButton: {
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    alignSelf: 'flex-start',
+  },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 64,
-    paddingBottom: 32,
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing['2xl'],
+    paddingBottom: Spacing['3xl'],
     alignItems: 'center',
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+    marginBottom: Spacing.sm,
     alignSelf: 'flex-start',
   },
   subtitle: {
-    fontSize: 15,
-    color: '#6B7280',
-    marginBottom: 40,
-    lineHeight: 22,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    marginBottom: Spacing['3xl'],
+    lineHeight: FontSize.body * 1.5,
     alignSelf: 'flex-start',
   },
   destinationText: {
-    color: '#111827',
-    fontWeight: '600',
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
   },
   hiddenInput: {
     position: 'absolute',
@@ -297,62 +296,48 @@ const styles = StyleSheet.create({
   },
   otpBoxRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
+    gap: Spacing.sm + 2,
+    marginBottom: Spacing['2xl'],
   },
   otpBox: {
     width: 48,
     height: 56,
     borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.muted,
   },
   otpBoxActive: {
-    borderColor: '#1a3a2f',
-    backgroundColor: '#F0FDF4',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySubtle,
   },
   otpBoxError: {
-    borderColor: '#DC2626',
-    backgroundColor: '#FEF2F2',
+    borderColor: Colors.destructive,
+    backgroundColor: Colors.destructiveSubtle,
   },
   otpChar: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
   },
-  loadingIndicator: {
-    marginVertical: 8,
-  },
+  loadingIndicator: { marginVertical: Spacing.sm },
+  submitButton: { alignSelf: 'stretch' },
   errorText: {
-    fontSize: 14,
-    color: '#DC2626',
-    marginBottom: 16,
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.destructive,
+    marginBottom: Spacing.lg,
     textAlign: 'center',
   },
-  button: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    alignItems: 'center',
-    marginBottom: 16,
-    width: '100%',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   resendContainer: {
-    marginTop: 8,
-    padding: 8,
+    marginTop: Spacing.md,
+    padding: Spacing.sm,
   },
   resendText: {
-    fontSize: 14,
-    color: '#1a3a2f',
-    fontWeight: '500',
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
   },
 });
