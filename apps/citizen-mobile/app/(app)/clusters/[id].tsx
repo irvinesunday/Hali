@@ -3,7 +3,11 @@
 // Cluster detail screen.
 //
 // Participation rules (do not change):
-//   - Participation state is session-scoped (API does not echo it back).
+//   - The API echoes the caller's participation via `cluster.myParticipation`
+//     (type + canAddContext) and the server is the source of truth for
+//     gating Add-Context and the restoration banner. The local
+//     `localParticipation` state below is only used for the *button highlight*
+//     between mutate→refetch (a UX hint, not authorization).
 //   - "Add Further Context" only inside the 2-minute window, only after Affected.
 //   - Restoration banner only when state === 'possible_restoration' AND
 //     myParticipation.type === 'affected'.
@@ -11,14 +15,13 @@
 //   - "I'm Observing" is hidden for experiential categories (electricity, water).
 //   - Unauthenticated users are navigated to auth when they attempt to participate.
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -60,10 +63,7 @@ import {
   ScreenPaddingH,
   ScreenPaddingBottom,
 } from '../../../src/theme';
-import type {
-  OfficialPostResponse,
-  ParticipationType,
-} from '../../../src/types/api';
+import type { ParticipationType } from '../../../src/types/api';
 
 // ─── Experiential categories — no "I'm Observing" option ─────────────────────
 const EXPERIENTIAL_CATEGORIES = new Set(['electricity', 'water']);
@@ -112,8 +112,19 @@ export default function ClusterDetailScreen(): React.ReactElement {
   }, [affectedAt, windowOpen]);
 
   // ── Auth gate ──────────────────────────────────────────────────────────────
+  // Guard against stacking multiple phone screens if the user taps a
+  // participation button repeatedly while unauthenticated. The flag is
+  // cleared once auth status changes (login completed or screen revisited).
+  const navigatingToAuthRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (authState.status === 'authenticated') {
+      navigatingToAuthRef.current = false;
+    }
+  }, [authState.status]);
   const requireAuth = useCallback((): boolean => {
     if (authState.status === 'authenticated') return true;
+    if (navigatingToAuthRef.current) return false;
+    navigatingToAuthRef.current = true;
     // Navigate to phone auth — Expo Router will return here on back.
     router.push('/(auth)/phone');
     return false;
