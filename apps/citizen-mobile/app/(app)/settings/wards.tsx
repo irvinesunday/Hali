@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ArrowLeft, XCircle, PlusCircle } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getFollowedLocalities,
@@ -29,6 +29,13 @@ import {
 import { useLocalityContext } from '../../../src/context/LocalityContext';
 import { Loading } from '../../../src/components/common/Loading';
 import { MAX_FOLLOWED_WARDS } from '../../../src/config/constants';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+} from '../../../src/theme';
 import type {
   ApiError,
   FollowedLocality,
@@ -152,7 +159,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <ArrowLeft size={24} color={Colors.foreground} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Ward following</Text>
         <View style={styles.navSpacer} />
@@ -203,7 +210,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
               accessibilityRole="button"
               accessibilityLabel={`Remove ${item.displayLabel ?? item.wardName}`}
             >
-              <Ionicons name="close-circle" size={22} color="#DC2626" />
+              <XCircle size={22} color={Colors.destructive} />
             </TouchableOpacity>
           </View>
         ))}
@@ -221,7 +228,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
               value={query}
               onChangeText={setQuery}
               placeholder="Search for an area or estate..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={Colors.faintForeground}
               autoCapitalize="words"
               autoCorrect={false}
               editable={!updateMutation.isPending}
@@ -230,7 +237,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
             />
 
             {searchQuery.isFetching && (
-              <ActivityIndicator color="#1a3a2f" style={{ marginTop: 8 }} />
+              <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.sm }} />
             )}
 
             {searchQuery.data && searchQuery.data.length === 0 && debouncedQuery.length >= 2 && (
@@ -258,7 +265,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
                     {candidate.cityName ? ` · ${candidate.cityName}` : ''}
                   </Text>
                 </View>
-                <Ionicons name="add-circle" size={22} color="#1a3a2f" />
+                <PlusCircle size={22} color={Colors.primary} />
               </TouchableOpacity>
             ))}
           </>
@@ -291,83 +298,111 @@ class ApiResultError extends Error {
 // ─── Styles ───────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: Colors.card },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: '#111827' },
+  navTitle: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+  },
   navSpacer: { width: 24 },
-  content: { padding: 20, gap: 14 },
+  content: { padding: Spacing.xl, gap: Spacing.md + 2 },
   badge: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: Colors.emeraldSubtle,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
     alignSelf: 'flex-start',
   },
-  badgeAtCapacity: { backgroundColor: '#FEF2F2' },
-  badgeText: { fontSize: 13, fontWeight: '600', color: '#1a3a2f' },
-  badgeTextAtCapacity: { color: '#991B1B' },
-  empty: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  badgeAtCapacity: { backgroundColor: Colors.destructiveSubtle },
+  badgeText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.primary,
+  },
+  badgeTextAtCapacity: { color: Colors.destructive },
+  empty: { fontSize: FontSize.body, color: Colors.mutedForeground, lineHeight: 20 },
   sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 8,
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+    marginTop: Spacing.sm,
   },
   wardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    padding: 14,
-    gap: 10,
+    backgroundColor: Colors.muted,
+    borderRadius: Radius.md,
+    padding: Spacing.md + 2,
+    gap: Spacing.sm + 2,
   },
   wardRowText: { flex: 1 },
-  wardName: { fontSize: 15, color: '#111827', fontWeight: '600' },
-  wardCity: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  wardName: {
+    fontSize: FontSize.cardTitle,
+    color: Colors.foreground,
+    fontFamily: FontFamily.semiBold,
+  },
+  wardCity: {
+    fontSize: FontSize.badge,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+  },
   searchInput: {
     borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#FFFFFF',
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    fontSize: FontSize.body,
+    color: Colors.foreground,
+    backgroundColor: Colors.card,
   },
-  searchEmpty: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+  searchEmpty: {
+    fontSize: FontSize.bodySmall,
+    color: Colors.mutedForeground,
+    marginTop: Spacing.xs,
+  },
   candidateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.card,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    padding: 12,
-    gap: 10,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: Spacing.sm + 2,
   },
   candidateText: { flex: 1 },
-  candidatePrimary: { fontSize: 14, color: '#111827', fontWeight: '500' },
-  candidateSecondary: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  candidatePrimary: {
+    fontSize: FontSize.body,
+    color: Colors.foreground,
+    fontFamily: FontFamily.medium,
+  },
+  candidateSecondary: {
+    fontSize: FontSize.badge,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+  },
   capacityHint: {
-    fontSize: 13,
-    color: '#991B1B',
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    padding: 12,
+    fontSize: FontSize.bodySmall,
+    color: Colors.destructive,
+    backgroundColor: Colors.destructiveSubtle,
+    borderRadius: Radius.sm,
+    padding: Spacing.md,
   },
   toast: {
-    fontSize: 14,
-    color: '#991B1B',
-    backgroundColor: '#FEF2F2',
-    borderRadius: 8,
-    padding: 12,
+    fontSize: FontSize.body,
+    color: Colors.destructive,
+    backgroundColor: Colors.destructiveSubtle,
+    borderRadius: Radius.sm,
+    padding: Spacing.md,
   },
 });

@@ -23,7 +23,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ArrowLeft } from 'lucide-react-native';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+} from '../../../src/theme';
 import * as Notifications from 'expo-notifications';
 import * as Crypto from 'expo-crypto';
 import * as Device from 'expo-device';
@@ -78,17 +85,25 @@ export default function NotificationSettingsScreen(): React.ReactElement {
   }, [meQuery.data]);
 
   // ── Update settings mutation ──────────────────────────────────────────────
-  const updateMutation = useMutation<void, Error, NotificationSettings>({
+  // Optimistic toggle: rollback on error uses React Query's onMutate context.
+  const updateMutation = useMutation<
+    void,
+    Error,
+    NotificationSettings,
+    { previous: NotificationSettings }
+  >({
     mutationFn: async (next) => {
       const result = await updateNotificationSettings(next);
       if (!result.ok) throw new Error(result.error.message);
     },
+    onMutate: (next) => {
+      const previous = settings;
+      setSettings(next);
+      return { previous };
+    },
     onError: (_err, _variables, context) => {
-      // Rollback the optimistic toggle
-      const previous = (context as { previous?: NotificationSettings } | undefined)
-        ?.previous;
-      if (previous !== undefined) {
-        setSettings(previous);
+      if (context?.previous !== undefined) {
+        setSettings(context.previous);
       }
       setToggleError(
         'Could not save your preference. Please try again.',
@@ -101,16 +116,8 @@ export default function NotificationSettingsScreen(): React.ReactElement {
   });
 
   function handleToggle(key: keyof NotificationSettings): void {
-    const previous = settings;
     const next: NotificationSettings = { ...settings, [key]: !settings[key] };
-    setSettings(next); // optimistic
-    updateMutation.mutate(next, {
-      // Pass the previous state via context for rollback. React Query v5
-      // doesn't accept a context generic on useMutation, so we attach it
-      // imperatively.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...({ context: { previous } } as any),
-    });
+    updateMutation.mutate(next);
   }
 
   // ── Re-register push (for users who initially denied) ─────────────────────
@@ -160,7 +167,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <ArrowLeft size={24} color={Colors.foreground} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Notifications</Text>
         <View style={styles.navSpacer} />
@@ -184,7 +191,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             accessibilityState={{ busy: pushBusy }}
           >
             {pushBusy ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <ActivityIndicator color={Colors.primaryForeground} size="small" />
             ) : (
               <Text style={styles.pushBtnText}>Enable push notifications</Text>
             )}
@@ -263,8 +270,8 @@ function ToggleRow({
         value={value}
         onValueChange={onToggle}
         disabled={disabled}
-        trackColor={{ false: '#D1D5DB', true: '#1a3a2f' }}
-        thumbColor="#FFFFFF"
+        trackColor={{ false: Colors.border, true: Colors.primary }}
+        thumbColor={Colors.primaryForeground}
         accessible
         accessibilityRole="switch"
         accessibilityLabel={label}
@@ -275,42 +282,73 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: Colors.card },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: '#111827' },
+  navTitle: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+  },
   navSpacer: { width: 24 },
-  content: { padding: 20, gap: 28 },
-  section: { gap: 12 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  sectionSub: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  content: { padding: Spacing.xl, gap: Spacing['3xl'] - 4 },
+  section: { gap: Spacing.md },
+  sectionTitle: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+  },
+  sectionSub: {
+    fontSize: FontSize.body,
+    color: Colors.mutedForeground,
+    lineHeight: 20,
+  },
   pushBtn: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 14,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md + 2,
     alignItems: 'center',
   },
   pushBtnBusy: { opacity: 0.7 },
-  pushBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  pushMessage: { fontSize: 13, color: '#374151' },
+  pushBtnText: {
+    color: Colors.primaryForeground,
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+  },
+  pushMessage: {
+    fontSize: FontSize.bodySmall,
+    color: Colors.foreground,
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    gap: 12,
+    borderBottomColor: Colors.border,
+    gap: Spacing.md,
   },
   toggleText: { flex: 1, gap: 2 },
-  toggleLabel: { fontSize: 15, color: '#111827', fontWeight: '500' },
-  toggleDesc: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
-  toggleError: { fontSize: 13, color: '#DC2626', marginTop: 4 },
+  toggleLabel: {
+    fontSize: FontSize.cardTitle,
+    color: Colors.foreground,
+    fontFamily: FontFamily.medium,
+  },
+  toggleDesc: {
+    fontSize: FontSize.bodySmall,
+    color: Colors.mutedForeground,
+    lineHeight: 18,
+  },
+  toggleError: {
+    fontSize: FontSize.bodySmall,
+    color: Colors.destructive,
+    marginTop: Spacing.xs,
+  },
 });

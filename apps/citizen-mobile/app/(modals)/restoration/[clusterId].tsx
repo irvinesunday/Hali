@@ -24,8 +24,15 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { X, ChevronRight } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+} from '../../../src/theme';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { submitRestorationResponse } from '../../../src/api/clusters';
@@ -47,25 +54,25 @@ const OPTIONS: readonly OptionConfig[] = [
     key: 'restored',
     label: 'Service restored for me',
     helper: "I'm no longer affected — things are back to normal.",
-    bg: '#F0FDF4',
-    borderColor: '#86EFAC',
-    textColor: '#166534',
+    bg: Colors.emeraldSubtle,
+    borderColor: Colors.conditionBadge.emerald.border,
+    textColor: Colors.emerald,
   },
   {
     key: 'still_affected',
     label: 'Still affected',
     helper: 'The issue is ongoing for me.',
-    bg: '#FEF2F2',
-    borderColor: '#FCA5A5',
-    textColor: '#991B1B',
+    bg: Colors.destructiveSubtle,
+    borderColor: Colors.conditionBadge.red.border,
+    textColor: Colors.destructive,
   },
   {
     key: 'not_sure',
     label: 'Not sure yet',
     helper: 'I need a bit more time to confirm.',
-    bg: '#F9FAFB',
-    borderColor: '#E5E7EB',
-    textColor: '#374151',
+    bg: Colors.muted,
+    borderColor: Colors.border,
+    textColor: Colors.foreground,
   },
 ];
 
@@ -143,7 +150,7 @@ export default function RestorationPromptModal(): React.ReactElement {
           accessibilityLabel="Close"
           disabled={screenState === 'loading'}
         >
-          <Ionicons name="close" size={24} color="#111827" />
+          <X size={24} color={Colors.foreground} />
         </TouchableOpacity>
       </View>
 
@@ -186,11 +193,7 @@ export default function RestorationPromptModal(): React.ReactElement {
                 {isPending ? (
                   <ActivityIndicator size="small" color={opt.textColor} />
                 ) : (
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={opt.textColor}
-                  />
+                  <ChevronRight size={18} color={opt.textColor} />
                 )}
               </TouchableOpacity>
             );
@@ -213,27 +216,42 @@ export default function RestorationPromptModal(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
-  navBar: { padding: 16, alignItems: 'flex-end' },
-  content: { flex: 1, padding: 24, gap: 20 },
-  heading: { fontSize: 24, fontWeight: '700', color: '#111827' },
-  sub: { fontSize: 15, color: '#6B7280', lineHeight: 22 },
-  options: { gap: 12, marginTop: 8 },
+  safe: { flex: 1, backgroundColor: Colors.card },
+  navBar: { padding: Spacing.lg, alignItems: 'flex-end' },
+  content: { flex: 1, padding: Spacing['2xl'], gap: Spacing.xl },
+  heading: {
+    fontSize: FontSize.appName,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+  },
+  sub: {
+    fontSize: FontSize.cardTitle,
+    color: Colors.mutedForeground,
+    lineHeight: 22,
+  },
+  options: { gap: Spacing.md, marginTop: Spacing.sm },
   option: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 18,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg + 2,
     borderWidth: 1.5,
   },
   optionTextWrap: { flex: 1, gap: 4 },
-  optionLabel: { fontSize: 17, fontWeight: '600' },
-  optionHelper: { fontSize: 13, lineHeight: 18, opacity: 0.85 },
+  optionLabel: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+  },
+  optionHelper: {
+    fontSize: FontSize.bodySmall,
+    lineHeight: 18,
+    opacity: 0.85,
+  },
   error: {
-    fontSize: 14,
-    color: '#DC2626',
+    fontSize: FontSize.body,
+    color: Colors.destructive,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: Spacing.sm,
   },
 });
