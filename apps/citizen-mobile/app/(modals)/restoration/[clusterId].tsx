@@ -14,7 +14,7 @@
 // affected, undoing any prior restoration vote. This matches the CIVIS
 // doctrine: restoration requires confirmation, not a binary tally.
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -95,6 +95,17 @@ export default function RestorationPromptModal(): React.ReactElement {
   const [pendingKey, setPendingKey] = useState<RestorationResponseValue | null>(
     null,
   );
+  const [submitted, setSubmitted] = useState(false);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current !== null) {
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleRespond(value: RestorationResponseValue): Promise<void> {
     if (screenState === 'loading' || !clusterId) return;
@@ -110,9 +121,16 @@ export default function RestorationPromptModal(): React.ReactElement {
       });
 
       if (result.ok) {
-        // Pop the modal — the parent cluster screen will refetch on focus
-        // and the new state will surface from there.
-        router.back();
+        // Show brief confirmation then dismiss. The parent cluster screen
+        // will refetch on focus and the new state will surface from there.
+        setSubmitted(true);
+        if (dismissTimerRef.current !== null) {
+          clearTimeout(dismissTimerRef.current);
+        }
+        dismissTimerRef.current = setTimeout(() => {
+          dismissTimerRef.current = null;
+          router.back();
+        }, 1500);
         return;
       }
 
@@ -160,6 +178,11 @@ export default function RestorationPromptModal(): React.ReactElement {
           Your response helps confirm whether this issue has been fixed.
         </Text>
 
+        {submitted ? (
+          <View style={styles.confirmedContainer}>
+            <Text style={styles.confirmedText}>Recorded. Thank you.</Text>
+          </View>
+        ) : (
         <View style={styles.options}>
           {OPTIONS.map((opt) => {
             const isPending = pendingKey === opt.key;
@@ -199,6 +222,7 @@ export default function RestorationPromptModal(): React.ReactElement {
             );
           })}
         </View>
+        )}
 
         {screenState === 'error' && errorMessage !== '' && (
           <Text
@@ -247,6 +271,15 @@ const styles = StyleSheet.create({
     fontSize: FontSize.bodySmall,
     lineHeight: 18,
     opacity: 0.85,
+  },
+  confirmedContainer: {
+    paddingVertical: Spacing.xl,
+    alignItems: 'center',
+  },
+  confirmedText: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.medium,
+    color: Colors.emerald,
   },
   error: {
     fontSize: FontSize.body,

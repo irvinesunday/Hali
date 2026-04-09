@@ -16,41 +16,52 @@ export interface ClusterCardProps {
   cluster: ClusterResponse;
 }
 
-export function ClusterCard({ cluster }: ClusterCardProps): React.ReactElement {
-  const router = useRouter();
+export const ClusterCard = React.memo(
+  function ClusterCard({ cluster }: ClusterCardProps): React.ReactElement {
+    const router = useRouter();
 
-  return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.8}
-      onPress={() => router.push(`/(app)/clusters/${cluster.id}`)}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={cluster.title ?? formatCategoryLabel(cluster.category)}
-      accessibilityHint="Open cluster details"
-    >
-      <View style={styles.header}>
-        <Text style={styles.title} numberOfLines={2}>
-          {cluster.title ?? formatCategoryLabel(cluster.category)}
-        </Text>
-        <ClusterStateBadge state={cluster.state} />
-      </View>
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.8}
+        onPress={() => router.push(`/(app)/clusters/${cluster.id}`)}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={cluster.title ?? formatCategoryLabel(cluster.category)}
+        accessibilityHint="Open cluster details"
+      >
+        <View style={styles.header}>
+          <Text style={styles.title} numberOfLines={2}>
+            {cluster.title ?? formatCategoryLabel(cluster.category)}
+          </Text>
+          <ClusterStateBadge state={cluster.state} />
+        </View>
 
-      {cluster.summary ? (
-        <Text style={styles.summary} numberOfLines={2}>
-          {cluster.summary}
-        </Text>
-      ) : null}
+        {cluster.summary ? (
+          <Text style={styles.summary} numberOfLines={2}>
+            {cluster.summary}
+          </Text>
+        ) : null}
 
-      <View style={styles.footer}>
-        <Text style={styles.meta}>
-          {cluster.affectedCount} affected · {cluster.observingCount} observing
-        </Text>
-        <Text style={styles.time}>{formatRelativeTime(cluster.updatedAt)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
+        <View style={styles.footer}>
+          <Text style={styles.meta}>
+            {cluster.affectedCount} affected · {cluster.observingCount} observing
+          </Text>
+          <Text style={styles.time}>{formatRelativeTime(cluster.updatedAt)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+  (prev, next) =>
+    prev.cluster.id === next.cluster.id &&
+    prev.cluster.updatedAt === next.cluster.updatedAt &&
+    prev.cluster.state === next.cluster.state &&
+    prev.cluster.affectedCount === next.cluster.affectedCount &&
+    prev.cluster.observingCount === next.cluster.observingCount &&
+    prev.cluster.title === next.cluster.title &&
+    prev.cluster.summary === next.cluster.summary &&
+    prev.cluster.category === next.cluster.category,
+);
 
 const styles = StyleSheet.create({
   card: {

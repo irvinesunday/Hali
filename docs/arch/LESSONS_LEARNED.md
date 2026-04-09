@@ -1055,3 +1055,21 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** Common misspelling slipped through.
 **Fix applied:** Replaced `dismissable` with `dismissible`.
 **Rule added:** Docs spelling → "Prefer `dismissible`, `accessible`, `collapsible` (-ible suffix) for UI vocabulary."
+
+---
+
+## PR #88 — UX retrospective gaps (3 targeted fixes)
+
+### Lesson 1: React.memo custom comparator must include every rendered field
+**File:** `apps/citizen-mobile/src/components/feed/ClusterCard.tsx`
+**What Copilot flagged:** Comparator ignored `title`, `summary`, and `category`, which the component renders (and uses in `accessibilityLabel`). If those change without `updatedAt` changing, the card displays stale content.
+**Root cause:** Treated `updatedAt` as a proxy for "anything visible changed," but the backend can mutate display fields without bumping `updatedAt` (caching, partial updates).
+**Fix applied:** Extended comparator to also check `title`, `summary`, and `category`.
+**Rule added:** React → "Custom `React.memo` comparators must enumerate every prop field the component reads in render or accessibility props. Do not rely on a single `updatedAt`/version field as a proxy."
+
+### Lesson 2: setTimeout in components must be cleaned up on unmount
+**File:** `apps/citizen-mobile/app/(modals)/restoration/[clusterId].tsx`
+**What Copilot flagged:** `setTimeout(() => router.back(), 1500)` was not cleared on unmount. If the modal is dismissed by another path before the timer fires, the stale callback can call `router.back()` on a different screen.
+**Root cause:** Treated the delayed dismiss as fire-and-forget without considering navigation races.
+**Fix applied:** Stored the timer in a `useRef`, cleared it in a `useEffect` cleanup, and cleared any prior timer before scheduling a new one.
+**Rule added:** React Native → "Any `setTimeout`/`setInterval` started inside a component must be tracked in a `useRef` and cleared in a `useEffect` cleanup. Never leave a pending timer that calls navigation or state setters."
