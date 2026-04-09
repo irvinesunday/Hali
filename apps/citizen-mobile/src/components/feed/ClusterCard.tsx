@@ -57,7 +57,10 @@ export const ClusterCard = React.memo(
     prev.cluster.updatedAt === next.cluster.updatedAt &&
     prev.cluster.state === next.cluster.state &&
     prev.cluster.affectedCount === next.cluster.affectedCount &&
-    prev.cluster.observingCount === next.cluster.observingCount,
+    prev.cluster.observingCount === next.cluster.observingCount &&
+    prev.cluster.title === next.cluster.title &&
+    prev.cluster.summary === next.cluster.summary &&
+    prev.cluster.category === next.cluster.category,
 );
 
 const styles = StyleSheet.create({
