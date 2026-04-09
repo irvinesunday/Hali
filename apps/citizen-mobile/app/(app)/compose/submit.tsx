@@ -97,7 +97,7 @@ function SubmitScreenContent({
         </View>
 
         {preview.shouldSuggestJoin && (
-          <View style={styles.hintCard} accessibilityRole="alert">
+          <View style={styles.hintCard} accessible accessibilityRole="alert">
             <Info size={20} color={Colors.primary} strokeWidth={2} />
             <View style={styles.hintTextWrap}>
               <Text style={styles.hintTitle}>Similar signals may already be active</Text>

@@ -112,6 +112,9 @@ function ConfirmScreenContent({
               placeholder={locationGate === 'required' ? 'Enter the location…' : 'Confirm or correct the location…'}
               placeholderTextColor={Colors.faintForeground}
               accessibilityLabel="Location"
+              accessibilityHint={locationGate === 'required'
+                ? "Required. We couldn't confidently identify the location, so please enter it."
+                : "Optional. Confirm the extracted location or correct it if needed."}
             />
             {locationGate === 'confirm' && !locationConfirmed && (
               <TouchableOpacity style={styles.confirmChip}
