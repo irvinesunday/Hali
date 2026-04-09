@@ -1015,3 +1015,27 @@ flags a CSV/JSON/YAML parse bug, run the parser over the WHOLE file
 (`python3 -c 'import csv; list(csv.DictReader(open(p)))'`) before
 declaring the fix complete — never trust the line numbers in the comment
 as the only affected location."
+
+## PR #86 (round 3)
+
+### Lesson 5: Argparse help strings must enumerate the actual choices
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** `--stack` help text said "(html-tailwind, react,
+nextjs)" while `AVAILABLE_STACKS` actually contained 13 stacks. Round 1
+fixed the module docstring but the argparse help string was missed.
+**Fix applied:** Built the help string from `AVAILABLE_STACKS` directly so
+it can never drift again.
+**Rule added:** Pre-Commit Checklist → CLI Tools → "Derive --help text
+from the same constant the choices come from. Hardcoded help strings
+silently rot whenever the underlying list grows."
+
+### Lesson 6: A flag that is silently ignored is a bug, not a feature
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** Passing `--json` together with `--design-system`
+silently dropped the `--json` flag because the design-system branch only
+prints formatted text.
+**Fix applied:** Added an explicit `parser.error` for the combination so
+the user is told instead of getting the wrong format.
+**Rule added:** Pre-Commit Checklist → CLI Tools → "If a flag has no
+effect in some mode, the parser must reject the combination. Never let
+a CLI silently ignore a user-supplied option."
