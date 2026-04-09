@@ -19,12 +19,25 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ArrowLeft,
+  ChevronRight,
+  MapPin,
+  Bell,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { getMe } from '../../../src/api/users';
 import { useAuth } from '../../../src/context/AuthContext';
 import { Loading } from '../../../src/components/common/Loading';
 import { formatRelativeTime } from '../../../src/utils/formatters';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+} from '../../../src/theme';
 
 /**
  * Mask all but the last 4 digits of an E.164 phone number.
@@ -88,7 +101,7 @@ export default function AccountSettingsScreen(): React.ReactElement {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <ArrowLeft size={24} color={Colors.foreground} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>Account</Text>
         <View style={styles.navSpacer} />
@@ -110,12 +123,12 @@ export default function AccountSettingsScreen(): React.ReactElement {
         <View style={styles.nav}>
           <NavItem
             label="Ward following"
-            icon="location-outline"
+            icon={MapPin}
             onPress={() => router.push('/(app)/settings/wards')}
           />
           <NavItem
             label="Notifications"
-            icon="notifications-outline"
+            icon={Bell}
             onPress={() => router.push('/(app)/settings/notifications')}
           />
         </View>
@@ -130,7 +143,7 @@ export default function AccountSettingsScreen(): React.ReactElement {
           accessibilityState={{ busy: signingOut }}
         >
           {signingOut ? (
-            <ActivityIndicator color="#1a3a2f" size="small" />
+            <ActivityIndicator color={Colors.primary} size="small" />
           ) : (
             <Text style={styles.signOutBtnText}>Sign out</Text>
           )}
@@ -161,11 +174,11 @@ function InfoRow({
 
 function NavItem({
   label,
-  icon,
+  icon: Icon,
   onPress,
 }: {
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: LucideIcon;
   onPress: () => void;
 }): React.ReactElement {
   return (
@@ -177,78 +190,98 @@ function NavItem({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={20} color="#374151" />
+      <Icon size={20} color={Colors.foreground} />
       <Text style={styles.navItemLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+      <ChevronRight size={16} color={Colors.faintForeground} />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: Colors.background },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.border,
   },
-  navTitle: { fontSize: 17, fontWeight: '600', color: '#111827' },
+  navTitle: {
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+  },
   navSpacer: { width: 24 },
-  content: { padding: 20, gap: 16, paddingBottom: 40 },
+  content: {
+    padding: Spacing.xl,
+    gap: Spacing.lg,
+    paddingBottom: Spacing['4xl'] - 8,
+  },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: Colors.border,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    gap: 16,
+    borderBottomColor: Colors.border,
+    gap: Spacing.lg,
   },
-  infoLabel: { fontSize: 14, color: '#6B7280' },
+  infoLabel: { fontSize: FontSize.body, color: Colors.mutedForeground },
   infoValue: {
-    fontSize: 14,
-    color: '#111827',
-    fontWeight: '500',
+    fontSize: FontSize.body,
+    color: Colors.foreground,
+    fontFamily: FontFamily.medium,
     flex: 1,
     textAlign: 'right',
   },
   nav: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: Colors.border,
     overflow: 'hidden',
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: Colors.border,
   },
-  navItemLabel: { flex: 1, fontSize: 15, color: '#111827' },
+  navItemLabel: {
+    flex: 1,
+    fontSize: FontSize.cardTitle,
+    color: Colors.foreground,
+  },
   signOutBtn: {
-    marginTop: 8,
-    backgroundColor: '#FFFFFF',
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.card,
     borderWidth: 1.5,
-    borderColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 14,
+    borderColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.md,
     alignItems: 'center',
   },
   signOutBtnBusy: { opacity: 0.7 },
-  signOutBtnText: { color: '#1a3a2f', fontSize: 15, fontWeight: '600' },
-  version: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
+  signOutBtnText: {
+    color: Colors.primary,
+    fontSize: FontSize.cardTitle,
+    fontFamily: FontFamily.semiBold,
+  },
+  version: {
+    fontSize: FontSize.badge,
+    color: Colors.faintForeground,
+    textAlign: 'center',
+  },
 });
