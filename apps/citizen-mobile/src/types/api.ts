@@ -104,6 +104,13 @@ export interface LocalitySearchResult {
 
 export type LocalitySearchResponse = LocalitySearchResult[];
 
+export interface LocalityResolveResponse {
+  localityId: string;
+  placeLabel: string;
+  wardName: string;
+  cityName: string | null;
+}
+
 // ─── Official Posts ───────────────────────────────────────────────────────────
 
 export interface OfficialPostResponse {
