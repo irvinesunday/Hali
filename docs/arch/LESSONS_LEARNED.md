@@ -685,3 +685,56 @@ Copy this block when adding a new lesson:
 **Root cause:** why did Claude Code generate this incorrectly?
 **Fix applied:** what changed in the code
 **Rule added:** which checklist item covers this now
+
+---
+
+## PR #79 — Phase D cluster detail screen redesign
+
+### Lesson 1: Unused `ActivityIndicator` import after Submit button refactor
+**File:** `apps/citizen-mobile/app/(app)/clusters/[id].tsx`
+**What Copilot flagged:** `ActivityIndicator` was still imported from `react-native`
+even though the loading UI moved into the shared `Button` component during the
+redesign, leaving a dangling import that would trip `noUnusedLocals`.
+**Root cause:** When swapping inline `<ActivityIndicator>` for `<Button loading>`,
+the corresponding import line was not pruned.
+**Fix applied:** Removed `ActivityIndicator` from the `react-native` import list.
+**Rule added:** Pre-Commit Checklist → TypeScript → "after refactoring a JSX element
+away, search the file for its old import and prune it."
+
+### Lesson 2: Unused `OfficialPostResponse` type import after row component swap
+**File:** `apps/citizen-mobile/app/(app)/clusters/[id].tsx`
+**What Copilot flagged:** `OfficialPostResponse` was still imported, but the local
+`OfficialPostCard` component (which used it) had been replaced with the shared
+`OfficialUpdateRow`, which takes individual props instead.
+**Root cause:** Same refactor pattern as Lesson 1 — replacing a sub-component
+without pruning its now-orphaned type import.
+**Fix applied:** Removed `OfficialPostResponse` from the type import.
+**Rule added:** Same as Lesson 1 — applies to type imports as well as runtime imports.
+
+### Lesson 3: Stale "session-scoped participation" comment after API echo added
+**File:** `apps/citizen-mobile/app/(app)/clusters/[id].tsx`
+**What Copilot flagged:** The header comment claimed "Participation state is
+session-scoped (API does not echo it back)" even though `ClusterResponse` now
+includes `myParticipation` and the screen reads `cluster.myParticipation`.
+**Root cause:** Doc-comment was carried over from an earlier version of the
+contract and not updated when the server-echoed `myParticipation` field landed.
+**Fix applied:** Rewrote the header comment to clarify that the server is the
+source of truth and the local state is only a button-highlight UX hint between
+mutate and refetch.
+**Rule added:** Pre-Commit Checklist → Comments → "when API contract changes,
+grep for any header/inline comment that describes the old behavior and update it
+in the same commit as the contract change."
+
+### Lesson 4: `requireAuth` could stack multiple `(auth)/phone` screens on repeat taps
+**File:** `apps/citizen-mobile/app/(app)/clusters/[id].tsx`
+**What Copilot flagged:** `requireAuth` called `router.push('/(auth)/phone')` on
+every unauthenticated participation attempt with no guard, so repeated taps
+could push multiple phone screens onto the navigation stack.
+**Root cause:** The auth gate was written as a stateless check with no protection
+against rapid double-taps or successive button presses while still unauthenticated.
+**Fix applied:** Added a `navigatingToAuthRef` flag that suppresses additional
+pushes once a navigation is already in flight, and is cleared by a `useEffect`
+when `authState.status` flips to `'authenticated'`.
+**Rule added:** Pre-Commit Checklist → Navigation → "any imperative `router.push`
+inside a callback that can fire repeatedly must be guarded against stacking
+duplicate destinations."
