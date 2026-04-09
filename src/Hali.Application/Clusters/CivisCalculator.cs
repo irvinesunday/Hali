@@ -4,7 +4,7 @@ namespace Hali.Application.Clusters;
 
 public static class CivisCalculator
 {
-	// MACF formula per mvp_locked_decisions.md §9:
+	// MACF formula per docs/arch/05_civis_engine.md (and 00_session_patch_notes.md):
 	//   rawMacf = BaseFloor
 	//           + Alpha * Log2(1 + SDS)
 	//           + SensitivityUplift            // 1 for safety, 0 otherwise
