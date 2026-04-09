@@ -104,6 +104,11 @@ export interface LocalitySearchResult {
 
 export type LocalitySearchResponse = LocalitySearchResult[];
 
+// Same shape as LocalitySearchResult — kept as a type alias so the two
+// cannot drift. The endpoint differs only by returning a single value
+// instead of an array.
+export type LocalityResolveResponse = LocalitySearchResult;
+
 // ─── Official Posts ───────────────────────────────────────────────────────────
 
 export interface OfficialPostResponse {

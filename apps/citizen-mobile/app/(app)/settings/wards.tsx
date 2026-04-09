@@ -19,16 +19,21 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, XCircle, PlusCircle } from 'lucide-react-native';
+import { ArrowLeft, XCircle, PlusCircle, Navigation } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as Location from 'expo-location';
 import {
   getFollowedLocalities,
+  resolveByCoordinates,
   searchLocalities,
   setFollowedLocalities,
 } from '../../../src/api/localities';
 import { useLocalityContext } from '../../../src/context/LocalityContext';
 import { Loading } from '../../../src/components/common/Loading';
-import { MAX_FOLLOWED_WARDS } from '../../../src/config/constants';
+import {
+  FEATURE_GPS_LOCALITY_OPT_IN,
+  MAX_FOLLOWED_WARDS,
+} from '../../../src/config/constants';
 import {
   Colors,
   FontFamily,
@@ -53,6 +58,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   // ── Followed localities query ─────────────────────────────────────────────
   const followedQuery = useQuery({
@@ -145,6 +151,53 @@ export default function WardsSettingsScreen(): React.ReactElement {
     updateMutation.mutate(items);
   }
 
+  async function handleUseLocation(): Promise<void> {
+    if (atCapacity) return;
+
+    setGpsLoading(true);
+    setToast(null);
+
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== Location.PermissionStatus.GRANTED) {
+        setToast('Location permission denied. Search manually.');
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const result = await resolveByCoordinates(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+
+      if (!result.ok) {
+        if (result.error.status === 404) {
+          setToast('No ward found at your location. Try searching manually.');
+        } else {
+          setToast('Could not resolve your location. Try searching manually.');
+        }
+        return;
+      }
+
+      const asSearchResult: LocalitySearchResult = {
+        localityId: result.value.localityId,
+        placeLabel: result.value.placeLabel,
+        wardName: result.value.wardName,
+        cityName: result.value.cityName,
+      };
+
+      handleAdd(asSearchResult);
+    } catch {
+      setToast('Could not access location. Please try searching manually.');
+    } finally {
+      setGpsLoading(false);
+    }
+  }
+
   if (followedQuery.isLoading && !followedQuery.data) {
     return <Loading />;
   }
@@ -235,6 +288,28 @@ export default function WardsSettingsScreen(): React.ReactElement {
               accessible
               accessibilityLabel="Area search"
             />
+
+            {/* GPS opt-in — gated by feature flag until backend ships.
+                Backend endpoint is currently a stub returning 404. */}
+            {FEATURE_GPS_LOCALITY_OPT_IN && (
+            <TouchableOpacity
+              style={[styles.gpsButton, gpsLoading && styles.gpsButtonLoading]}
+              onPress={() => void handleUseLocation()}
+              disabled={gpsLoading || updateMutation.isPending}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Use my current location"
+            >
+              {gpsLoading ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Navigation size={16} color={Colors.primary} strokeWidth={2} />
+              )}
+              <Text style={styles.gpsButtonText}>
+                {gpsLoading ? 'Finding your location…' : 'Use my current location'}
+              </Text>
+            </TouchableOpacity>
+            )}
 
             {searchQuery.isFetching && (
               <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.sm }} />
@@ -397,6 +472,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.destructiveSubtle,
     borderRadius: Radius.sm,
     padding: Spacing.md,
+  },
+  gpsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    backgroundColor: Colors.primarySubtle,
+  },
+  gpsButtonLoading: {
+    opacity: 0.6,
+  },
+  gpsButtonText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
   },
   toast: {
     fontSize: FontSize.body,

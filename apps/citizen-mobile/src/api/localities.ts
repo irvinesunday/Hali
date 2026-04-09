@@ -7,6 +7,7 @@ import { apiRequest } from './client';
 import type {
   ApiError,
   FollowedLocalitiesResponse,
+  LocalityResolveResponse,
   LocalitySearchResponse,
   Result,
   SetFollowedLocalitiesBody,
@@ -52,6 +53,26 @@ export async function searchLocalities(
   const q = encodeURIComponent(query.trim());
   return apiRequest<LocalitySearchResponse>(
     `/v1/localities/search?q=${q}`,
+    { method: 'GET' },
+  );
+}
+
+/**
+ * GET /v1/localities/resolve-by-coordinates?latitude=&longitude=
+ * Resolves a lat/lng to the best matching locality.
+ * Returns 404 if no locality found for the given coordinates.
+ * Called only after explicit user permission — never automatically.
+ */
+export async function resolveByCoordinates(
+  latitude: number,
+  longitude: number,
+): Promise<Result<LocalityResolveResponse, ApiError>> {
+  const params = new URLSearchParams({
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
+  });
+  return apiRequest<LocalityResolveResponse>(
+    `/v1/localities/resolve-by-coordinates?${params.toString()}`,
     { method: 'GET' },
   );
 }

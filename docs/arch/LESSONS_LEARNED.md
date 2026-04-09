@@ -908,3 +908,32 @@ files.
 commit that adds files outside the original PR scope (new tokens, lesson
 entries, etc.), update the PR description's modified-files list in the same
 session — extends Lesson #81/7."
+
+## PR #85 — feat(mobile): GPS opt-in on wards settings screen
+
+### Lesson 1: Don't add a type that duplicates an existing one — alias it
+**File:** `apps/citizen-mobile/src/types/api.ts`
+**What Copilot flagged:** `LocalityResolveResponse` duplicated the exact
+shape of `LocalitySearchResult`, risking the two drifting over time.
+**Root cause:** New endpoint type was written from scratch without
+checking for an existing identical shape elsewhere in the same file.
+**Fix applied:** Replaced the interface with
+`export type LocalityResolveResponse = LocalitySearchResult;`.
+**Rule added:** Pre-Commit Checklist → Types → "Before adding a new
+interface, grep the same file (and `src/types/`) for an existing type with
+the same field set. If one exists, alias rather than redeclare."
+
+### Lesson 2: Gate UI behind a feature flag when the backend is a stub
+**File:** `apps/citizen-mobile/app/(app)/settings/wards.tsx`
+**What Copilot flagged:** The new "Use my current location" button calls
+`GET /v1/localities/resolve-by-coordinates`, which is a stub returning
+404 — so the button would always show "No ward found" in production.
+**Root cause:** Mobile work assumed the backend endpoint was implemented
+without grepping the controller. The endpoint existed but was a TODO stub.
+**Fix applied:** Added `FEATURE_GPS_LOCALITY_OPT_IN = false` to
+`src/config/constants.ts` and gated the button behind it. Flip when the
+backend ships.
+**Rule added:** Pre-Commit Checklist → Mobile↔Backend → "Before wiring a
+mobile UI to a new backend endpoint, open the controller and confirm it
+returns real data, not a stub. If it's a stub, gate the UI behind a
+feature flag in `src/config/constants.ts` defaulting to `false`."
