@@ -18,6 +18,31 @@ to a real past failure. Do not skip any item.
       cause is already covered in docs/arch/LESSONS_LEARNED.md — if it is, note
       "Existing lesson N reinforced" rather than creating a duplicate
 
+### Self-Review (run before every commit — mandatory)
+
+- [ ] Read every file you are about to commit in full
+- [ ] Run the automated grep checks:
+
+```bash
+# Hardcoded hex colours (zero tolerance)
+grep -rn "#[0-9A-Fa-f]\{3,6\}" <changed files> | grep -v "^\s*//"
+
+# Forbidden icon libraries
+grep -rn "Ionicons\|@expo/vector-icons\|MaterialIcons" <changed files>
+
+# React Native Animated API (use Reanimated instead)
+grep -rn "from 'react-native'.*\bAnimated\b" <changed files>
+
+# any types
+grep -rn ": any\b\|as any\b" <changed files>
+```
+
+- [ ] Every grep above returns zero matches
+- [ ] TypeScript: `npx tsc --noEmit` returns zero errors
+- [ ] Every changed file has been read and manually checked against this list
+- [ ] Commit message includes self-validation result: "Self-validation: PASS"
+- [ ] If ANY check fails: fix it NOW — do not commit and let CI or Copilot catch it
+
 ### Formatting
 - [ ] C# files: run `dotnet format --verify-no-changes` — zero violations
 - [ ] TypeScript files: run `npx tsc --noEmit` — zero errors
