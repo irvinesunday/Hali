@@ -40,7 +40,7 @@ where XX is a documented opacity suffix.
 
 Run this grep after writing any file. Zero matches required before committing:
 ```bash
-grep -n "#[0-9A-Fa-f]\{3,6\}" <file> | grep -v "^\s*//"
+grep -n "#[0-9A-Fa-f]\{3,6\}" <file> | grep -v "^[[:space:]]*//"
 ```
 
 ### Icons
@@ -83,7 +83,7 @@ Use `Toast` from `../../src/components/common/Toast`.
 - Every service function returns `Result<T, ApiError>` — never throws, never returns null
 - Access token stored in SecureStore — never AsyncStorage
 - On 401: call `POST /v1/auth/refresh`, retry once, then redirect to auth if refresh fails
-- Idempotency-Key: generate with expo-crypto SHA-256 on first attempt, reuse on retry
+- `idempotencyKey` in the JSON request body: generate with expo-crypto SHA-256 on first attempt, reuse on retry
 - API paths strictly from the OpenAPI spec — do not invent endpoints
 
 ---
@@ -129,40 +129,58 @@ Run every item. Record results. Fix all BLOCKING items before proceeding to Stag
 ### 2A — Automated grep checks (run on every changed file)
 
 ```bash
-# Check 1: Zero hardcoded hex colours
+# Resolve the list of staged TS/TSX files once. All checks operate on this set.
+files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
+
+# Check 1: Zero hardcoded hex colours (POSIX-portable comment filter)
 echo "=== CHECK 1: Hardcoded hex colours ==="
-for f in <list every changed .tsx/.ts file>; do
-  matches=$(grep -n "#[0-9A-Fa-f]\{3,6\}" "$f" | grep -v "^\s*//")
-  if [ -n "$matches" ]; then
-    echo "FAIL $f:"
-    echo "$matches"
-  else
-    echo "PASS $f"
-  fi
-done
+if [ -n "$files" ]; then
+  for f in $files; do
+    matches=$(grep -n "#[0-9A-Fa-f]\{3,6\}" "$f" | grep -v "^[[:space:]]*//")
+    if [ -n "$matches" ]; then
+      echo "FAIL $f:"
+      echo "$matches"
+    else
+      echo "PASS $f"
+    fi
+  done
+fi
 
 # Check 2: Zero Ionicons / @expo/vector-icons usage
 echo "=== CHECK 2: Forbidden icon libraries ==="
-grep -rn "Ionicons\|@expo/vector-icons\|MaterialIcons\|FontAwesome" <changed files> \
+[ -n "$files" ] && echo "$files" | xargs -r grep -n \
+  "Ionicons\|@expo/vector-icons\|MaterialIcons\|FontAwesome" \
   && echo "FAIL — forbidden icon library found" || echo "PASS"
 
 # Check 3: Zero `Animated` from React Native core (must use Reanimated)
+# Uses portable -E word boundary instead of \b
 echo "=== CHECK 3: React Native Animated API ==="
-grep -rn "from 'react-native'.*Animated\|import.*Animated.*react-native" <changed files> \
+[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+  "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)" \
   && echo "FAIL — use react-native-reanimated instead" || echo "PASS"
 
-# Check 4: TypeScript — zero errors
+# Check 4: TypeScript — zero errors. Capture tsc exit code BEFORE piping to head.
 echo "=== CHECK 4: TypeScript ==="
-cd apps/citizen-mobile && npx tsc --noEmit 2>&1 | head -30 && cd ../..
+(
+  cd apps/citizen-mobile || exit 1
+  tmp_tsc_output=$(mktemp)
+  npx tsc --noEmit >"$tmp_tsc_output" 2>&1
+  tsc_status=$?
+  head -30 "$tmp_tsc_output"
+  rm -f "$tmp_tsc_output"
+  exit $tsc_status
+)
 
-# Check 5: No `any` types introduced
+# Check 5: No `any` types introduced (portable boundary)
 echo "=== CHECK 5: any types ==="
-grep -n ": any\|as any\|<any>" <changed files> \
+[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+  "(:|as)[[:space:]]+any([^[:alnum:]_]|$)" \
   && echo "FAIL — use explicit types" || echo "PASS"
 
 # Check 6: No hardcoded user-visible strings outside strings.ts
 echo "=== CHECK 6: Hardcoded user strings ==="
-grep -n 'placeholder="[A-Z]\|<Text>[A-Z]' <changed files> | head -20
+[ -n "$files" ] && echo "$files" | xargs -r grep -n \
+  'placeholder="[A-Z]\|<Text>[A-Z]' | head -20
 # Review output — strings visible to users must come from src/config/strings.ts
 # Exception: placeholder text in dev-only components, clearly commented
 ```

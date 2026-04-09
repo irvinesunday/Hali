@@ -21,20 +21,27 @@ to a real past failure. Do not skip any item.
 ### Self-Review (run before every commit — mandatory)
 
 - [ ] Read every file you are about to commit in full
-- [ ] Run the automated grep checks:
+- [ ] Run the automated grep checks (operate on staged TS/TSX files):
 
 ```bash
-# Hardcoded hex colours (zero tolerance)
-grep -rn "#[0-9A-Fa-f]\{3,6\}" <changed files> | grep -v "^\s*//"
+# Resolve the staged file list once
+files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
+
+# Hardcoded hex colours (zero tolerance) — POSIX-portable comment filter
+[ -n "$files" ] && echo "$files" | xargs -r grep -n "#[0-9A-Fa-f]\{3,6\}" \
+  | grep -v "^[^:]*:[0-9]*:[[:space:]]*//"
 
 # Forbidden icon libraries
-grep -rn "Ionicons\|@expo/vector-icons\|MaterialIcons" <changed files>
+[ -n "$files" ] && echo "$files" | xargs -r grep -n \
+  "Ionicons\|@expo/vector-icons\|MaterialIcons"
 
-# React Native Animated API (use Reanimated instead)
-grep -rn "from 'react-native'.*\bAnimated\b" <changed files>
+# React Native Animated API (use Reanimated instead) — portable boundary
+[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+  "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)"
 
-# any types
-grep -rn ": any\b\|as any\b" <changed files>
+# any types — portable boundary
+[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+  "(:|as)[[:space:]]+any([^[:alnum:]_]|$)"
 ```
 
 - [ ] Every grep above returns zero matches
