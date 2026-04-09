@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="UI Pro Max Search")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--domain", "-d", choices=list(CSV_CONFIG.keys()), help="Search domain")
-    parser.add_argument("--stack", "-s", choices=AVAILABLE_STACKS, help="Stack-specific search (html-tailwind, react, nextjs)")
+    parser.add_argument("--stack", "-s", choices=AVAILABLE_STACKS, help=f"Stack-specific search. Choices: {', '.join(AVAILABLE_STACKS)}")
     parser.add_argument("--max-results", "-n", type=int, default=MAX_RESULTS, help="Max results (default: 3)")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     # Design system generation
@@ -77,6 +77,12 @@ if __name__ == "__main__":
     # which silently produces wrong results. Fail loudly instead.
     if args.stack and args.domain:
         parser.error("--stack and --domain are mutually exclusive; run two separate queries.")
+
+    # --json is not implemented for --design-system mode (which always prints
+    # formatted text + persistence messages). Reject the combination instead
+    # of silently ignoring --json.
+    if args.json and args.design_system:
+        parser.error("--json is not supported with --design-system; remove one of the flags.")
 
     # Design system takes priority
     if args.design_system:
