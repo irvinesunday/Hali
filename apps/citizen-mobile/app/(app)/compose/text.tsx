@@ -118,11 +118,12 @@ export default function ComposerTextScreen(): React.ReactElement {
             <Text style={styles.counter}>{text.length}/{SIGNAL_TEXT_MAX_LENGTH}</Text>
           </View>
 
+          <Text style={styles.inputLabel}>Location hint (optional)</Text>
           <TextInput
             style={styles.locationInput}
             value={locationInput}
             onChangeText={setLocationInput}
-            placeholder="Location hint (optional) — e.g. near Yaya Centre"
+            placeholder="e.g. near Yaya Centre, a road name, or landmark"
             placeholderTextColor={Colors.faintForeground}
             editable={screenState !== 'loading'}
             accessibilityLabel="Location hint"
@@ -165,6 +166,12 @@ const styles = StyleSheet.create({
   },
   inputError: { borderColor: Colors.destructive },
   counter: { fontSize: FontSize.micro, fontFamily: FontFamily.regular, color: Colors.faintForeground, textAlign: 'right' },
+  inputLabel: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.mutedForeground,
+    marginBottom: Spacing.xs,
+  },
   locationInput: {
     borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
