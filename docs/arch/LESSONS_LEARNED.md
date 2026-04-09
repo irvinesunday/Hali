@@ -1012,7 +1012,7 @@ rows parse with the expected 8 columns via
 `csv.DictReader` round-trip.
 **Rule added:** Copilot Resolution → Step 3 reinforcement → "When Copilot
 flags a CSV/JSON/YAML parse bug, run the parser over the WHOLE file
-(`python3 -c 'import csv; list(csv.DictReader(open(p)))'`) before
+(`python3 -c 'import csv; list(csv.DictReader(open(".claude/skills/ui-ux-pro-max/data/landing.csv", newline="")))'`) before
 declaring the fix complete — never trust the line numbers in the comment
 as the only affected location."
 
