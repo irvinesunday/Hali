@@ -67,7 +67,7 @@
 ### PART 7 — Doc consistency
 
 - CLAUDE.md, `docs/arch/00_session_patch_notes.md`, `10_testing_strategy.md` all reference the 8-value `civic_category` enum consistently ✅
-- `LESSONS_LEARNED.md` present (1098 lines) — no new lessons required from this read-only pass
+- `LESSONS_LEARNED.md` present — no new lessons required from this read-only pass
 - `CODING_STANDARDS.md` + `UX_RETROSPECTIVE_REVIEW.md` present and consistent with current state
 
 ### Notes (non-blocking)
