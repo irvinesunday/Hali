@@ -1,7 +1,8 @@
 # Hali Mobile UI — UX Retrospective Review
-# Against UI/UX Pro Max skill database
-# Generated: 2026-04-09
-# Stack: react-native | Hali Phase 1 MVP
+
+_Against UI/UX Pro Max skill database_
+_Generated: 2026-04-09_
+_Stack: react-native | Hali Phase 1 MVP_
 
 ---
 
@@ -217,7 +218,7 @@ are listed at the end.
 **What Hali implements:**
 - Three options: `restored` / `still_affected` / `not_sure` mapped to backend `ParticipationType.RestorationYes` / `Affected` / `RestorationUnsure`
 - Idle/loading/error states; idempotent server submit
-- Modal presentation, dismissable; option helper text per choice
+- Modal presentation, dismissible; option helper text per choice
 
 **Alignment:** HIGH
 
