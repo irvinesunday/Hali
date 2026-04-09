@@ -124,16 +124,21 @@ export function notificationDataToHref(data: unknown): Href | null {
  * notification, getLastNotificationResponseAsync resolves the payload
  * once on first mount.
  */
-export function usePushBootstrap(): void {
+export function usePushBootstrap(enabled: boolean = true): void {
   const handledColdLaunch = useRef(false);
 
-  // 1. Auto-register on mount (first authenticated screen view)
+  // 1. Auto-register on mount (first authenticated screen view).
+  //    Push registration hits an [Authorize] endpoint, so it must only
+  //    run once the user is authenticated.
   useEffect(() => {
+    if (!enabled) return;
     void ensurePushRegistered();
-  }, []);
+  }, [enabled]);
 
-  // 2. Cold launch — handle a notification that launched the app
+  // 2. Cold launch — handle a notification that launched the app.
+  //    Routes are scoped under (app)/, so only meaningful for authed users.
   useEffect(() => {
+    if (!enabled) return;
     if (handledColdLaunch.current) return;
     handledColdLaunch.current = true;
 
@@ -146,10 +151,11 @@ export function usePushBootstrap(): void {
         if (href !== null) router.push(href);
       }
     })();
-  }, []);
+  }, [enabled]);
 
   // 3. Foreground tap — handle a notification tapped while running
   useEffect(() => {
+    if (!enabled) return;
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const href = notificationDataToHref(
@@ -159,5 +165,5 @@ export function usePushBootstrap(): void {
       },
     );
     return () => sub.remove();
-  }, []);
+  }, [enabled]);
 }
