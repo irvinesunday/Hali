@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   },
   otpBoxError: {
     borderColor: Colors.destructive,
-    backgroundColor: Colors.destructive + '10',
+    backgroundColor: Colors.destructiveSubtle,
   },
   otpChar: {
     fontSize: 22,

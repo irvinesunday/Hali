@@ -116,6 +116,12 @@ export default function PhoneScreen(): React.ReactElement {
             onPress={handleSubmit}
             disabled={!isSubmittable}
             loading={screenState === 'loading'}
+            accessibilityRole="button"
+            accessibilityLabel={STRINGS.AUTH.PHONE_SUBMIT_LABEL}
+            accessibilityState={{
+              disabled: !isSubmittable,
+              busy: screenState === 'loading',
+            }}
           />
 
           <Text style={styles.note}>{STRINGS.AUTH.PHONE_NOTE}</Text>

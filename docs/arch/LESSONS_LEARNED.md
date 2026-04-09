@@ -841,3 +841,38 @@ the approach changed in a follow-up commit.
 **Rule added:** Pre-Commit Checklist → PR hygiene → "After any commit that
 materially changes the approach described in the PR body, update the PR
 description in the same session — don't leave reviewers a stale narrative."
+
+## PR #82 — feat(mobile): Phase F — auth screens token migration
+
+### Lesson 1: Migrating a CTA to a shared `<Button>` must preserve the prior accessibility contract
+**File:** `apps/citizen-mobile/app/(auth)/phone.tsx`
+**What Copilot flagged:** The new `<Button>` call dropped the descriptive
+`accessibilityLabel` (`PHONE_SUBMIT_LABEL`) and `accessibilityState`
+(`disabled`/`busy`) that the previous `TouchableOpacity` had — an a11y
+regression for the loading/disabled states.
+**Root cause:** Token-migration sweep replaced the element wholesale and
+forgot that `accessibilityLabel`/`accessibilityState` are not implicit on
+`<Button>` and must be passed explicitly via the forwarded props.
+**Fix applied:** Passed `accessibilityRole="button"`, `accessibilityLabel`,
+and `accessibilityState={{ disabled, busy }}` through `<Button>` (it forwards
+extra props to its `TouchableOpacity`).
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When migrating a CTA to
+the shared `<Button>` component, diff the prior props and re-pass any
+`accessibilityLabel`/`accessibilityState`/`accessibilityRole` that existed —
+`<Button>` does not infer loading/disabled into `accessibilityState`."
+
+### Lesson 2: Don't string-concatenate alpha onto a hex token — add a real subtle token
+**File:** `apps/citizen-mobile/app/(auth)/otp.tsx`, `apps/citizen-mobile/src/theme/colors.ts`
+**What Copilot flagged:** `backgroundColor: Colors.destructive + '10'` relies
+on the token always being a hex string and bakes in an implicit alpha. Fragile
+if the token format ever changes (e.g. to `rgb()`), and inconsistent with the
+existing `Colors.primarySubtle` pattern.
+**Root cause:** Reached for an inline alpha trick instead of extending the
+design-token surface.
+**Fix applied:** Added `Colors.destructiveSubtle` (`#FBEDE7`) alongside the
+existing `primarySubtle`/`emeraldSubtle` tokens, and switched the OTP error
+box background to use it.
+**Rule added:** Pre-Commit Checklist → Theming → "Never compose alpha by
+string-concatenating onto a colour token (`Colors.x + '10'`). If a subtle
+variant is needed, add a `<name>Subtle` token in `theme/colors.ts` next to
+the base token and use that — same pattern as `primarySubtle`."
