@@ -634,6 +634,38 @@ blocks, not indented prose.
 
 ---
 
+## PR #78 — feat(mobile): Phase C home feed (follow-up fixes)
+
+### Lesson 59: Authenticated bootstraps must be gated on auth status
+**File:** `apps/citizen-mobile/app/(app)/_layout.tsx`, `apps/citizen-mobile/src/lib/pushBootstrap.ts`
+**What Copilot flagged:** When guest mode was added to the (app) layout, `usePushBootstrap()` and `initOfflineQueue()` were left running unconditionally. Both depend on a valid session — push registration hits an `[Authorize]` endpoint, and the offline queue's flush drops queued writes on 401. Running them for guests produces wasted auth churn and silent data loss.
+**Root cause:** When the auth guard was relaxed to allow guests, the side-effects that previously sat behind the redirect were not re-gated. Ungating one thing (the redirect) silently ungated everything else mounted in the same component.
+**Fix applied:** `usePushBootstrap` now accepts an `enabled` flag and no-ops when false; `_layout.tsx` passes `authState.status === 'authenticated'` and only invokes `initOfflineQueue()` from a `useEffect` guarded on the same flag. The unused `useRouter`/`router` left over from the removed redirect were also deleted.
+**Rule added:** When relaxing an auth guard to allow guest access, audit every side-effect mounted in that component (hooks, effects, queries) and gate any that hit authenticated endpoints or assume an authed session on `status === 'authenticated'`.
+
+### Lesson 60: React Query calls to authenticated endpoints must set `enabled` for guest mode
+**File:** `apps/citizen-mobile/app/(app)/home.tsx`
+**What Copilot flagged:** In guest mode, the `['localities','followed']` query called `/v1/localities/followed` without tokens, triggering the API client's 401 refresh flow and leaving `followsLoaded` false (because `setFollowedLocalities` was never invoked). Result: no `NoFollowsState` / calm state and a blank feed.
+**Root cause:** The query was added before guest mode existed and was never revisited when guest browsing was introduced.
+**Fix applied:** Added `enabled: isAuthenticated` to the query, and a `useEffect` that explicitly calls `setFollowedLocalities([])` when not authenticated so `followsLoaded` flips to true and the NoFollowsState renders for guests.
+**Rule added:** Any `useQuery` against an authenticated endpoint must set `enabled` based on auth status, and any consumer of `followsLoaded`-style "loaded" flags must be explicitly transitioned to the loaded state on the unauthenticated branch.
+
+### Lesson 61: Debounced async searches need cleanup + stale-response guards
+**File:** `apps/citizen-mobile/app/(app)/home.tsx`
+**What Copilot flagged:** The locality search used `setTimeout` with no unmount cleanup, and async responses could resolve out of order — an older query could overwrite newer results, and a stale `setSearching(false)` could fire after unmount. Additionally, on `result.ok === false` the UI kept showing previous results for a different query.
+**Root cause:** Standard "naïve debounce" pattern copied without considering React lifecycle or out-of-order resolution.
+**Fix applied:** Added an `isMountedRef` and a `latestSearchRequestRef` request-id counter. The unmount effect clears the pending timeout; every state update inside the async callback is gated on `isMountedRef.current && requestId === latestSearchRequestRef.current`. On `!result.ok` and on `catch`, results are explicitly cleared so the UI never shows stale results from a previous query.
+**Rule added:** Any debounced async operation must (1) clear its pending timer on unmount, (2) tag each request with a monotonically-increasing id and ignore responses whose id is no longer current, and (3) explicitly handle the error branch — either clear the displayed data or surface an error state — never silently leave stale results.
+
+### Lesson 62: Selectable list items must be filtered to what the selection API actually accepts
+**File:** `apps/citizen-mobile/app/(app)/home.tsx`
+**What Copilot flagged:** The locality sheet rendered both followed localities and remote search results with the same `onSelectLocality` handler, but `setActiveLocalityId` only accepts ids that exist in `followedLocalities`. Tapping a search result that wasn't already followed silently did nothing, making the sheet appear broken.
+**Root cause:** The selection contract (only followed ids accepted) was implicit in the context implementation and not enforced at the UI layer when search results were added.
+**Fix applied:** Each row computes `isFollowed` against the followed list; non-followed rows render with reduced opacity, are `disabled`, and report `accessibilityState.disabled`. Follow-then-select for search results is deferred to Phase G (wards settings) where the follow API will be wired.
+**Rule added:** When a UI surfaces items from multiple sources (local + remote) into the same selection handler, the items the handler cannot act on must be visually and behaviourally disabled (`disabled`, opacity, `accessibilityState.disabled`) — never silently no-op on tap.
+
+---
+
 ## Template for future entries
 
 Copy this block when adding a new lesson:
