@@ -937,3 +937,37 @@ backend ships.
 mobile UI to a new backend endpoint, open the controller and confirm it
 returns real data, not a stub. If it's a stub, gate the UI behind a
 feature flag in `src/config/constants.ts` defaulting to `false`."
+
+## PR #86 — chore(agents): wire UI/UX Pro Max skill into Agent D v2
+
+### Lesson 1: Read CLI semantics before composing flag combinations
+**File:** `agent_prompts/agent_d_mobile.md`, `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** Stage 0 invoked `search.py --domain ux --stack react-native`,
+but the script silently ignores `--domain` whenever `--stack` is supplied, so the
+"UX patterns" query actually returned stack guidance instead.
+**Root cause:** The skill was wired into the agent prompt without reading the
+script's argument-handling branch. The two flags look composable but are
+mutually exclusive in the implementation.
+**Fix applied:** Made the flags hard-error in `search.py` via argparse, and
+split Stage 0 into three separate single-flag queries (domain ux, domain style,
+stack react-native).
+**Rule added:** Pre-Commit Checklist → Tooling → "When wiring an external CLI
+into an agent prompt, read its argument parser and confirm every flag
+combination you document actually behaves as written. Prefer separate
+single-flag invocations over guessing at composability."
+
+### Lesson 2: Vendored data files must parse before being committed
+**File:** `.claude/skills/ui-ux-pro-max/data/landing.csv`,
+`.claude/skills/ui-ux-pro-max/data/charts.csv`
+**What Copilot flagged:** Several rows had unquoted commas, embedded
+newlines, and missing trailing columns, which would break `csv.DictReader`
+and corrupt search results for the affected domains.
+**Root cause:** The CSV bundle was committed wholesale from the upstream
+installer without validating that every row parses with the same column count
+the header declares.
+**Fix applied:** Re-quoted broken rows in `landing.csv` and `charts.csv` and
+added the missing `Interactive Level` column on the streaming chart row.
+**Rule added:** Pre-Commit Checklist → Vendored Data → "When committing
+upstream data files (CSV/JSON/TSV) into the repo, run a parse check
+(`python3 -c 'import csv; list(csv.DictReader(open(p)))'` or equivalent)
+on every file before staging. Do not assume upstream-shipped data is well-formed."
