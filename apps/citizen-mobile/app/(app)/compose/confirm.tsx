@@ -1,223 +1,126 @@
 // apps/citizen-mobile/app/(app)/compose/confirm.tsx
-//
-// Signal composer — Step 2: confirm the NLP extraction.
-//
-// Shows every field extracted from the preview: category, subcategory,
-// condition, summary, and location. The user can correct category,
-// subcategory, and location text; condition is read-only in this
-// sub-session because the mobile app has no taxonomy data for a slug
-// dropdown (see constants.ts comment on CONDITION_CONFIDENCE_*).
-//
-// Location confidence gate (fully implemented):
-//   confidence ≥ 0.80 → pre-filled, no mandatory confirmation
-//   0.50 ≤ confidence < 0.80 → amber warning, user may accept or correct
-//   confidence < 0.50 → empty field required, MUST enter before continuing
-
 import React, { useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { ArrowLeft, Check } from 'lucide-react-native';
 import { useComposerContext } from '../../../src/context/ComposerContext';
+import { Button } from '../../../src/components/common/Button';
+import { ConditionBadge } from '../../../src/components/shared';
 import { formatCategoryLabel } from '../../../src/utils/formatters';
-import {
-  classifyLocationGate,
-  type ConfidenceGate,
-} from '../../../src/utils/composerGates';
+import { classifyLocationGate, type ConfidenceGate } from '../../../src/utils/composerGates';
+import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
 import type { SignalPreviewResponse } from '../../../src/types/api';
 
 export default function ComposerConfirmScreen(): React.ReactElement {
   const router = useRouter();
   const { preview, setPreview } = useComposerContext();
-
   if (preview === null) {
-    // Guard: arriving here without a preview means the user deep-linked
-    // or the context was reset. Send them back to Step 1.
     return <PreviewMissingFallback onBack={() => router.replace('/(app)/compose/text')} />;
   }
-
   return <ConfirmScreenContent preview={preview} setPreview={setPreview} />;
 }
 
-interface ConfirmScreenContentProps {
-  preview: SignalPreviewResponse;
-  setPreview: (p: SignalPreviewResponse | null) => void;
-}
-
 function ConfirmScreenContent({
-  preview,
-  setPreview,
-}: ConfirmScreenContentProps): React.ReactElement {
+  preview, setPreview,
+}: { preview: SignalPreviewResponse; setPreview: (p: SignalPreviewResponse | null) => void }): React.ReactElement {
   const router = useRouter();
-
-  // Editable fields — initial values come from the preview extraction.
-  const [locationLabel, setLocationLabel] = useState<string>(
-    preview.location.locationLabel ?? '',
-  );
-  const [locationConfirmed, setLocationConfirmed] = useState<boolean>(false);
+  const [locationLabel, setLocationLabel] = useState(preview.location.locationLabel ?? '');
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
 
   const locationGate = useMemo<ConfidenceGate>(
     () => classifyLocationGate(preview.location.locationConfidence),
     [preview.location.locationConfidence],
   );
 
-  // Gate rules for the Next button:
-  //   accept   → always proceed
-  //   confirm  → user must either (a) explicitly confirm OR (b) edit the field
-  //   required → user MUST enter a non-empty location
   const canProceed = useMemo<boolean>(() => {
     const trimmed = locationLabel.trim();
     const original = (preview.location.locationLabel ?? '').trim();
     const userEdited = trimmed !== original && trimmed.length > 0;
-
     switch (locationGate) {
-      case 'accept':
-        return true;
-      case 'confirm':
-        return locationConfirmed || userEdited;
-      case 'required':
-        return trimmed.length > 0;
+      case 'accept':   return true;
+      case 'confirm':  return locationConfirmed || userEdited;
+      case 'required': return trimmed.length > 0;
     }
-  }, [
-    locationGate,
-    locationLabel,
-    locationConfirmed,
-    preview.location.locationLabel,
-  ]);
+  }, [locationGate, locationLabel, locationConfirmed, preview.location.locationLabel]);
 
   function handleNext(): void {
-    // Update the preview with the user's corrections before handing to Step 3.
-    const updated: SignalPreviewResponse = {
+    setPreview({
       ...preview,
-      location: {
-        ...preview.location,
-        // Use the edited value if provided; otherwise keep the NLP original.
-        locationLabel:
-          locationLabel.trim() || preview.location.locationLabel,
-      },
-    };
-    setPreview(updated);
+      location: { ...preview.location, locationLabel: locationLabel.trim() || preview.location.locationLabel },
+    });
     router.push('/(app)/compose/submit');
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.navBar}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={12}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Back to Step 1"
-        >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}
+          accessibilityRole="button" accessibilityLabel="Back to Step 1">
+          <ArrowLeft size={24} color={Colors.foreground} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Step 2 of 3</Text>
+        <Text style={styles.stepLabel}>Step 2 of 3</Text>
         <View style={styles.navSpacer} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
+      <KeyboardAvoidingView style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={80}
-      >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
+        keyboardVerticalOffset={80}>
+        <ScrollView style={styles.flex} contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled">
           <Text style={styles.heading}>Does this look right?</Text>
           <Text style={styles.sub}>
-            Review what we extracted. You can correct the location before
-            submitting.
+            Review what we extracted. You can correct the location before submitting.
           </Text>
 
-          {/* Extracted fields */}
           <View style={styles.card}>
-            <Field
-              label="Category"
-              value={formatCategoryLabel(preview.category)}
-            />
-            <Field
-              label="Subcategory"
-              value={formatCategoryLabel(preview.subcategorySlug)}
-            />
+            <Field label="Category" value={formatCategoryLabel(preview.category)} />
+            <Field label="Subcategory" value={formatCategoryLabel(preview.subcategorySlug)} />
             {preview.conditionSlug !== null && preview.conditionSlug !== '' && (
-              <Field
-                label="Condition"
-                value={formatCategoryLabel(preview.conditionSlug)}
-              />
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>Condition</Text>
+                <ConditionBadge label={formatCategoryLabel(preview.conditionSlug)} />
+              </View>
             )}
-            {preview.neutralSummary !== null &&
-              preview.neutralSummary !== '' && (
-                <Field label="Summary" value={preview.neutralSummary} />
-              )}
+            {preview.neutralSummary !== null && preview.neutralSummary !== '' && (
+              <Field label="Summary" value={preview.neutralSummary} />
+            )}
           </View>
 
-          {/* Location block with confidence gate */}
           <View style={styles.locationBlock}>
             <Text style={styles.fieldLabel}>Location</Text>
-
             {locationGate === 'required' && (
-              <Text style={styles.locationWarningForced}>
-                We couldn&apos;t confidently identify the location. Please
-                enter it below.
+              <Text style={styles.warningRequired}>
+                We couldn't confidently identify the location. Please enter it below.
               </Text>
             )}
             {locationGate === 'confirm' && (
-              <Text style={styles.locationWarningAmber}>
-                We extracted this location but aren&apos;t fully confident.
-                Confirm or correct it.
+              <Text style={styles.warningAmber}>
+                We extracted this location but aren't fully confident. Confirm or correct it.
               </Text>
             )}
-
             <TextInput
               style={[
                 styles.locationInput,
-                locationGate === 'required' &&
-                  locationLabel.trim() === '' &&
-                  styles.locationInputError,
+                locationGate === 'required' && locationLabel.trim() === '' && styles.locationInputError,
               ]}
               value={locationLabel}
-              onChangeText={(v) => {
-                setLocationLabel(v);
-                // Any edit counts as implicit confirmation in the amber tier.
-                setLocationConfirmed(false);
-              }}
-              placeholder={
-                locationGate === 'required'
-                  ? 'Enter the location…'
-                  : 'Confirm or correct the location…'
-              }
-              placeholderTextColor="#9CA3AF"
-              accessible
+              onChangeText={(v) => { setLocationLabel(v); setLocationConfirmed(false); }}
+              placeholder={locationGate === 'required' ? 'Enter the location…' : 'Confirm or correct the location…'}
+              placeholderTextColor={Colors.faintForeground}
               accessibilityLabel="Location"
-              accessibilityHint={
-                locationGate === 'required'
-                  ? 'Required — enter the location of the incident'
-                  : 'Optional — correct the extracted location if needed'
-              }
+              accessibilityHint={locationGate === 'required'
+                ? "Required. We couldn't confidently identify the location, so please enter it."
+                : "Optional. Confirm the extracted location or correct it if needed."}
             />
-
-            {/* Amber tier gets an explicit confirm button */}
             {locationGate === 'confirm' && !locationConfirmed && (
-              <TouchableOpacity
-                style={styles.confirmChip}
+              <TouchableOpacity style={styles.confirmChip}
                 onPress={() => setLocationConfirmed(true)}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel="Confirm location"
-              >
-                <Ionicons name="checkmark" size={14} color="#1a3a2f" />
+                accessibilityRole="button" accessibilityLabel="Confirm location">
+                <Check size={14} color={Colors.primary} strokeWidth={2.5} />
                 <Text style={styles.confirmChipText}>Looks right</Text>
               </TouchableOpacity>
             )}
@@ -226,32 +129,16 @@ function ConfirmScreenContent({
             )}
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, !canProceed && styles.buttonDisabled]}
-            onPress={handleNext}
-            disabled={!canProceed}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Continue to submit"
-            accessibilityState={{ disabled: !canProceed }}
-          >
-            <Text style={styles.buttonText}>Next</Text>
-          </TouchableOpacity>
+          <Button label="Next" onPress={handleNext} disabled={!canProceed}
+            accessibilityLabel="Next"
+            accessibilityState={{ disabled: !canProceed }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): React.ReactElement {
+function Field({ label, value }: { label: string; value: string }): React.ReactElement {
   return (
     <View style={styles.fieldRow}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -260,98 +147,56 @@ function Field({
   );
 }
 
-function PreviewMissingFallback({
-  onBack,
-}: {
-  onBack: () => void;
-}): React.ReactElement {
+function PreviewMissingFallback({ onBack }: { onBack: () => void }): React.ReactElement {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.missingContainer}>
         <Text style={styles.heading}>No preview found</Text>
-        <Text style={styles.sub}>
-          Your composer draft was lost. Please start again.
-        </Text>
-        <TouchableOpacity
-          style={styles.button}
-          onPress={onBack}
-          accessible
-          accessibilityRole="button"
-        >
-          <Text style={styles.buttonText}>Start over</Text>
-        </TouchableOpacity>
+        <Text style={styles.sub}>Your composer draft was lost. Please start again.</Text>
+        <Button label="Start over" onPress={onBack} />
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: Colors.card },
   flex: { flex: 1 },
   navBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: ScreenPaddingH, paddingVertical: Spacing.sm + 2,
   },
-  navTitle: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  stepLabel: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.medium, color: Colors.mutedForeground },
   navSpacer: { width: 24 },
-  content: { padding: 20, gap: 16 },
-  heading: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  sub: { fontSize: 15, color: '#6B7280', lineHeight: 22 },
+  content: { paddingHorizontal: ScreenPaddingH, paddingTop: Spacing.lg, paddingBottom: Spacing['4xl'], gap: Spacing.lg },
+  heading: { fontSize: FontSize.title, fontFamily: FontFamily.bold, color: Colors.foreground },
+  sub: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.mutedForeground, lineHeight: FontSize.body * 1.5 },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.lg,
+    gap: Spacing.md, borderWidth: 1, borderColor: Colors.border,
   },
-  fieldRow: { gap: 2 },
-  fieldLabel: { fontSize: 12, color: '#9CA3AF', fontWeight: '500' },
-  fieldValue: { fontSize: 15, color: '#111827' },
-  locationBlock: { gap: 8 },
-  locationWarningForced: { fontSize: 14, color: '#DC2626' },
-  locationWarningAmber: { fontSize: 14, color: '#D97706' },
+  fieldRow: { gap: Spacing.xs },
+  fieldLabel: {
+    fontSize: FontSize.badge, fontFamily: FontFamily.medium, color: Colors.faintForeground,
+    textTransform: 'uppercase', letterSpacing: 0.4,
+  },
+  fieldValue: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.foreground },
+  locationBlock: { gap: Spacing.sm },
+  warningRequired: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.destructive },
+  warningAmber: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.conditionBadge.amber.text },
   locationInput: {
-    borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#111827',
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+    fontSize: FontSize.body, fontFamily: FontFamily.regular,
+    color: Colors.foreground, backgroundColor: Colors.card,
   },
-  locationInputError: {
-    borderColor: '#DC2626',
-  },
+  locationInputError: { borderColor: Colors.destructive },
   confirmChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F0FDF4',
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
+    backgroundColor: Colors.primarySubtle, borderRadius: Radius.full,
+    paddingVertical: Spacing.xs + 2, paddingHorizontal: Spacing.md,
   },
-  confirmChipText: { fontSize: 13, color: '#1a3a2f', fontWeight: '500' },
-  confirmedText: { fontSize: 13, color: '#1a3a2f', fontStyle: 'italic' },
-  button: {
-    backgroundColor: '#1a3a2f',
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: { backgroundColor: '#9CA3AF' },
-  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  missingContainer: {
-    flex: 1,
-    padding: 24,
-    gap: 16,
-    justifyContent: 'center',
-  },
+  confirmChipText: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.medium, color: Colors.primary },
+  confirmedText: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.primary, fontStyle: 'italic' },
+  missingContainer: { flex: 1, padding: ScreenPaddingH, gap: Spacing.lg, justifyContent: 'center' },
 });

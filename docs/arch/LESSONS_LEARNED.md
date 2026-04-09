@@ -738,3 +738,106 @@ when `authState.status` flips to `'authenticated'`.
 **Rule added:** Pre-Commit Checklist → Navigation → "any imperative `router.push`
 inside a callback that can fire repeatedly must be guarded against stacking
 duplicate destinations."
+
+---
+
+## PR #81 — Phase E composer token migration
+
+### Lesson 1: Replacing TouchableOpacity with shared Button drops accessibility props
+**File:** `apps/citizen-mobile/app/(app)/compose/{text,confirm,submit}.tsx`
+**What Copilot flagged:** Switching to the shared `Button` removed the explicit
+`accessibilityLabel` and `accessibilityState` (disabled/busy) that the previous
+inline `TouchableOpacity` set. When the visible label is replaced by a spinner
+during loading, screen readers lose the stable label and busy state.
+**Root cause:** When migrating to shared components, only the visual props were
+forwarded; the accessibility props on the original were not carried across.
+**Fix applied:** Added `accessibilityLabel` and `accessibilityState={{ disabled, busy }}`
+to every `Button` that replaced an accessible TouchableOpacity in the composer flow.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When migrating an inline
+TouchableOpacity to a shared `Button`, port over its `accessibilityLabel` and
+`accessibilityState` (especially `busy` for loading buttons whose label is
+swapped for a spinner)."
+
+### Lesson 2: `accessibilityLiveRegion` must be preserved on inline error text
+**File:** `apps/citizen-mobile/app/(app)/compose/text.tsx`
+**What Copilot flagged:** Error message kept `accessibilityRole="alert"` but
+dropped `accessibilityLiveRegion="polite"`, which is the Android-specific signal
+that the text should be announced when it appears. submit.tsx kept it; text.tsx
+did not — inconsistent.
+**Root cause:** During the rewrite, only `accessibilityRole` was carried through;
+the Android-only live region prop was missed.
+**Fix applied:** Added `accessibilityLiveRegion="polite"` to the inline error
+`<Text>` in text.tsx, matching submit.tsx.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "Inline error/alert `<Text>`
+elements must set BOTH `accessibilityRole=\"alert\"` AND `accessibilityLiveRegion=\"polite\"`
+for cross-platform announcement."
+
+### Lesson 3: Don't claim "no theme token exists" without grepping the theme
+**File:** `apps/citizen-mobile/app/(app)/compose/confirm.tsx`
+**What Copilot flagged:** Inline comment justified a hardcoded `#D97706` amber by
+saying no amber token existed in the theme — but `Colors.conditionBadge.amber.text`
+(`#B45309`) was already defined.
+**Root cause:** Asserted absence of a token without searching the theme file first.
+The Phase E rule is "zero hardcoded hex values" — there is no exception clause.
+**Fix applied:** Replaced the hardcoded hex with `Colors.conditionBadge.amber.text`
+and removed the misleading inline comment.
+**Rule added:** Pre-Commit Checklist → Theme tokens → "Before adding any hardcoded
+hex value or comment justifying one, grep `apps/citizen-mobile/src/theme/colors.ts`
+for the colour family. Nested palettes (e.g. `Colors.conditionBadge.amber.text`)
+count as tokens."
+
+### Lesson 4: `accessibilityState.disabled` must reflect the *actual* disabled state, including loading
+**File:** `apps/citizen-mobile/app/(app)/compose/text.tsx`
+**What Copilot flagged:** `Button` forces `isDisabled = disabled || loading`, but
+`accessibilityState.disabled` was passed as `!canPreview` only. Since `canPreview`
+in this screen happens to already include `screenState !== 'loading'`, the value
+is correct — but the relationship is non-obvious.
+**Root cause:** Easy to pass a stale "is the user-action allowed" boolean that
+doesn't include the loading branch. In this file the predicate already covers it,
+but a naive author could pass just `!canSomething` and miss `loading`.
+**Fix applied:** Verified `canPreview` already excludes loading; left
+`accessibilityState.disabled = !canPreview` (semantically equivalent to
+`!canPreview || loading`). A more explicit `|| loading` would have triggered TS
+narrowing and produced a dead-branch error.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When passing
+`accessibilityState.disabled` to a `Button`, ensure the boolean covers BOTH the
+business-rule disabled case AND the `loading` case (since `Button` force-disables
+on loading)."
+
+### Lesson 5: Don't drop gate-dependent `accessibilityHint` on inputs
+**File:** `apps/citizen-mobile/app/(app)/compose/confirm.tsx`
+**What Copilot flagged:** Location `TextInput` previously had a gate-dependent
+`accessibilityHint` explaining whether the field was required vs optional. The
+rewrite dropped it — a screen-reader regression.
+**Root cause:** Only the visible label was carried over during the rewrite; the
+hint, which carried the required/optional semantics derived from `locationGate`,
+was missed.
+**Fix applied:** Restored a gate-dependent `accessibilityHint` keyed off
+`locationGate === 'required'`.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When rewriting an input,
+preserve any existing `accessibilityHint` — especially hints that encode
+required/optional or other gate-dependent semantics not visible in the label."
+
+### Lesson 6: A `View` with `accessibilityRole="alert"` needs `accessible` to be a single a11y element
+**File:** `apps/citizen-mobile/app/(app)/compose/submit.tsx`
+**What Copilot flagged:** The hint card used `accessibilityRole="alert"` on a
+`View` without `accessible`, so the View may not be treated as a single
+accessibility element by screen readers, reducing alert reliability.
+**Root cause:** Forgot that on RN, a container `View` only collapses into a
+single a11y element when `accessible` is set.
+**Fix applied:** Added `accessible` to the alert View alongside the role.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When setting
+`accessibilityRole=\"alert\"` on a container `View`, also set `accessible` so
+the role applies to a single merged a11y node."
+
+### Lesson 7: Keep PR description in sync with the final implementation
+**File:** PR-level
+**What Copilot flagged:** PR description claimed an "intentional one-off
+hardcoded amber hex" while the final code used the theme token instead.
+**Root cause:** PR body was written for the first commit and not updated when
+the approach changed in a follow-up commit.
+**Fix applied:** Updated PR #81 body to reflect that amber now uses
+`Colors.conditionBadge.amber.text`.
+**Rule added:** Pre-Commit Checklist → PR hygiene → "After any commit that
+materially changes the approach described in the PR body, update the PR
+description in the same session — don't leave reviewers a stale narrative."
