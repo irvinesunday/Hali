@@ -18,6 +18,40 @@ to a real past failure. Do not skip any item.
       cause is already covered in docs/arch/LESSONS_LEARNED.md — if it is, note
       "Existing lesson N reinforced" rather than creating a duplicate
 
+### Self-Review (run before every commit — mandatory)
+
+- [ ] Read every file you are about to commit in full
+- [ ] Run the automated grep checks (operate on staged TS/TSX files):
+
+```bash
+# Resolve the staged file list once. The [ -n "$files" ] guards below
+# replace `xargs -r` (which is not portable on BSD/macOS).
+files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
+
+# Hardcoded hex colours (zero tolerance). The filter accounts for the
+# `lineNumber:` prefix that grep -n adds to each match.
+[ -n "$files" ] && echo "$files" | xargs grep -n "#[0-9A-Fa-f]\{3,6\}" \
+  | grep -v "^[^:]*:[0-9]*:[[:space:]]*//"
+
+# Forbidden icon libraries — grep -E for portable alternation
+[ -n "$files" ] && echo "$files" | xargs grep -En \
+  "Ionicons|@expo/vector-icons|MaterialIcons"
+
+# React Native Animated API (use Reanimated instead) — portable boundary
+[ -n "$files" ] && echo "$files" | xargs grep -En \
+  "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)"
+
+# any types — portable boundary
+[ -n "$files" ] && echo "$files" | xargs grep -En \
+  "(:|as)[[:space:]]+any([^[:alnum:]_]|$)"
+```
+
+- [ ] Every grep above returns zero matches
+- [ ] TypeScript: `npx tsc --noEmit` returns zero errors
+- [ ] Every changed file has been read and manually checked against this list
+- [ ] Commit message includes self-validation result: "Self-validation: PASS"
+- [ ] If ANY check fails: fix it NOW — do not commit and let CI or Copilot catch it
+
 ### Formatting
 - [ ] C# files: run `dotnet format --verify-no-changes` — zero violations
 - [ ] TypeScript files: run `npx tsc --noEmit` — zero errors
