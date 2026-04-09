@@ -116,7 +116,9 @@ function SubmitScreenContent({
         )}
 
         <Button label="Submit signal" onPress={handleSubmit}
-          loading={screenState === 'loading'} disabled={screenState === 'loading'} />
+          loading={screenState === 'loading'} disabled={screenState === 'loading'}
+          accessibilityLabel="Submit signal"
+          accessibilityState={{ disabled: screenState === 'loading', busy: screenState === 'loading' }} />
         <Button label="Go back and edit" variant="ghost"
           onPress={() => router.back()} disabled={screenState === 'loading'} />
       </ScrollView>

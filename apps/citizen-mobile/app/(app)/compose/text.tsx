@@ -129,14 +129,16 @@ export default function ComposerTextScreen(): React.ReactElement {
           />
 
           {screenState === 'error' && errorMessage !== '' && (
-            <Text style={styles.error} accessibilityRole="alert">{errorMessage}</Text>
+            <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{errorMessage}</Text>
           )}
           {screenState === 'loading' && (
             <Text style={styles.analysing}>Analysing your report…</Text>
           )}
 
           <Button label="Preview signal" onPress={handlePreview}
-            disabled={!canPreview} loading={screenState === 'loading'} />
+            disabled={!canPreview} loading={screenState === 'loading'}
+            accessibilityLabel="Preview signal"
+            accessibilityState={{ disabled: !canPreview, busy: screenState === 'loading' }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

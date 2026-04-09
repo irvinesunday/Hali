@@ -738,3 +738,50 @@ when `authState.status` flips to `'authenticated'`.
 **Rule added:** Pre-Commit Checklist → Navigation → "any imperative `router.push`
 inside a callback that can fire repeatedly must be guarded against stacking
 duplicate destinations."
+
+---
+
+## PR #81 — Phase E composer token migration
+
+### Lesson 1: Replacing TouchableOpacity with shared Button drops accessibility props
+**File:** `apps/citizen-mobile/app/(app)/compose/{text,confirm,submit}.tsx`
+**What Copilot flagged:** Switching to the shared `Button` removed the explicit
+`accessibilityLabel` and `accessibilityState` (disabled/busy) that the previous
+inline `TouchableOpacity` set. When the visible label is replaced by a spinner
+during loading, screen readers lose the stable label and busy state.
+**Root cause:** When migrating to shared components, only the visual props were
+forwarded; the accessibility props on the original were not carried across.
+**Fix applied:** Added `accessibilityLabel` and `accessibilityState={{ disabled, busy }}`
+to every `Button` that replaced an accessible TouchableOpacity in the composer flow.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When migrating an inline
+TouchableOpacity to a shared `Button`, port over its `accessibilityLabel` and
+`accessibilityState` (especially `busy` for loading buttons whose label is
+swapped for a spinner)."
+
+### Lesson 2: `accessibilityLiveRegion` must be preserved on inline error text
+**File:** `apps/citizen-mobile/app/(app)/compose/text.tsx`
+**What Copilot flagged:** Error message kept `accessibilityRole="alert"` but
+dropped `accessibilityLiveRegion="polite"`, which is the Android-specific signal
+that the text should be announced when it appears. submit.tsx kept it; text.tsx
+did not — inconsistent.
+**Root cause:** During the rewrite, only `accessibilityRole` was carried through;
+the Android-only live region prop was missed.
+**Fix applied:** Added `accessibilityLiveRegion="polite"` to the inline error
+`<Text>` in text.tsx, matching submit.tsx.
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "Inline error/alert `<Text>`
+elements must set BOTH `accessibilityRole=\"alert\"` AND `accessibilityLiveRegion=\"polite\"`
+for cross-platform announcement."
+
+### Lesson 3: Don't claim "no theme token exists" without grepping the theme
+**File:** `apps/citizen-mobile/app/(app)/compose/confirm.tsx`
+**What Copilot flagged:** Inline comment justified a hardcoded `#D97706` amber by
+saying no amber token existed in the theme — but `Colors.conditionBadge.amber.text`
+(`#B45309`) was already defined.
+**Root cause:** Asserted absence of a token without searching the theme file first.
+The Phase E rule is "zero hardcoded hex values" — there is no exception clause.
+**Fix applied:** Replaced the hardcoded hex with `Colors.conditionBadge.amber.text`
+and removed the misleading inline comment.
+**Rule added:** Pre-Commit Checklist → Theme tokens → "Before adding any hardcoded
+hex value or comment justifying one, grep `apps/citizen-mobile/src/theme/colors.ts`
+for the colour family. Nested palettes (e.g. `Colors.conditionBadge.amber.text`)
+count as tokens."

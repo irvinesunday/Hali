@@ -99,7 +99,6 @@ function ConfirmScreenContent({
             )}
             {locationGate === 'confirm' && (
               <Text style={styles.warningAmber}>
-                {/* amber-600 (#D97706) — no theme token for amber, intentional one-off */}
                 We extracted this location but aren't fully confident. Confirm or correct it.
               </Text>
             )}
@@ -127,7 +126,9 @@ function ConfirmScreenContent({
             )}
           </View>
 
-          <Button label="Next" onPress={handleNext} disabled={!canProceed} />
+          <Button label="Next" onPress={handleNext} disabled={!canProceed}
+            accessibilityLabel="Next"
+            accessibilityState={{ disabled: !canProceed }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
   fieldValue: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.foreground },
   locationBlock: { gap: Spacing.sm },
   warningRequired: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.destructive },
-  warningAmber: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: '#D97706' },
+  warningAmber: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.conditionBadge.amber.text },
   locationInput: {
     borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
