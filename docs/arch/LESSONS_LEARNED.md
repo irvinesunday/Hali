@@ -971,3 +971,47 @@ added the missing `Interactive Level` column on the streaming chart row.
 upstream data files (CSV/JSON/TSV) into the repo, run a parse check
 (`python3 -c 'import csv; list(csv.DictReader(open(p)))'` or equivalent)
 on every file before staging. Do not assume upstream-shipped data is well-formed."
+
+## PR #86 (round 2)
+
+### Lesson 3: Documentation drift in vendored tools must be reconciled before commit
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`,
+`.claude/skills/ui-ux-pro-max/SKILL.md`
+**What Copilot flagged:** The script docstring and SKILL.md advertised a
+`prompt` domain that does not exist in `CSV_CONFIG`, listed only a subset
+of the supported `--stack` choices, and described `--persist` paths that
+no longer match the implementation (`design-system/<project_slug>/...`).
+**Root cause:** The skill bundle was vendored as-is without diffing the
+documentation against the actual code paths and CLI behaviour. The
+duplicate `<project_slug>` issue had already been raised in round 1 for
+the docstring, but the help strings on the argparse arguments themselves
+were missed.
+**Fix applied:** Removed the `prompt` domain from both the docstring and
+SKILL.md, expanded the SKILL.md stacks list and table to match
+`AVAILABLE_STACKS`, updated `--persist`/`--page` argparse help strings to
+use `<project_slug>`, and dropped the unused `persist_design_system`
+import.
+**Rule added:** Pre-Commit Checklist → Vendored Tools → "When committing
+a third-party tool, grep its docs and `--help` strings for every option
+and domain name and confirm each one exists in code. Apply the fix to
+docstring, README/SKILL.md, AND argparse help text — they drift independently."
+
+### Lesson 4: Quote every CSV field that contains a comma — every time
+**File:** `.claude/skills/ui-ux-pro-max/data/landing.csv`
+**What Copilot flagged:** Rows 22-26 had `Recommended Effects` values
+written as bare comma-separated lists with a stray `"` somewhere in the
+middle, which caused the effects list to bleed into the
+`Conversion Optimization` column when parsed by `csv.DictReader`. Round 1
+fixed rows 27-30 but missed 22-26.
+**Root cause:** Round 1 trusted Copilot's pointer at the specific failing
+rows instead of scanning the entire file for the same pattern. The skill
+file said "search for the same problem elsewhere" — that step was skipped.
+**Fix applied:** Re-quoted `Recommended Effects` in rows 22-26 and moved
+the conversion notes back into `Conversion Optimization`. Verified all 30
+rows parse with the expected 8 columns via
+`csv.DictReader` round-trip.
+**Rule added:** Copilot Resolution → Step 3 reinforcement → "When Copilot
+flags a CSV/JSON/YAML parse bug, run the parser over the WHOLE file
+(`python3 -c 'import csv; list(csv.DictReader(open(p)))'`) before
+declaring the fix complete — never trust the line numbers in the comment
+as the only affected location."
