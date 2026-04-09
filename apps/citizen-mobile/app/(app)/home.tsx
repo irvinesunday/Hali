@@ -42,6 +42,7 @@ import {
 import { getFollowedLocalities, searchLocalities } from '../../src/api/localities';
 import { useHome, ApiResultError } from '../../src/hooks/useClusters';
 import { useLocalityContext } from '../../src/context/LocalityContext';
+import { useAuth } from '../../src/context/AuthContext';
 import { formatRelativeTime, getCategoryInstitutionName } from '../../src/utils/formatters';
 import {
   Colors,
@@ -70,10 +71,11 @@ function isSectionEmpty<T>(section: PagedSection<T> | undefined): boolean {
 
 export default function HomeScreen(): React.ReactElement {
   const router = useRouter();
+  const { authState } = useAuth();
+  const isAuthenticated = authState.status === 'authenticated';
   const {
     activeLocality,
     followedLocalities,
-    followsLoaded,
     setActiveLocalityId,
     setFollowedLocalities,
   } = useLocalityContext();
@@ -82,6 +84,10 @@ export default function HomeScreen(): React.ReactElement {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   // ── Load followed localities ──────────────────────────────────────────────
+  // Guests have no follows; calling /v1/localities/followed without tokens
+  // would trigger the API client's 401 refresh flow and leave followsLoaded
+  // false, blanking the feed. Skip the request entirely and treat guests as
+  // a loaded-empty follows list so the NoFollowsState renders correctly.
   const localitiesQuery = useQuery({
     queryKey: ['localities', 'followed'],
     queryFn: async () => {
@@ -91,13 +97,18 @@ export default function HomeScreen(): React.ReactElement {
     },
     staleTime: 60_000,
     retry: 1,
+    enabled: isAuthenticated,
   });
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setFollowedLocalities([]);
+      return;
+    }
     if (localitiesQuery.data) {
       setFollowedLocalities(localitiesQuery.data);
     }
-  }, [localitiesQuery.data, setFollowedLocalities]);
+  }, [isAuthenticated, localitiesQuery.data, setFollowedLocalities]);
 
   // ── Home feed ─────────────────────────────────────────────────────────────
   const homeQuery = useHome();
@@ -121,7 +132,17 @@ export default function HomeScreen(): React.ReactElement {
     );
   }, [feed]);
 
-  const hasNoFollows = followsLoaded && followedLocalities.length === 0;
+  // Derive readiness locally from React Query state so that a guest→auth
+  // transition doesn't flash NoFollowsState while the authed follows query
+  // is still in flight. `followsLoaded` from context is permanently true
+  // once set (including by the guest branch), so it cannot be relied on
+  // after auth state changes without a full remount of LocalityProvider.
+  const followsReady =
+    !isAuthenticated ||
+    localitiesQuery.isSuccess ||
+    localitiesQuery.isError;
+
+  const hasNoFollows = followsReady && followedLocalities.length === 0;
 
   const localityDisplayName =
     activeLocality?.displayLabel ??
@@ -129,7 +150,7 @@ export default function HomeScreen(): React.ReactElement {
     'Select an area';
 
   const localityStateText = (() => {
-    if (!followsLoaded) return '';
+    if (!followsReady) return '';
     if (hasNoFollows) return 'Follow a ward to see activity';
     if (isCalmState) return 'Currently calm';
     const count = (feed?.activeNow.items.length ?? 0) +
@@ -356,21 +377,70 @@ function LocalitySelectorSheet({
   const [searchResults, setSearchResults] = useState<LocalitySearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  const latestSearchRequestRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current);
+        searchTimeout.current = null;
+      }
+    };
+  }, []);
 
   const handleSearchChange = (text: string) => {
     setSearchQuery(text);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (text.trim().length < 2) {
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+      searchTimeout.current = null;
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      // Invalidate any in-flight request and clear results immediately.
+      latestSearchRequestRef.current += 1;
+      setSearching(false);
       setSearchResults([]);
       return;
     }
+
+    const requestId = ++latestSearchRequestRef.current;
     searchTimeout.current = setTimeout(async () => {
+      if (!isMountedRef.current || requestId !== latestSearchRequestRef.current) {
+        return;
+      }
       setSearching(true);
       try {
-        const result = await searchLocalities(text.trim());
-        if (result.ok) setSearchResults(result.value);
+        const result = await searchLocalities(trimmed);
+        if (
+          !isMountedRef.current ||
+          requestId !== latestSearchRequestRef.current
+        ) {
+          return;
+        }
+        // Always reflect the latest request — clear stale results on
+        // error so the UI never shows results for a different query.
+        if (result.ok) {
+          setSearchResults(result.value);
+        } else {
+          setSearchResults([]);
+        }
+      } catch {
+        if (
+          isMountedRef.current &&
+          requestId === latestSearchRequestRef.current
+        ) {
+          setSearchResults([]);
+        }
       } finally {
-        setSearching(false);
+        if (
+          isMountedRef.current &&
+          requestId === latestSearchRequestRef.current
+        ) {
+          setSearching(false);
+        }
       }
     }, 350);
   };
@@ -449,16 +519,29 @@ function LocalitySelectorSheet({
             const id = item.localityId;
             const label = item.label;
             const isActive = id === activeLocalityId;
+            // setActiveLocalityId only accepts ids that exist in
+            // followedLocalities. Search results that aren't already
+            // followed are non-selectable until follow/unfollow is wired
+            // (Phase G — wards settings).
+            const isFollowed = followedLocalities.some(
+              (l) => l.localityId === id,
+            );
 
             return (
               <TouchableOpacity
-                style={[styles.localityRow, isActive && styles.localityRowActive]}
+                style={[
+                  styles.localityRow,
+                  isActive && styles.localityRowActive,
+                  !isFollowed && styles.localityRowDisabled,
+                ]}
+                disabled={!isFollowed}
                 onPress={() => {
                   Keyboard.dismiss();
+                  if (!isFollowed) return;
                   onSelectLocality(id);
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
+                accessibilityState={{ selected: isActive, disabled: !isFollowed }}
               >
                 <Text
                   style={[
@@ -658,6 +741,9 @@ const styles = StyleSheet.create({
   },
   localityRowActive: {
     backgroundColor: Colors.primarySubtle,
+  },
+  localityRowDisabled: {
+    opacity: 0.5,
   },
   localityRowText: {
     fontSize: FontSize.body,
