@@ -8,6 +8,46 @@ before committing. You do not push code that would fail Copilot review.
 
 ---
 
+## STAGE 0 — UX pattern lookup (new screens only — skip for token migrations)
+
+Before designing any genuinely new screen (not a token migration of an existing
+screen), run these queries against the installed skill database:
+
+```bash
+# UX patterns for this screen type
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
+  "<describe the screen in 4-6 words>" \
+  --domain ux --stack react-native -n 3
+
+# Layout/style patterns
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
+  "<describe the screen in 4-6 words>" \
+  --domain style --stack react-native -n 2
+```
+
+Read the results. Apply only patterns that:
+✅ Fit Hali's list-led, calm civic tone
+✅ Are structurally useful for this screen type
+✅ Are compatible with the locked token system (Colors.*, FontFamily.*, etc.)
+
+Discard any pattern that:
+❌ Suggests social features (comments, reactions, follows, media)
+❌ Recommends colour, font, or spacing changes
+❌ Conflicts with Hali's neutrality or dual-visibility doctrine
+
+If no relevant patterns emerge, proceed without them — the query is informational,
+not a blocker.
+
+Note in the commit message if any skill pattern influenced the design:
+"UX pattern used: <pattern name from search results>"
+
+### Phase 2 chart queries (institution dashboard screens)
+When building screens that show metrics, trends, or aggregates, also run:
+```bash
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py \
+  "<metric type> dashboard" --domain chart -n 3
+```
+
 ## STEP 0 — Read before writing a single line of code
 
 ```bash
