@@ -937,3 +937,105 @@ backend ships.
 mobile UI to a new backend endpoint, open the controller and confirm it
 returns real data, not a stub. If it's a stub, gate the UI behind a
 feature flag in `src/config/constants.ts` defaulting to `false`."
+
+## PR #86 — chore(agents): wire UI/UX Pro Max skill into Agent D v2
+
+### Lesson 1: Read CLI semantics before composing flag combinations
+**File:** `agent_prompts/agent_d_mobile.md`, `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** Stage 0 invoked `search.py --domain ux --stack react-native`,
+but the script silently ignores `--domain` whenever `--stack` is supplied, so the
+"UX patterns" query actually returned stack guidance instead.
+**Root cause:** The skill was wired into the agent prompt without reading the
+script's argument-handling branch. The two flags look composable but are
+mutually exclusive in the implementation.
+**Fix applied:** Made the flags hard-error in `search.py` via argparse, and
+split Stage 0 into three separate single-flag queries (domain ux, domain style,
+stack react-native).
+**Rule added:** Pre-Commit Checklist → Tooling → "When wiring an external CLI
+into an agent prompt, read its argument parser and confirm every flag
+combination you document actually behaves as written. Prefer separate
+single-flag invocations over guessing at composability."
+
+### Lesson 2: Vendored data files must parse before being committed
+**File:** `.claude/skills/ui-ux-pro-max/data/landing.csv`,
+`.claude/skills/ui-ux-pro-max/data/charts.csv`
+**What Copilot flagged:** Several rows had unquoted commas, embedded
+newlines, and missing trailing columns, which would break `csv.DictReader`
+and corrupt search results for the affected domains.
+**Root cause:** The CSV bundle was committed wholesale from the upstream
+installer without validating that every row parses with the same column count
+the header declares.
+**Fix applied:** Re-quoted broken rows in `landing.csv` and `charts.csv` and
+added the missing `Interactive Level` column on the streaming chart row.
+**Rule added:** Pre-Commit Checklist → Vendored Data → "When committing
+upstream data files (CSV/JSON/TSV) into the repo, run a parse check
+(`python3 -c 'import csv; list(csv.DictReader(open(".claude/skills/ui-ux-pro-max/data/landing.csv", newline="")))'` or equivalent)
+on every file before staging. Do not assume upstream-shipped data is well-formed."
+
+## PR #86 (round 2)
+
+### Lesson 3: Documentation drift in vendored tools must be reconciled before commit
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`,
+`.claude/skills/ui-ux-pro-max/SKILL.md`
+**What Copilot flagged:** The script docstring and SKILL.md advertised a
+`prompt` domain that does not exist in `CSV_CONFIG`, listed only a subset
+of the supported `--stack` choices, and described `--persist` paths that
+no longer match the implementation (`design-system/<project_slug>/...`).
+**Root cause:** The skill bundle was vendored as-is without diffing the
+documentation against the actual code paths and CLI behaviour. The
+duplicate `<project_slug>` issue had already been raised in round 1 for
+the docstring, but the help strings on the argparse arguments themselves
+were missed.
+**Fix applied:** Removed the `prompt` domain from both the docstring and
+SKILL.md, expanded the SKILL.md stacks list and table to match
+`AVAILABLE_STACKS`, updated `--persist`/`--page` argparse help strings to
+use `<project_slug>`, and dropped the unused `persist_design_system`
+import.
+**Rule added:** Pre-Commit Checklist → Vendored Tools → "When committing
+a third-party tool, grep its docs and `--help` strings for every option
+and domain name and confirm each one exists in code. Apply the fix to
+docstring, README/SKILL.md, AND argparse help text — they drift independently."
+
+### Lesson 4: Quote every CSV field that contains a comma — every time
+**File:** `.claude/skills/ui-ux-pro-max/data/landing.csv`
+**What Copilot flagged:** Rows 22-26 had `Recommended Effects` values
+written as bare comma-separated lists with a stray `"` somewhere in the
+middle, which caused the effects list to bleed into the
+`Conversion Optimization` column when parsed by `csv.DictReader`. Round 1
+fixed rows 27-30 but missed 22-26.
+**Root cause:** Round 1 trusted Copilot's pointer at the specific failing
+rows instead of scanning the entire file for the same pattern. The skill
+file said "search for the same problem elsewhere" — that step was skipped.
+**Fix applied:** Re-quoted `Recommended Effects` in rows 22-26 and moved
+the conversion notes back into `Conversion Optimization`. Verified all 30
+rows parse with the expected 8 columns via
+`csv.DictReader` round-trip.
+**Rule added:** Copilot Resolution → Step 3 reinforcement → "When Copilot
+flags a CSV/JSON/YAML parse bug, run the parser over the WHOLE file
+(`python3 -c 'import csv; list(csv.DictReader(open(".claude/skills/ui-ux-pro-max/data/landing.csv", newline="")))'`) before
+declaring the fix complete — never trust the line numbers in the comment
+as the only affected location."
+
+## PR #86 (round 3)
+
+### Lesson 5: Argparse help strings must enumerate the actual choices
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** `--stack` help text said "(html-tailwind, react,
+nextjs)" while `AVAILABLE_STACKS` actually contained 13 stacks. Round 1
+fixed the module docstring but the argparse help string was missed.
+**Fix applied:** Built the help string from `AVAILABLE_STACKS` directly so
+it can never drift again.
+**Rule added:** Pre-Commit Checklist → CLI Tools → "Derive --help text
+from the same constant the choices come from. Hardcoded help strings
+silently rot whenever the underlying list grows."
+
+### Lesson 6: A flag that is silently ignored is a bug, not a feature
+**File:** `.claude/skills/ui-ux-pro-max/scripts/search.py`
+**What Copilot flagged:** Passing `--json` together with `--design-system`
+silently dropped the `--json` flag because the design-system branch only
+prints formatted text.
+**Fix applied:** Added an explicit `parser.error` for the combination so
+the user is told instead of getting the wrong format.
+**Rule added:** Pre-Commit Checklist → CLI Tools → "If a flag has no
+effect in some mode, the parser must reject the combination. Never let
+a CLI silently ignore a user-supplied option."
