@@ -235,6 +235,7 @@ export default function OtpScreen(): React.ReactElement {
               label={STRINGS.AUTH.OTP_SUBMIT}
               onPress={handleSubmit}
               accessibilityLabel={STRINGS.AUTH.OTP_SUBMIT_LABEL}
+              style={styles.submitButton}
             />
           )}
 
@@ -322,6 +323,7 @@ const styles = StyleSheet.create({
     color: Colors.foreground,
   },
   loadingIndicator: { marginVertical: Spacing.sm },
+  submitButton: { alignSelf: 'stretch' },
   errorText: {
     fontSize: FontSize.bodySmall,
     fontFamily: FontFamily.regular,

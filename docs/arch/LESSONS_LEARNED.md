@@ -876,3 +876,35 @@ box background to use it.
 string-concatenating onto a colour token (`Colors.x + '10'`). If a subtle
 variant is needed, add a `<name>Subtle` token in `theme/colors.ts` next to
 the base token and use that — same pattern as `primarySubtle`."
+
+### Lesson 3: Migrating to shared `<Button>` can collapse a full-width CTA inside a centered container
+**File:** `apps/citizen-mobile/app/(auth)/otp.tsx`
+**What Copilot flagged:** The OTP screen's container uses
+`alignItems: 'center'`, so the new `<Button>` no longer stretches to full
+width like the prior `width: '100%'` CTA — shrinking the tap target and
+hurting usability.
+**Root cause:** The token-migration sweep replaced the styled
+`TouchableOpacity` with `<Button>` without accounting for the parent's
+`alignItems: 'center'` cross-axis behaviour.
+**Fix applied:** Passed `style={{ alignSelf: 'stretch' }}` (via a
+`submitButton` style) to the `<Button>` so it expands to the container's
+full width.
+**Rule added:** Pre-Commit Checklist → Mobile Layout → "When swapping a
+full-width CTA for the shared `<Button>` inside a parent that uses
+`alignItems: 'center'`, pass `alignSelf: 'stretch'` (or `width: '100%'`) so
+the button retains its full-width tap target."
+
+### Lesson 4: Keep the PR description's "files modified" list in sync after every follow-up commit
+**File:** PR-level
+**What Copilot flagged:** PR #82's description claimed "No other files
+modified", but follow-up commits also touched
+`docs/arch/LESSONS_LEARNED.md` and `apps/citizen-mobile/src/theme/colors.ts`
+(adding `destructiveSubtle`).
+**Root cause:** PR body was written for the initial commit and not refreshed
+after the Copilot-fix follow-up that added a token and a lesson entry.
+**Fix applied:** Updated PR #82 description to list the additional modified
+files.
+**Rule added:** Pre-Commit Checklist → PR hygiene → "After any follow-up
+commit that adds files outside the original PR scope (new tokens, lesson
+entries, etc.), update the PR description's modified-files list in the same
+session — extends Lesson #81/7."
