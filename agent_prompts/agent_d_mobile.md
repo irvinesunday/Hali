@@ -132,32 +132,41 @@ Run every item. Record results. Fix all BLOCKING items before proceeding to Stag
 # Resolve the list of staged TS/TSX files once. All checks operate on this set.
 files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 
-# Check 1: Zero hardcoded hex colours (POSIX-portable comment filter)
+# Check 1: Zero hardcoded hex colours.
+# Drop -n before filtering so the comment filter actually matches the start
+# of the line (grep -n prefixes "lineNumber:" which would defeat ^[[:space:]]*//),
+# then re-add line numbers afterwards.
 echo "=== CHECK 1: Hardcoded hex colours ==="
 if [ -n "$files" ]; then
   for f in $files; do
-    matches=$(grep -n "#[0-9A-Fa-f]\{3,6\}" "$f" | grep -v "^[[:space:]]*//")
+    matches=$(grep "#[0-9A-Fa-f]\{3,6\}" "$f" | grep -v "^[[:space:]]*//")
     if [ -n "$matches" ]; then
       echo "FAIL $f:"
-      echo "$matches"
+      grep -n "#[0-9A-Fa-f]\{3,6\}" "$f" | grep -v "^[0-9]*:[[:space:]]*//"
     else
       echo "PASS $f"
     fi
   done
 fi
 
-# Check 2: Zero Ionicons / @expo/vector-icons usage
+# Check 2: Zero Ionicons / @expo/vector-icons usage.
+# Use grep -E for portable alternation; avoid xargs -r (not on BSD/macOS) —
+# the [ -n "$files" ] guard already prevents an empty invocation.
 echo "=== CHECK 2: Forbidden icon libraries ==="
-[ -n "$files" ] && echo "$files" | xargs -r grep -n \
-  "Ionicons\|@expo/vector-icons\|MaterialIcons\|FontAwesome" \
-  && echo "FAIL — forbidden icon library found" || echo "PASS"
+if [ -n "$files" ]; then
+  echo "$files" | xargs grep -En \
+    "Ionicons|@expo/vector-icons|MaterialIcons|FontAwesome" \
+    && echo "FAIL — forbidden icon library found" || echo "PASS"
+fi
 
-# Check 3: Zero `Animated` from React Native core (must use Reanimated)
-# Uses portable -E word boundary instead of \b
+# Check 3: Zero `Animated` from React Native core (must use Reanimated).
+# Uses portable -E word boundary instead of \b.
 echo "=== CHECK 3: React Native Animated API ==="
-[ -n "$files" ] && echo "$files" | xargs -r grep -En \
-  "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)" \
-  && echo "FAIL — use react-native-reanimated instead" || echo "PASS"
+if [ -n "$files" ]; then
+  echo "$files" | xargs grep -En \
+    "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)" \
+    && echo "FAIL — use react-native-reanimated instead" || echo "PASS"
+fi
 
 # Check 4: TypeScript — zero errors. Capture tsc exit code BEFORE piping to head.
 echo "=== CHECK 4: TypeScript ==="
@@ -171,16 +180,21 @@ echo "=== CHECK 4: TypeScript ==="
   exit $tsc_status
 )
 
-# Check 5: No `any` types introduced (portable boundary)
+# Check 5: No `any` types introduced (portable boundary).
 echo "=== CHECK 5: any types ==="
-[ -n "$files" ] && echo "$files" | xargs -r grep -En \
-  "(:|as)[[:space:]]+any([^[:alnum:]_]|$)" \
-  && echo "FAIL — use explicit types" || echo "PASS"
+if [ -n "$files" ]; then
+  echo "$files" | xargs grep -En \
+    "(:|as)[[:space:]]+any([^[:alnum:]_]|$)" \
+    && echo "FAIL — use explicit types" || echo "PASS"
+fi
 
-# Check 6: No hardcoded user-visible strings outside strings.ts
+# Check 6: No hardcoded user-visible strings outside strings.ts.
+# Use grep -E for portable alternation.
 echo "=== CHECK 6: Hardcoded user strings ==="
-[ -n "$files" ] && echo "$files" | xargs -r grep -n \
-  'placeholder="[A-Z]\|<Text>[A-Z]' | head -20
+if [ -n "$files" ]; then
+  echo "$files" | xargs grep -En \
+    'placeholder="[A-Z]|<Text>[A-Z]' | head -20
+fi
 # Review output — strings visible to users must come from src/config/strings.ts
 # Exception: placeholder text in dev-only components, clearly commented
 ```

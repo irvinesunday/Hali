@@ -24,23 +24,25 @@ to a real past failure. Do not skip any item.
 - [ ] Run the automated grep checks (operate on staged TS/TSX files):
 
 ```bash
-# Resolve the staged file list once
+# Resolve the staged file list once. The [ -n "$files" ] guards below
+# replace `xargs -r` (which is not portable on BSD/macOS).
 files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 
-# Hardcoded hex colours (zero tolerance) — POSIX-portable comment filter
-[ -n "$files" ] && echo "$files" | xargs -r grep -n "#[0-9A-Fa-f]\{3,6\}" \
+# Hardcoded hex colours (zero tolerance). The filter accounts for the
+# `lineNumber:` prefix that grep -n adds to each match.
+[ -n "$files" ] && echo "$files" | xargs grep -n "#[0-9A-Fa-f]\{3,6\}" \
   | grep -v "^[^:]*:[0-9]*:[[:space:]]*//"
 
-# Forbidden icon libraries
-[ -n "$files" ] && echo "$files" | xargs -r grep -n \
-  "Ionicons\|@expo/vector-icons\|MaterialIcons"
+# Forbidden icon libraries — grep -E for portable alternation
+[ -n "$files" ] && echo "$files" | xargs grep -En \
+  "Ionicons|@expo/vector-icons|MaterialIcons"
 
 # React Native Animated API (use Reanimated instead) — portable boundary
-[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+[ -n "$files" ] && echo "$files" | xargs grep -En \
   "from 'react-native'.*(^|[^[:alnum:]_])Animated([^[:alnum:]_]|$)"
 
 # any types — portable boundary
-[ -n "$files" ] && echo "$files" | xargs -r grep -En \
+[ -n "$files" ] && echo "$files" | xargs grep -En \
   "(:|as)[[:space:]]+any([^[:alnum:]_]|$)"
 ```
 
