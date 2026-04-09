@@ -11,7 +11,7 @@
 
 ### Verdict: **PASS_WITH_NOTES**
 
-### Test results
+### PART 1 — Test results
 
 | Suite | Passed | Failed | Skipped | Total | Duration |
 |---|---|---|---|---|---|
@@ -32,19 +32,19 @@
 | CLAUDE.md + `docs/arch/00_session_patch_notes.md` | Same 8 values documented ✅ |
 | `.env.example` | No enum list present (not required in env) — N/A |
 | OpenAPI vs controllers | Controllers present in `src/Hali.Api/Controllers/` for all Phase 1 route groups; no drift observed |
-| Outbox pattern | `outbox` references across `Application/Participation`, `Application/Advisories`, `Application/Clusters/ClusteringService.cs`, `Infrastructure/Clusters/ClusterRepository.cs` — cluster state mutations emit outbox events ✅ |
-| CIVIS join weights / threshold | Present in `src/Hali.Application/Clusters/CivisOptions.cs` and `ClusteringService.cs` ✅ |
+| Outbox pattern | `outbox` references across `src/Hali.Application/Participation/`, `src/Hali.Application/Advisories/`, `src/Hali.Application/Clusters/ClusteringService.cs`, `src/Hali.Infrastructure/Clusters/ClusterRepository.cs` — cluster state mutations emit outbox events ✅ |
+| CIVIS join weights / threshold | Present in `src/Hali.Application/Clusters/CivisOptions.cs` and `src/Hali.Application/Clusters/ClusteringService.cs` ✅ |
 | Refresh token hashing (SHA256) | Present in `src/Hali.Application/Auth/AuthService.cs` and `OtpService.cs` ✅ |
 
 ### PART 3 — Mobile compliance
 
 | Check | Result |
 |---|---|
-| Hardcoded hex colors in `app/` | 0 ✅ |
-| Hardcoded hex colors in `src/components/` | 0 ✅ |
-| Ionicons / @expo/vector-icons / MaterialIcons / FontAwesome in source | 0 (only `package.json`/`package-lock.json`/`README.md` matches, no source imports) ✅ |
+| Hardcoded hex colors in `apps/citizen-mobile/app/` | 0 ✅ |
+| Hardcoded hex colors in `apps/citizen-mobile/src/components/` | 0 ✅ |
+| Ionicons / @expo/vector-icons / MaterialIcons / FontAwesome in source | 0 (only `apps/citizen-mobile/package.json`/`package-lock.json`/`README.md` matches, no source imports) ✅ |
 | `Animated` import from `react-native` | 0 ✅ |
-| `: any` / `as any` in `src/` | 0 ✅ |
+| `: any` / `as any` in `apps/citizen-mobile/src/` | 0 ✅ |
 | TypeScript strict check | clean ✅ |
 
 ### PART 4 — Required mobile screens
@@ -53,12 +53,12 @@
 |---|---|
 | Root | `app/_layout.tsx`, `app/index.tsx` ✅ |
 | Auth | `(auth)/phone.tsx`, `(auth)/otp.tsx` ✅ |
-| App | `(app)/home.tsx`, `(app)/compose/{text,confirm,submit}.tsx`, `(app)/clusters/[id].tsx`, `(app)/settings/{account,notifications,wards}.tsx` ✅ |
-| Modals | `(modals)/restoration/[clusterId].tsx` ✅ |
+| App | `apps/citizen-mobile/app/(app)/home.tsx`, `(app)/compose/{text,confirm,submit}.tsx`, `(app)/clusters/[id].tsx`, `(app)/settings/{account,notifications,wards}.tsx` ✅ |
+| Modals | `apps/citizen-mobile/app/(modals)/restoration/[clusterId].tsx` ✅ |
 
 ### PART 5 — Mobile API files
 
-`src/api/`: `auth.ts`, `client.ts`, `clusters.ts`, `devices.ts`, `localities.ts`, `signals.ts`, `users.ts` — covers all Phase 1 OpenAPI path groups ✅
+`apps/citizen-mobile/src/api/`: `auth.ts`, `client.ts`, `clusters.ts`, `devices.ts`, `localities.ts`, `signals.ts`, `users.ts` — covers all Phase 1 OpenAPI path groups ✅
 
 ### PART 6 — BLOCKING-1 status
 
@@ -66,9 +66,9 @@
 
 ### PART 7 — Doc consistency
 
-- CLAUDE.md, `docs/arch/00_session_patch_notes.md`, `10_testing_strategy.md` all reference the 8-value `civic_category` enum consistently ✅
-- `LESSONS_LEARNED.md` present — no new lessons required from this read-only pass
-- `CODING_STANDARDS.md` + `UX_RETROSPECTIVE_REVIEW.md` present and consistent with current state
+- `CLAUDE.md`, `docs/arch/00_session_patch_notes.md`, `docs/arch/10_testing_strategy.md` all reference the 8-value `civic_category` enum consistently ✅
+- `docs/arch/LESSONS_LEARNED.md` present — no new lessons required from this read-only pass
+- `docs/arch/CODING_STANDARDS.md` + `docs/arch/UX_RETROSPECTIVE_REVIEW.md` present and consistent with current state
 
 ### Notes (non-blocking)
 
