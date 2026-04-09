@@ -76,7 +76,6 @@ export default function HomeScreen(): React.ReactElement {
   const {
     activeLocality,
     followedLocalities,
-    followsLoaded,
     setActiveLocalityId,
     setFollowedLocalities,
   } = useLocalityContext();
@@ -133,7 +132,17 @@ export default function HomeScreen(): React.ReactElement {
     );
   }, [feed]);
 
-  const hasNoFollows = followsLoaded && followedLocalities.length === 0;
+  // Derive readiness locally from React Query state so that a guest→auth
+  // transition doesn't flash NoFollowsState while the authed follows query
+  // is still in flight. `followsLoaded` from context is permanently true
+  // once set (including by the guest branch), so it cannot be relied on
+  // after auth state changes without a full remount of LocalityProvider.
+  const followsReady =
+    !isAuthenticated ||
+    localitiesQuery.isSuccess ||
+    localitiesQuery.isError;
+
+  const hasNoFollows = followsReady && followedLocalities.length === 0;
 
   const localityDisplayName =
     activeLocality?.displayLabel ??
@@ -141,7 +150,7 @@ export default function HomeScreen(): React.ReactElement {
     'Select an area';
 
   const localityStateText = (() => {
-    if (!followsLoaded) return '';
+    if (!followsReady) return '';
     if (hasNoFollows) return 'Follow a ward to see activity';
     if (isCalmState) return 'Currently calm';
     const count = (feed?.activeNow.items.length ?? 0) +

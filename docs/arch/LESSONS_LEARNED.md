@@ -664,6 +664,13 @@ blocks, not indented prose.
 **Fix applied:** Each row computes `isFollowed` against the followed list; non-followed rows render with reduced opacity, are `disabled`, and report `accessibilityState.disabled`. Follow-then-select for search results is deferred to Phase G (wards settings) where the follow API will be wired.
 **Rule added:** When a UI surfaces items from multiple sources (local + remote) into the same selection handler, the items the handler cannot act on must be visually and behaviourally disabled (`disabled`, opacity, `accessibilityState.disabled`) — never silently no-op on tap.
 
+### Lesson 63: Do not use context "loaded" flags for readiness gating when the flag is permanently set by a prior auth state
+**File:** `apps/citizen-mobile/app/(app)/home.tsx`
+**What Copilot flagged:** `setFollowedLocalities([])` in the unauthenticated branch permanently sets `followsLoaded = true` in `LocalityContext`. On a guest→authenticated transition, `followsLoaded` is already `true` while the authed follows query is still in flight, so `hasNoFollows` and `localityStateText` briefly reflect the empty-follows state even if the user has follows.
+**Root cause:** `followsLoaded` is a one-way latch — it flips to `true` and never resets. Using it as a readiness guard across auth transitions assumes `LocalityProvider` is remounted when auth changes, which it is not.
+**Fix applied:** Derived a local `followsReady` flag from React Query state — `!isAuthenticated || localitiesQuery.isSuccess || localitiesQuery.isError` — and used it instead of `followsLoaded` for `hasNoFollows` and `localityStateText` gating. Guests are always "ready" (no query runs); authenticated users are only "ready" after the query settles.
+**Rule added:** When a context holds a one-way "loaded" latch, do not use it as a readiness guard in components that straddle auth transitions. Derive readiness from the React Query `isSuccess`/`isError` state of the relevant query so the flag resets naturally when the auth state changes.
+
 ---
 
 ## Template for future entries

@@ -209,6 +209,9 @@ to a real past failure. Do not skip any item.
 - Never include PR numbers as inline references in permanent documentation (use timeless references)
 - Never hardcode a branch name (`develop`, `main`) in git remediation steps — reference
   "the PR's actual base branch" instead
+- Never use a context "loaded" latch (e.g. `followsLoaded`) to gate readiness in a component that
+  spans auth transitions; derive readiness from React Query `isSuccess`/`isError` instead so the
+  flag resets when auth state changes
 
 ## GitHub Actions rules
 
