@@ -969,7 +969,7 @@ the header declares.
 added the missing `Interactive Level` column on the streaming chart row.
 **Rule added:** Pre-Commit Checklist → Vendored Data → "When committing
 upstream data files (CSV/JSON/TSV) into the repo, run a parse check
-(`python3 -c 'import csv; list(csv.DictReader(open(p)))'` or equivalent)
+(`python3 -c 'import csv; list(csv.DictReader(open(".claude/skills/ui-ux-pro-max/data/landing.csv", newline="")))'` or equivalent)
 on every file before staging. Do not assume upstream-shipped data is well-formed."
 
 ## PR #86 (round 2)
