@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   pushBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.md,
-    paddingVertical: Spacing.md + 2,
+    paddingVertical: Spacing.md,
     alignItems: 'center',
   },
   pushBtnBusy: { opacity: 0.7 },

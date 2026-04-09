@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderRadius: Radius.lg,
-    padding: Spacing.lg + 2,
+    padding: Spacing.lg,
     borderWidth: 1.5,
   },
   optionTextWrap: { flex: 1, gap: 4 },
