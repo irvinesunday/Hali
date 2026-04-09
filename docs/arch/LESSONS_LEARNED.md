@@ -841,3 +841,70 @@ the approach changed in a follow-up commit.
 **Rule added:** Pre-Commit Checklist → PR hygiene → "After any commit that
 materially changes the approach described in the PR body, update the PR
 description in the same session — don't leave reviewers a stale narrative."
+
+## PR #82 — feat(mobile): Phase F — auth screens token migration
+
+### Lesson 1: Migrating a CTA to a shared `<Button>` must preserve the prior accessibility contract
+**File:** `apps/citizen-mobile/app/(auth)/phone.tsx`
+**What Copilot flagged:** The new `<Button>` call dropped the descriptive
+`accessibilityLabel` (`PHONE_SUBMIT_LABEL`) and `accessibilityState`
+(`disabled`/`busy`) that the previous `TouchableOpacity` had — an a11y
+regression for the loading/disabled states.
+**Root cause:** Token-migration sweep replaced the element wholesale and
+forgot that `accessibilityLabel`/`accessibilityState` are not implicit on
+`<Button>` and must be passed explicitly via the forwarded props.
+**Fix applied:** Passed `accessibilityRole="button"`, `accessibilityLabel`,
+and `accessibilityState={{ disabled, busy }}` through `<Button>` (it forwards
+extra props to its `TouchableOpacity`).
+**Rule added:** Pre-Commit Checklist → Mobile A11y → "When migrating a CTA to
+the shared `<Button>` component, diff the prior props and re-pass any
+`accessibilityLabel`/`accessibilityState`/`accessibilityRole` that existed —
+`<Button>` does not infer loading/disabled into `accessibilityState`."
+
+### Lesson 2: Don't string-concatenate alpha onto a hex token — add a real subtle token
+**File:** `apps/citizen-mobile/app/(auth)/otp.tsx`, `apps/citizen-mobile/src/theme/colors.ts`
+**What Copilot flagged:** `backgroundColor: Colors.destructive + '10'` relies
+on the token always being a hex string and bakes in an implicit alpha. Fragile
+if the token format ever changes (e.g. to `rgb()`), and inconsistent with the
+existing `Colors.primarySubtle` pattern.
+**Root cause:** Reached for an inline alpha trick instead of extending the
+design-token surface.
+**Fix applied:** Added `Colors.destructiveSubtle` (`#FBEDE7`) alongside the
+existing `primarySubtle`/`emeraldSubtle` tokens, and switched the OTP error
+box background to use it.
+**Rule added:** Pre-Commit Checklist → Theming → "Never compose alpha by
+string-concatenating onto a colour token (`Colors.x + '10'`). If a subtle
+variant is needed, add a `<name>Subtle` token in `theme/colors.ts` next to
+the base token and use that — same pattern as `primarySubtle`."
+
+### Lesson 3: Migrating to shared `<Button>` can collapse a full-width CTA inside a centered container
+**File:** `apps/citizen-mobile/app/(auth)/otp.tsx`
+**What Copilot flagged:** The OTP screen's container uses
+`alignItems: 'center'`, so the new `<Button>` no longer stretches to full
+width like the prior `width: '100%'` CTA — shrinking the tap target and
+hurting usability.
+**Root cause:** The token-migration sweep replaced the styled
+`TouchableOpacity` with `<Button>` without accounting for the parent's
+`alignItems: 'center'` cross-axis behaviour.
+**Fix applied:** Passed `style={{ alignSelf: 'stretch' }}` (via a
+`submitButton` style) to the `<Button>` so it expands to the container's
+full width.
+**Rule added:** Pre-Commit Checklist → Mobile Layout → "When swapping a
+full-width CTA for the shared `<Button>` inside a parent that uses
+`alignItems: 'center'`, pass `alignSelf: 'stretch'` (or `width: '100%'`) so
+the button retains its full-width tap target."
+
+### Lesson 4: Keep the PR description's "files modified" list in sync after every follow-up commit
+**File:** PR-level
+**What Copilot flagged:** PR #82's description claimed "No other files
+modified", but follow-up commits also touched
+`docs/arch/LESSONS_LEARNED.md` and `apps/citizen-mobile/src/theme/colors.ts`
+(adding `destructiveSubtle`).
+**Root cause:** PR body was written for the initial commit and not refreshed
+after the Copilot-fix follow-up that added a token and a lesson entry.
+**Fix applied:** Updated PR #82 description to list the additional modified
+files.
+**Rule added:** Pre-Commit Checklist → PR hygiene → "After any follow-up
+commit that adds files outside the original PR scope (new tokens, lesson
+entries, etc.), update the PR description's modified-files list in the same
+session — extends Lesson #81/7."
