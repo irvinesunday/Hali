@@ -81,6 +81,7 @@ public class OfficialPostsServiceTests
         public Task<int> ComputeWrabCountAsync(Guid c, int d, CancellationToken ct) => Task.FromResult(0);
         public Task<int> ComputeActiveMassCountAsync(Guid c, int h, CancellationToken ct) => Task.FromResult(0);
         public Task<int> CountUniqueDevicesAsync(Guid c, CancellationToken ct) => Task.FromResult(0);
+        public Task<double> GetMinLocationConfidenceAsync(Guid c, CancellationToken ct) => Task.FromResult(1.0);
 
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());

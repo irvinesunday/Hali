@@ -25,6 +25,13 @@ public interface IClusterRepository
 
 	Task<int> CountUniqueDevicesAsync(Guid clusterId, CancellationToken ct);
 
+	/// <summary>
+	/// Returns the minimum (worst-case) location_confidence across all signal_events
+	/// linked to the cluster. Used by the MACF geo-uncertainty uplift. Returns 1.0
+	/// (full confidence) if the cluster has no linked events with a confidence value.
+	/// </summary>
+	Task<double> GetMinLocationConfidenceAsync(Guid clusterId, CancellationToken ct);
+
 	Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct);
 
 	Task<IReadOnlyList<SignalCluster>> GetPossibleRestorationClustersAsync(CancellationToken ct);

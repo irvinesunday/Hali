@@ -26,16 +26,16 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
     {
         var response = await Client.PostAsJsonAsync("/v1/signals/preview", new
         {
-            freeText      = "There is a large pothole on the main road blocking traffic",
-            userLatitude  = -1.2921,
+            freeText = "There is a large pothole on the main road blocking traffic",
+            userLatitude = -1.2921,
             userLongitude = 36.8219,
-            locale        = "en",
+            locale = "en",
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(_json);
-        Assert.Equal("roads",    body.GetProperty("category").GetString());
+        Assert.Equal("roads", body.GetProperty("category").GetString());
         Assert.Equal("potholes", body.GetProperty("subcategorySlug").GetString());
         Assert.True(body.TryGetProperty("location", out var loc));
         Assert.False(string.IsNullOrWhiteSpace(loc.GetProperty("locationLabel").GetString()));
@@ -53,23 +53,23 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
 
         var response = await authClient.PostAsJsonAsync("/v1/signals/submit", new
         {
-            idempotencyKey        = Guid.NewGuid().ToString(),
-            deviceHash            = TestConstants.TestDeviceHash,
-            freeText              = "Pothole on Test Road",
-            category              = "roads",
-            subcategorySlug       = "potholes",
-            conditionSlug         = "pothole_severe",
-            conditionConfidence   = 0.92,
-            latitude              = -1.2921,
-            longitude             = 36.8219,
-            locationLabel         = "Test Road, Test Area",
+            idempotencyKey = Guid.NewGuid().ToString(),
+            deviceHash = TestConstants.TestDeviceHash,
+            freeText = "Pothole on Test Road",
+            category = "roads",
+            subcategorySlug = "potholes",
+            conditionSlug = "pothole_severe",
+            conditionConfidence = 0.92,
+            latitude = -1.2921,
+            longitude = 36.8219,
+            locationLabel = "Test Road, Test Area",
             locationPrecisionType = "road",
-            locationConfidence    = 0.85,
-            locationSource        = "nlp",
-            temporalType          = "temporary",
-            neutralSummary        = "Severe pothole on Test Road.",
-            sourceLanguage        = "en",
-            spatialCellId         = "8a390d24cbfffff",
+            locationConfidence = 0.85,
+            locationSource = "nlp",
+            temporalType = "temporary",
+            neutralSummary = "Severe pothole on Test Road.",
+            sourceLanguage = "en",
+            spatialCellId = "8a390d24cbfffff",
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -88,15 +88,15 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
         var idempotencyKey = Guid.NewGuid().ToString();
         var payload = new
         {
-            idempotencyKey      = idempotencyKey,
-            deviceHash          = "idem-device-01",
-            freeText            = "Water outage in my area",
-            category            = "water",
-            subcategorySlug     = "outage",
+            idempotencyKey = idempotencyKey,
+            deviceHash = "idem-device-01",
+            freeText = "Water outage in my area",
+            category = "water",
+            subcategorySlug = "outage",
             conditionConfidence = 0.80,
-            locationConfidence  = 0.70,
-            locationSource      = "user",
-            spatialCellId       = "8a390d24ccfffff",
+            locationConfidence = 0.70,
+            locationSource = "user",
+            spatialCellId = "8a390d24ccfffff",
         };
 
         var first = await authClient.PostAsJsonAsync("/v1/signals/submit", payload);

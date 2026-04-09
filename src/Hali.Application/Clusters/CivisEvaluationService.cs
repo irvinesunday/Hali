@@ -39,7 +39,12 @@ public class CivisEvaluationService : ICivisEvaluationService
 			int wrabCount = await _repo.ComputeWrabCountAsync(clusterId, _options.WrabRollingWindowDays, ct);
 			int effectiveWrab = Math.Max(wrabCount, opts.BaseFloor);
 			double sds = CivisCalculator.ComputeSds(await _repo.ComputeActiveMassCountAsync(clusterId, _options.ActiveMassHorizonHours, ct), wrabCount, opts.BaseFloor);
-			int macf = CivisCalculator.ComputeMacf(sds, opts);
+			double minLocationConfidence = await _repo.GetMinLocationConfidenceAsync(clusterId, ct);
+			int macf = CivisCalculator.ComputeMacf(
+				sds,
+				opts,
+				cluster.Category == CivicCategory.Safety,
+				minLocationConfidence);
 			int uniqueDevices = await _repo.CountUniqueDevicesAsync(clusterId, ct);
 			DateTime now = DateTime.UtcNow;
 			cluster.Wrab = effectiveWrab;

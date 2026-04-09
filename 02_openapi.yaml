@@ -739,6 +739,17 @@ components:
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
   schemas:
+    CivicCategory:
+      type: string
+      enum:
+        - roads
+        - transport
+        - electricity
+        - water
+        - environment
+        - safety
+        - governance
+        - infrastructure
     FeedbackRequest:
       type: object
       required: [rating]
@@ -817,7 +828,7 @@ components:
       required:
         [category, subcategorySlug, conditionConfidence, location, shouldSuggestJoin]
       properties:
-        category: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         subcategorySlug: { type: string }
         conditionSlug: { type: string, nullable: true }
         conditionConfidence: { type: number, minimum: 0, maximum: 1 }
@@ -837,7 +848,7 @@ components:
         idempotencyKey: { type: string }
         deviceHash: { type: string }
         freeText: { type: string }
-        category: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         subcategorySlug: { type: string }
         conditionSlug: { type: string, nullable: true }
         conditionConfidence: { type: number, minimum: 0, maximum: 1 }
@@ -872,7 +883,7 @@ components:
         state:
           type: string
           enum: [unconfirmed, active, possible_restoration, resolved]
-        category: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         subcategorySlug: { type: string, nullable: true }
         title: { type: string, nullable: true }
         summary: { type: string, nullable: true }
@@ -964,7 +975,7 @@ components:
         type:
           type: string
           enum: [live_update, scheduled_disruption, advisory_public_notice]
-        category: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         title: { type: string, maxLength: 220 }
         body: { type: string, maxLength: 5000 }
         startsAt: { type: string, format: date-time, nullable: true }
@@ -982,7 +993,7 @@ components:
         id: { type: string, format: uuid }
         institutionId: { type: string, format: uuid }
         type: { type: string }
-        category: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         title: { type: string }
         body: { type: string }
         startsAt: { type: string, format: date-time, nullable: true }

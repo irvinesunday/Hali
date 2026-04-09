@@ -1073,3 +1073,26 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** Treated the delayed dismiss as fire-and-forget without considering navigation races.
 **Fix applied:** Stored the timer in a `useRef`, cleared it in a `useEffect` cleanup, and cleared any prior timer before scheduling a new one.
 **Rule added:** React Native → "Any `setTimeout`/`setInterval` started inside a component must be tracked in a `useRef` and cleared in a `useEffect` cleanup. Never leave a pending timer that calls navigation or state setters."
+
+## PR #90 — Agent C Phase 1 follow-up — 4 gate items
+
+### Lesson 1: Don't add an optional formula parameter without wiring a real value through the caller
+**File:** `src/Hali.Application/Clusters/CivisCalculator.cs`, `CivisEvaluationService.cs`
+**What Copilot flagged:** `ComputeMacf` gained a `locationConfidence` parameter with default `1.0`, but the only production caller didn't pass anything — so the new geo-uncertainty branch was dead logic.
+**Root cause:** Implemented the formula spec literally without checking whether the surrounding code had a way to source the input. Default-1.0 made it compile and pass tests but the feature was unreachable in production.
+**Fix applied:** Added `IClusterRepository.GetMinLocationConfidenceAsync` (queries `MIN(signal_events.location_confidence)` for the cluster), implemented it in `ClusterRepository`, and wired it through `CivisEvaluationService` so the MACF call now receives a real value.
+**Rule added:** C# → "When adding an optional parameter that drives non-trivial logic, the same PR must wire a real value at the production call site. Defaulting and leaving callers untouched produces dead branches that pass tests but never fire."
+
+### Lesson 2: Cite the actual source-of-truth document in formula header comments
+**File:** `src/Hali.Application/Clusters/CivisCalculator.cs`
+**What Copilot flagged:** Header comment said "MACF formula per mvp_locked_decisions.md §9", but `mvp_locked_decisions.md` only contains the simple `clamp(ceil(base_floor + log2(SDS + 1)))` formula. The extended formula with `SensitivityUplift` and `geoUncertainty` actually lives in `docs/arch/05_civis_engine.md` and `docs/arch/00_session_patch_notes.md`.
+**Root cause:** Cited the document the prompt referenced rather than verifying which doc actually contains the formula.
+**Fix applied:** Updated the comment to point to `docs/arch/05_civis_engine.md` (and `00_session_patch_notes.md`).
+**Rule added:** Docs → "Before citing a doc reference in a code comment, grep that doc for the symbols/terms you're claiming it defines. If they're not there, find the doc that does and cite it."
+
+### Lesson 3: New formula branches need unit tests for each new input dimension
+**File:** `tests/Hali.Tests.Unit/Clusters/CivisCalculatorTests.cs`
+**What Copilot flagged:** `ComputeMacf` gained `isSafetyCategory` and `locationConfidence` parameters, but no unit test exercised them — only the legacy code paths were covered.
+**Root cause:** Relied on existing default-arg call sites still passing as evidence the change was safe. That validates backward compatibility, not the new behavior.
+**Fix applied:** Added three tests: safety uplift, low-confidence geo uplift (including the boundary at exactly 0.5, which must NOT uplift), and combined safety + low-confidence path.
+**Rule added:** Tests → "When adding a parameter that creates a new branch in a calculation, add at least one unit test per new branch AND a boundary test for any threshold the branch uses. Backward-compat tests do not substitute."
