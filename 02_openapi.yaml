@@ -485,12 +485,29 @@ components:
           items: { $ref: '#/components/schemas/ExistingClusterCandidate' }
     SignalSubmitRequest:
       type: object
-      required: [candidate, deviceFingerprint, idempotencyKey]
+      description: |
+        Flat shape — no nested `candidate` wrapper. `spatialCellId` is derived
+        server-side from lat/lng and must NOT be sent by the client.
+      required:
+        [idempotencyKey, deviceHash, freeText, category, subcategorySlug,
+         conditionConfidence, latitude, longitude, locationConfidence, locationSource]
       properties:
-        candidate: { $ref: '#/components/schemas/SignalCandidate' }
-        joinClusterId: { type: string, format: uuid, nullable: true }
-        deviceFingerprint: { type: string }
         idempotencyKey: { type: string }
+        deviceHash: { type: string }
+        freeText: { type: string }
+        category: { type: string }
+        subcategorySlug: { type: string }
+        conditionSlug: { type: string, nullable: true }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        locationLabel: { type: string, nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
+        locationConfidence: { type: number, minimum: 0, maximum: 1 }
+        locationSource: { type: string }
+        temporalType: { type: string, nullable: true }
+        neutralSummary: { type: string, nullable: true }
+        sourceLanguage: { type: string, nullable: true }
     ParticipationRequest:
       type: object
       required: [type, idempotencyKey]

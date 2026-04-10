@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
+import * as Location from 'expo-location';
 import { useMutation } from '@tanstack/react-query';
 import { ComposerStep3 } from '../../../src/components/signals/ComposerStep3';
 import { useComposerContext } from '../../../src/context/ComposerContext';
@@ -20,6 +21,10 @@ export default function ComposerSubmitScreen() {
     mutationFn: async (_joinExisting: boolean) => {
       if (!preview) throw new Error('No preview');
 
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') throw new Error('Location permission required');
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
       const idempotencyKey = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
         `${freeText}:${Date.now()}`,
@@ -33,6 +38,8 @@ export default function ComposerSubmitScreen() {
         subcategorySlug: preview.subcategorySlug,
         conditionSlug: preview.conditionSlug ?? undefined,
         conditionConfidence: preview.conditionConfidence,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
         locationLabel: preview.location.locationLabel ?? undefined,
         locationPrecisionType:
           preview.location.locationPrecisionType ?? undefined,

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
+import * as Location from 'expo-location';
 import { previewSignal, submitSignal } from '../api/signals';
 import type { SignalPreviewResponse, SignalSubmitRequest } from '../types/api';
 import type { ComposerState } from '../types/domain';
@@ -46,6 +47,10 @@ export function useSignalComposer(deviceHash: string) {
     mutationFn: async (overrides?: Partial<SignalPreviewResponse>) => {
       const preview = { ...state.preview, ...overrides } as SignalPreviewResponse;
 
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') throw new Error('Location permission required');
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
       // Generate a fresh idempotency key per submit attempt
       const idempotencyKey = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
@@ -60,6 +65,8 @@ export function useSignalComposer(deviceHash: string) {
         subcategorySlug: preview.subcategorySlug,
         conditionSlug: preview.conditionSlug ?? undefined,
         conditionConfidence: preview.conditionConfidence,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
         locationLabel: preview.location.locationLabel ?? undefined,
         locationPrecisionType:
           preview.location.locationPrecisionType ?? undefined,

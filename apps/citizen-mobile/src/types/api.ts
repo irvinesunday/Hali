@@ -151,8 +151,8 @@ export interface SignalSubmitRequest {
   subcategorySlug: string;
   conditionSlug?: string;
   conditionConfidence: number;
-  latitude?: number;
-  longitude?: number;
+  latitude: number;
+  longitude: number;
   locationLabel?: string;
   locationPrecisionType?: string;
   locationConfidence: number;
@@ -160,7 +160,6 @@ export interface SignalSubmitRequest {
   temporalType?: string;
   neutralSummary?: string;
   sourceLanguage?: string;
-  spatialCellId?: string;
 }
 
 export interface SignalSubmitResponse {

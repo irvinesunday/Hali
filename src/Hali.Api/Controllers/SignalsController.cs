@@ -117,5 +117,19 @@ public class SignalsController : ControllerBase
 				error = "Invalid category."
 			});
 		}
+		catch (InvalidOperationException ex4) when (ex4.Message == "SIGNAL_INVALID_COORDINATES")
+		{
+			return UnprocessableEntity(new
+			{
+				error = "Latitude must be between -90 and 90, longitude between -180 and 180."
+			});
+		}
+		catch (InvalidOperationException ex5) when (ex5.Message == "SIGNAL_SPATIAL_DERIVATION_FAILED")
+		{
+			return UnprocessableEntity(new
+			{
+				error = "Unable to derive spatial cell from provided coordinates."
+			});
+		}
 	}
 }

@@ -19,16 +19,21 @@ public class SignalIngestionService : ISignalIngestionService
 
 	private readonly IClusteringService _clustering;
 
+	private readonly IH3CellService _h3;
+
+	private const int H3Resolution = 9;
+
 	private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "roads", "transport", "electricity", "water", "environment", "safety", "governance", "infrastructure" };
 
 	private static readonly HashSet<string> AllowedTemporalTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "temporary", "continuous", "recurring", "scheduled", "episodic_unknown" };
 
-	public SignalIngestionService(INlpExtractionService nlp, IGeocodingService geocoding, ISignalRepository repo, IClusteringService clustering)
+	public SignalIngestionService(INlpExtractionService nlp, IGeocodingService geocoding, ISignalRepository repo, IClusteringService clustering, IH3CellService h3)
 	{
 		_nlp = nlp;
 		_geocoding = geocoding;
 		_repo = repo;
 		_clustering = clustering;
+		_h3 = h3;
 	}
 
 	public async Task<SignalPreviewResponseDto> PreviewAsync(SignalPreviewRequestDto request, CancellationToken ct = default(CancellationToken))
@@ -65,15 +70,33 @@ public class SignalIngestionService : ISignalIngestionService
 		{
 			throw new InvalidOperationException("SIGNAL_INVALID_CATEGORY");
 		}
-		string geocodedLabel = null;
-		if (request.Latitude.HasValue && request.Longitude.HasValue)
+		if (request.Latitude < -90 || request.Latitude > 90 || request.Longitude < -180 || request.Longitude > 180)
 		{
-			GeocodingResult geo = await _geocoding.ReverseGeocodeAsync(request.Latitude.Value, request.Longitude.Value, ct);
-			if (geo?.DisplayName != null)
-			{
-				geocodedLabel = geo.DisplayName;
-			}
+			throw new InvalidOperationException("SIGNAL_INVALID_COORDINATES");
 		}
+
+		string spatialCellId;
+		try
+		{
+			spatialCellId = _h3.LatLngToCell(request.Latitude, request.Longitude, H3Resolution);
+		}
+		catch (Exception)
+		{
+			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
+		}
+
+		if (string.IsNullOrEmpty(spatialCellId))
+		{
+			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
+		}
+
+		string geocodedLabel = null;
+		GeocodingResult geo = await _geocoding.ReverseGeocodeAsync(request.Latitude, request.Longitude, ct);
+		if (geo?.DisplayName != null)
+		{
+			geocodedLabel = geo.DisplayName;
+		}
+
 		string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");
 		SignalEvent signal = new SignalEvent
 		{
@@ -95,7 +118,7 @@ public class SignalIngestionService : ISignalIngestionService
 			CreatedAt = DateTime.UtcNow,
 			SourceLanguage = request.SourceLanguage,
 			SourceChannel = "app",
-			SpatialCellId = request.SpatialCellId,
+			SpatialCellId = spatialCellId,
 			CivisPrecheck = "{}"
 		};
 		SignalEvent saved = await _repo.PersistSignalAsync(signal, ct);
