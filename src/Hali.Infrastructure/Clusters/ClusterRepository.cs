@@ -157,6 +157,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var ids = localityIds.ToList();
 		return await _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1)
 			.OrderByDescending(c => c.ActivatedAt)
 			.ToListAsync(ct);
@@ -167,6 +168,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var ids = localityIds.ToList();
 		var q = _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1);
 
 		if (recurringOnly == true)
@@ -185,6 +187,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var excludeIds = excludeLocalityIds.ToList();
 		var q = _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => (int)c.State == 1 &&
 			            (c.LocalityId == null || !excludeIds.Contains(c.LocalityId.Value)));
 
