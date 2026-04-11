@@ -2,13 +2,9 @@
 //
 // Ward (locality) state for the citizen app.
 //
-// Background: GET /v1/home does NOT accept a localityId query parameter —
-// the backend derives the locality scope from the authenticated user's
-// follows and merges data across all of them. The active locality here
-// is purely a client-side UX concept for:
-//   - the ward picker pill in the home header
-//   - composer preview location context (later sub-session)
-// It never filters the home query.
+// The active locality is sent to GET /v1/home?localityId=... so the backend
+// scopes the feed to that single locality. When null, the backend falls back
+// to the authenticated user's full followed-localities set.
 //
 // The followedLocalities mirror is populated once after GET
 // /v1/localities/followed succeeds, and kept in sync when the user edits
@@ -24,7 +20,7 @@ import React, {
 import type { FollowedLocality } from '../types/api';
 
 export interface LocalityContextValue {
-  /** Currently selected ward for UX context. Not sent to the API. */
+  /** Currently selected ward — sent to GET /v1/home as localityId. */
   activeLocality: FollowedLocality | null;
   /** Mirror of GET /v1/localities/followed (max 5). */
   followedLocalities: FollowedLocality[];

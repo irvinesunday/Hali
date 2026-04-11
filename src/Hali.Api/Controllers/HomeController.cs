@@ -51,9 +51,16 @@ public class HomeController : ControllerBase
     public async Task<IActionResult> GetHome(
         [FromQuery] string? section,
         [FromQuery] string? cursor,
+        [FromQuery] Guid? localityId,
         CancellationToken ct)
     {
-        var localityIds = await GetFollowedLocalityIdsAsync(ct);
+        // Only authenticated users may scope the feed to an explicit locality.
+        // Anonymous callers fall back to the followed-localities path, which
+        // returns empty sections for guests.
+        bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+        var localityIds = localityId.HasValue && isAuthenticated
+            ? new List<Guid> { localityId.Value }
+            : await GetFollowedLocalityIdsAsync(ct);
         var cursorDt = DecodeCursor(cursor);
 
         // Section-specific paginated request — skip cache, return single section

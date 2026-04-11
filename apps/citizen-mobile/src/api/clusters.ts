@@ -26,19 +26,20 @@ type SectionItemType<S extends HomeSectionName> =
 /**
  * GET /v1/home
  *
- * Returns the full four-section home feed. The server derives the locality
- * scope from the authenticated user's follows — there is NO localityId query
- * parameter. Calling this with no follows (or unauthenticated) returns all
- * sections with items: [].
+ * Returns the full four-section home feed. When `localityId` is provided the
+ * backend scopes the feed to that single locality. When absent, the backend
+ * derives scope from the authenticated user's followed localities (or returns
+ * empty sections for unauthenticated users).
  *
  * For single-section pagination, use {@link getHomeSection} instead.
  */
-export async function getHome(): Promise<Result<HomeResponse, ApiError>> {
-  return apiRequest<HomeResponse>('/v1/home', { method: 'GET' });
+export async function getHome(localityId?: string): Promise<Result<HomeResponse, ApiError>> {
+  const query = localityId ? `?localityId=${encodeURIComponent(localityId)}` : '';
+  return apiRequest<HomeResponse>(`/v1/home${query}`, { method: 'GET' });
 }
 
 /**
- * GET /v1/home?section=...&cursor=... — fetch a single paginated section.
+ * GET /v1/home?section=...&cursor=...&localityId=... — fetch a single paginated section.
  * Use this when paging "Load more" inside a specific section.
  * The backend returns a PagedSection<T> directly (not a HomeResponse).
  *
@@ -49,10 +50,14 @@ export async function getHome(): Promise<Result<HomeResponse, ApiError>> {
 export async function getHomeSection<S extends HomeSectionName>(
   section: S,
   cursor?: string,
+  localityId?: string,
 ): Promise<Result<PagedSection<SectionItemType<S>>, ApiError>> {
   const query: string[] = [`section=${encodeURIComponent(section)}`];
   if (cursor) {
     query.push(`cursor=${encodeURIComponent(cursor)}`);
+  }
+  if (localityId) {
+    query.push(`localityId=${encodeURIComponent(localityId)}`);
   }
   return apiRequest<PagedSection<SectionItemType<S>>>(
     `/v1/home?${query.join('&')}`,

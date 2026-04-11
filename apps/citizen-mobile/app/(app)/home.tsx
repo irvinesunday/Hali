@@ -111,7 +111,7 @@ export default function HomeScreen(): React.ReactElement {
   }, [isAuthenticated, localitiesQuery.data, setFollowedLocalities]);
 
   // ── Home feed ─────────────────────────────────────────────────────────────
-  const homeQuery = useHome();
+  const homeQuery = useHome(activeLocality?.localityId);
 
   useEffect(() => {
     if (homeQuery.dataUpdatedAt > 0) {
