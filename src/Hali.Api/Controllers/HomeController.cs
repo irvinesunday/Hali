@@ -105,6 +105,8 @@ public class HomeController : ControllerBase
 
     private async Task<HomeResponseDto> BuildFullResponseAsync(List<Guid> localityIds, CancellationToken ct)
     {
+        // Sections run sequentially because all repository calls share a
+        // single scoped DbContext, which is not thread-safe.
         return new HomeResponseDto
         {
             ActiveNow = await BuildActiveNowSectionAsync(localityIds, null, ct),
@@ -133,9 +135,9 @@ public class HomeController : ControllerBase
             return EmptyPostSection();
 
         var allPosts = new List<OfficialPostResponseDto>();
-        foreach (var localityId in localityIds)
+        foreach (var lid in localityIds)
         {
-            var posts = await _officialPosts.GetActiveByLocalityAsync(localityId, ct);
+            var posts = await _officialPosts.GetActiveByLocalityAsync(lid, ct);
             allPosts.AddRange(posts);
         }
 
