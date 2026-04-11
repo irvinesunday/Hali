@@ -247,6 +247,17 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
   spans auth transitions; derive readiness from React Query `isSuccess`/`isError` instead so the
   flag resets when auth state changes
 
+## OpenAPI rules
+
+- In OpenAPI 3.1, always list fields the backend unconditionally serialises in `required`, even
+  when they are `nullable: true`. `required` means present-on-wire, not non-null.
+
+## TypeScript API rules
+
+- When an API function returns different types based on a discriminant argument (e.g. section name),
+  use conditional types or overloads to infer the correct return type — never rely on generic
+  defaults (`T = SomeType`) that the caller might forget to override.
+
 ## Enum serialization rules
 
 - Never use `.ToString().ToLowerInvariant()` on multi-word PascalCase enums for wire output — it

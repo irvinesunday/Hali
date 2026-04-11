@@ -10,6 +10,7 @@ import type {
   ApiError,
   Result,
   ClusterResponse,
+  OfficialPostResponse,
   HomeResponse,
   HomeSectionName,
   PagedSection,
@@ -17,6 +18,10 @@ import type {
   ContextRequest,
   RestorationResponseRequest,
 } from '../types/api';
+
+/** Maps each home section name to its item type on the wire. */
+type SectionItemType<S extends HomeSectionName> =
+  S extends 'official_updates' ? OfficialPostResponse : ClusterResponse;
 
 /**
  * GET /v1/home
@@ -37,19 +42,19 @@ export async function getHome(): Promise<Result<HomeResponse, ApiError>> {
  * Use this when paging "Load more" inside a specific section.
  * The backend returns a PagedSection<T> directly (not a HomeResponse).
  *
- * Callers should specify the item type explicitly when fetching
- * official_updates: `getHomeSection<OfficialPostResponse>(...)`.
- * Defaults to ClusterResponse for the three cluster sections.
+ * The item type is inferred from the section name:
+ *   - 'official_updates' → OfficialPostResponse
+ *   - all others → ClusterResponse
  */
-export async function getHomeSection<T = ClusterResponse>(
-  section: HomeSectionName,
+export async function getHomeSection<S extends HomeSectionName>(
+  section: S,
   cursor?: string,
-): Promise<Result<PagedSection<T>, ApiError>> {
+): Promise<Result<PagedSection<SectionItemType<S>>, ApiError>> {
   const query: string[] = [`section=${encodeURIComponent(section)}`];
   if (cursor) {
     query.push(`cursor=${encodeURIComponent(cursor)}`);
   }
-  return apiRequest<PagedSection<T>>(
+  return apiRequest<PagedSection<SectionItemType<S>>>(
     `/v1/home?${query.join('&')}`,
     { method: 'GET' },
   );

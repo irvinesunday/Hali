@@ -1036,7 +1036,7 @@ components:
     ClusterPagedSection:
       type: object
       description: Paginated section containing ClusterResponse items.
-      required: [items, totalCount]
+      required: [items, nextCursor, totalCount]
       properties:
         items:
           type: array
@@ -1051,7 +1051,7 @@ components:
     OfficialPostPagedSection:
       type: object
       description: Paginated section containing OfficialPostResponse items.
-      required: [items, totalCount]
+      required: [items, nextCursor, totalCount]
       properties:
         items:
           type: array
