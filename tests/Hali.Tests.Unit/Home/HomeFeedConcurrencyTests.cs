@@ -12,10 +12,11 @@ using Xunit;
 namespace Hali.Tests.Unit.Home;
 
 /// <summary>
-/// A7: Tests proving that the home feed can safely run concurrent section
-/// queries via IHomeFeedQueryService without shared-state violations.
-/// Each test simulates the concurrent execution pattern used by
-/// BuildFullResponseAsync — multiple section tasks in Task.WhenAll.
+/// A7: Tests validating the concurrent execution pattern used for home feed
+/// section queries with a fake <see cref="IHomeFeedQueryService" />.
+/// These tests verify that multiple section tasks can overlap and complete
+/// under <see cref="Task.WhenAll(System.Collections.Generic.IEnumerable{System.Threading.Tasks.Task})" />,
+/// but they do not exercise real EF Core or DbContext thread-safety behavior.
 /// </summary>
 public class HomeFeedConcurrencyTests
 {
@@ -103,7 +104,7 @@ public class HomeFeedConcurrencyTests
         };
     }
 
-    // ── Test 1: concurrent section queries execute in parallel ────────────────
+    // ── Test 1: fire-then-await pattern achieves concurrent execution ──────────
 
     [Fact]
     public async Task ConcurrentSections_ExecuteInParallel()
