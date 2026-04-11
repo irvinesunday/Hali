@@ -387,4 +387,25 @@ public class ClusteringServiceTests
         await repo.Received(1).AttachToClusterAsync(
             nullLocalityCluster.Id, signal.Id, signal.DeviceId, "join", Arg.Any<CancellationToken>());
     }
+
+    // -----------------------------------------------------------------------
+    // Phase A3: ClusterState wire format (snake_case)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task RouteSignal_JoinToClusterInPossibleRestoration_ReturnsSnakeCaseState()
+    {
+        var (svc, repo, h3, civis) = Build();
+        var signal = MakeSignal();
+        var cluster = MakeCluster(lastSeenAgoHours: 0.1);
+        cluster.State = SignalState.PossibleRestoration;
+
+        h3.GetKRingCells(signal.SpatialCellId!, 1).Returns(new[] { signal.SpatialCellId! });
+        repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster> { cluster });
+
+        var result = await svc.RouteSignalAsync(signal);
+
+        Assert.Equal("possible_restoration", result.ClusterState);
+    }
 }
