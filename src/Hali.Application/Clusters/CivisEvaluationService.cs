@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Notifications;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -89,7 +90,7 @@ public class CivisEvaluationService : ICivisEvaluationService
 				}, ct);
 
 				_logger?.LogInformation(
-					"{eventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
+					"{EventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
 					"cluster.activated", clusterId, cluster.LocalityId, cluster.Category);
 
 				if (_notificationQueue != null)
@@ -182,12 +183,14 @@ public class CivisEvaluationService : ICivisEvaluationService
 				{
 					if (toState == SignalState.PossibleRestoration)
 					{
-						_logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.possible_restoration", clusterId);
+						_logger?.LogInformation("{EventName} clusterId={ClusterId}",
+							ObservabilityEvents.ClusterPossibleRestoration, clusterId);
 						await _notificationQueue.QueueRestorationPromptAsync(clusterId, cluster.Title ?? "Civic issue", ct);
 					}
 					else if (toState == SignalState.Resolved)
 					{
-						_logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.resolved_by_decay", clusterId);
+						_logger?.LogInformation("{EventName} clusterId={ClusterId}",
+							ObservabilityEvents.ClusterResolvedByDecay, clusterId);
 						await _notificationQueue.QueueClusterResolvedAsync(clusterId, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
 					}
 				}

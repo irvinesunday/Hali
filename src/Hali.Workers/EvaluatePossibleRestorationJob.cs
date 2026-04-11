@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Application.Notifications;
+using Hali.Application.Observability;
 using Hali.Application.Participation;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
@@ -78,7 +79,8 @@ public sealed class EvaluatePossibleRestorationJob(
         // Revert to active if still-affected votes overwhelm restoration votes
         if (stillAffected > restorationYes && stillAffected >= options.MinRestorationAffectedVotes)
         {
-            logger.LogInformation("Cluster {Id}: reverting to active (still_affected={StillAffected})", cluster.Id, stillAffected);
+            logger.LogInformation("{EventName} clusterId={ClusterId} stillAffected={StillAffected}",
+                ObservabilityEvents.ClusterRevertedToActive, cluster.Id, stillAffected);
             cluster.State = SignalState.Active;
             cluster.PossibleRestorationAt = null;
             cluster.UpdatedAt = DateTime.UtcNow;
@@ -101,7 +103,8 @@ public sealed class EvaluatePossibleRestorationJob(
             double ratio = (double)restorationYes / (double)totalRestorationResponses;
             if (ratio >= options.RestorationRatio)
             {
-                logger.LogInformation("Cluster {Id}: resolving (ratio={Ratio:F2})", cluster.Id, ratio);
+                logger.LogInformation("{EventName} clusterId={ClusterId} ratio={Ratio}",
+                    ObservabilityEvents.ClusterRestorationConfirmed, cluster.Id, ratio);
                 cluster.State = SignalState.Resolved;
                 cluster.ResolvedAt = DateTime.UtcNow;
                 cluster.UpdatedAt = DateTime.UtcNow;
@@ -140,7 +143,8 @@ public sealed class EvaluatePossibleRestorationJob(
                 {
                     try
                     {
-                        logger.LogInformation("{eventName} clusterId={ClusterId}", "cluster.resolved", cluster.Id);
+                        logger.LogInformation("{EventName} clusterId={ClusterId}",
+                            ObservabilityEvents.ClusterRestorationConfirmed, cluster.Id);
                         await notificationQueue.QueueClusterResolvedAsync(cluster.Id, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
                     }
                     catch (Exception ex)
