@@ -557,23 +557,11 @@ npx tsc --noEmit
 ```
 
 ### After addressing a Copilot review comment
-In the same commit that fixes the issue:
-1. Fix the code
-2. Append a new entry to `docs/arch/LESSONS_LEARNED.md` using the template
-3. Add or update the corresponding rule in `docs/arch/CODING_STANDARDS.md`
-
-This is mandatory — not optional. The lesson must be recorded in the same
-commit as the fix so the fix and the lesson are permanently linked in history.
+Fix the code only. Do NOT auto-write to `docs/arch/LESSONS_LEARNED.md` or
+`docs/arch/CODING_STANDARDS.md` unless the user explicitly requests a
+documentation pass. See `docs/arch/CODING_STANDARDS.md` → "PR Scope Discipline"
+for the full rule.
 
 ### At the end of every session that included a git push
-
-Before declaring a session complete, check whether the pushed PR has any
-Copilot comments not yet recorded in `docs/arch/LESSONS_LEARNED.md`.
-
-Use the end-of-session check in `docs/arch/COPILOT_RESOLUTION_SKILL.md`
-(Situation B). If unrecorded lessons exist, append them and push the
-lesson commit to the PR branch before closing the session.
-
-This applies to ALL sessions — not just sessions explicitly about Copilot
-comments. A Phase B component PR, an integration test PR, a migration fix —
-all of them get the end-of-session check.
+No automatic documentation writes. If lessons were identified, note them
+internally — they will be recorded in a separate documentation pass when requested.

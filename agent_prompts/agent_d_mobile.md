@@ -544,16 +544,16 @@ The commit message must include the self-validation result.
 
 ---
 
-## Stage 5: Lessons recording
+## Stage 5: Lessons deferral
 
-After the PR is opened, run the end-of-session check from
-`docs/arch/COPILOT_RESOLUTION_SKILL.md` (Situation B).
+Do NOT auto-write reusable lessons to `docs/arch/LESSONS_LEARNED.md` or
+`docs/arch/CODING_STANDARDS.md` after opening the PR. Documentation updates
+happen only in a separate pass when explicitly requested by the user.
 
 If any Copilot comments appear after push:
-1. Fix the issue
-2. Append to `docs/arch/LESSONS_LEARNED.md`
-3. Update `docs/arch/CODING_STANDARDS.md` if a new rule is needed
-4. All in the same commit as the fix
+1. Fix the code issue only
+2. Do NOT modify documentation files in the same commit
+3. See `docs/arch/CODING_STANDARDS.md` → "PR Scope Discipline"
 
 ---
 
