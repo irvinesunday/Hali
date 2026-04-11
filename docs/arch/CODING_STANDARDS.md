@@ -285,6 +285,7 @@ If a reusable lesson or pattern is identified during feature work or review reso
 - Note it internally for future reference
 - Do NOT auto-write it to LESSONS_LEARNED.md or CODING_STANDARDS.md
 - Wait for an explicit documentation-pass instruction from the user
+- If needed, include a brief note in the PR description instead of modifying documentation files
 
 ### Review resolution discipline
 When resolving Copilot or PR review comments:
