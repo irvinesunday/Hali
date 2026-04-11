@@ -91,6 +91,10 @@ public sealed class HaliWebApplicationFactory
             // Replace geocoding
             ReplaceService<IGeocodingService>(services,
                 ServiceLifetime.Scoped, _ => new FakeGeocodingService());
+
+            // Replace locality lookup (no seeded geometry in test DB)
+            ReplaceService<ILocalityLookupRepository>(services,
+                ServiceLifetime.Scoped, _ => new FakeLocalityLookupRepository());
         });
     }
 

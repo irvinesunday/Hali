@@ -44,6 +44,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     public virtual async Task InitializeAsync()
     {
         await Factory.CleanTablesAsync();
+        await SeedTestLocalityAsync();
         Client = Factory.CreateClient();
     }
 
@@ -123,6 +124,22 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", jwt);
         return client;
+    }
+
+    // ------------------------------------------------------------------
+    // Locality seed — needed so the FK on signal_events.locality_id is satisfied
+    // ------------------------------------------------------------------
+
+    private static async Task SeedTestLocalityAsync()
+    {
+        await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO localities (id, country_code, county_name, city_name, ward_name, created_at)
+            VALUES (@id, 'KE', 'Nairobi', 'Nairobi', 'Test Ward', now())
+            ON CONFLICT (id) DO NOTHING", conn);
+        cmd.Parameters.AddWithValue("id", FakeLocalityLookupRepository.TestLocalityId);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     // ------------------------------------------------------------------
