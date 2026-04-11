@@ -1135,3 +1135,19 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** Used `.ToString().ToLowerInvariant()` as a shortcut for enum-to-wire conversion. This works for single-word values (`Unconfirmed` → `"unconfirmed"`) but silently fails for multi-word PascalCase values (`PossibleRestoration` → `"possiblerestoration"` instead of `"possible_restoration"`).
 **Fix applied:** Added a private `ToSnakeCase(SignalState)` helper (matching the existing pattern in `ClustersController` and `OfficialPostsService`) and used it in both the join and create return paths. Added a regression test asserting `PossibleRestoration` maps to `"possible_restoration"`.
 **Rule added:** Enum serialization → "Never use `.ToString().ToLowerInvariant()` on multi-word PascalCase enums for wire output. Use a PascalCase→snake_case helper."
+
+## PR #95 — Phase A4: align home feed response contract
+
+### Lesson 1: OpenAPI nullable fields must still be listed in `required`
+**File:** `02_openapi.yaml`
+**What Copilot flagged:** `ClusterPagedSection` and `OfficialPostPagedSection` omitted `nextCursor` from `required`, but the backend always includes it (as null or a string). Generated clients would treat it as optional/undefined instead of required-but-nullable.
+**Root cause:** Assumed `required` and `nullable` were mutually exclusive in OpenAPI 3.1. They are not — `required` means "always present in the JSON", `nullable: true` means "may be null". A field can be both.
+**Fix applied:** Added `nextCursor` to the `required` list on both paged section schemas (keeping `nullable: true`).
+**Rule added:** OpenAPI → "In OpenAPI 3.1, always list fields the backend unconditionally serialises in `required`, even when they are `nullable: true`. `required` means present-on-wire, not non-null."
+
+### Lesson 2: Generic default types silently mis-type discriminated API responses
+**File:** `apps/citizen-mobile/src/api/clusters.ts`
+**What Copilot flagged:** `getHomeSection<T = ClusterResponse>` defaults `T` to `ClusterResponse`, but calling with `'official_updates'` silently types the response as `PagedSection<ClusterResponse>` when the backend returns `OfficialPostResponse` items.
+**Root cause:** Used a generic default (`T = ClusterResponse`) as a convenience shortcut. The caller could override it, but nothing prevented the mis-typed default from being used silently.
+**Fix applied:** Replaced the default generic with a conditional type map (`SectionItemType<S>`) that infers the correct item type from the section name argument. `'official_updates'` now automatically resolves to `OfficialPostResponse`.
+**Rule added:** TypeScript API → "When an API function returns different types based on a discriminant argument (e.g. section name), use conditional types or overloads to infer the correct return type — never rely on generic defaults that the caller might forget to override."

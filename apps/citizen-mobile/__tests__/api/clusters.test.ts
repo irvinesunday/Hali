@@ -5,6 +5,7 @@
 
 import {
   getHome,
+  getHomeSection,
   participate,
   submitRestorationResponse,
 } from '../../src/api/clusters';
@@ -85,48 +86,13 @@ describe('getHome', () => {
     mockApiRequest.mockReset();
   });
 
-  it('calls GET /v1/home with no query params by default', async () => {
+  it('calls GET /v1/home with no query params', async () => {
     mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
 
     await getHome();
 
     expect(mockApiRequest).toHaveBeenCalledTimes(1);
     expect(mockApiRequest).toHaveBeenCalledWith('/v1/home', { method: 'GET' });
-  });
-
-  it('appends a section query param when provided', async () => {
-    mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
-
-    await getHome({ section: 'active_now' });
-
-    expect(mockApiRequest).toHaveBeenCalledWith('/v1/home?section=active_now', {
-      method: 'GET',
-    });
-  });
-
-  it('appends both section and cursor when provided', async () => {
-    mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
-
-    await getHome({
-      section: 'other_active_signals',
-      cursor: 'opaque-cursor-value',
-    });
-
-    expect(mockApiRequest).toHaveBeenCalledWith(
-      '/v1/home?section=other_active_signals&cursor=opaque-cursor-value',
-      { method: 'GET' },
-    );
-  });
-
-  it('url-encodes the cursor value', async () => {
-    mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
-
-    await getHome({ section: 'active_now', cursor: 'a+b/c=' });
-
-    expect(mockApiRequest).toHaveBeenCalledWith(
-      '/v1/home?section=active_now&cursor=a%2Bb%2Fc%3D',
-      { method: 'GET' },
-    );
   });
 
   it('returns the full four-section PagedSection response on success', async () => {
@@ -179,6 +145,68 @@ describe('getHome', () => {
     if (result.ok) return;
     expect(result.error.status).toBe(500);
     expect(result.error.code).toBe('unknown_error');
+  });
+});
+
+// ─── getHomeSection ─────────────────────────────────────────────────────────
+
+describe('getHomeSection', () => {
+  beforeEach(() => {
+    mockApiRequest.mockReset();
+  });
+
+  it('builds the correct URL for a section request', async () => {
+    mockApiRequest.mockResolvedValueOnce(
+      okResult(makeSection<ClusterResponse>([])),
+    );
+
+    await getHomeSection('active_now');
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      '/v1/home?section=active_now',
+      { method: 'GET' },
+    );
+  });
+
+  it('appends both section and cursor when provided', async () => {
+    mockApiRequest.mockResolvedValueOnce(
+      okResult(makeSection<ClusterResponse>([])),
+    );
+
+    await getHomeSection('other_active_signals', 'opaque-cursor-value');
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      '/v1/home?section=other_active_signals&cursor=opaque-cursor-value',
+      { method: 'GET' },
+    );
+  });
+
+  it('url-encodes the cursor value', async () => {
+    mockApiRequest.mockResolvedValueOnce(
+      okResult(makeSection<ClusterResponse>([])),
+    );
+
+    await getHomeSection('active_now', 'a+b/c=');
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      '/v1/home?section=active_now&cursor=a%2Bb%2Fc%3D',
+      { method: 'GET' },
+    );
+  });
+
+  it('returns a PagedSection with items and nextCursor', async () => {
+    const cluster = makeCluster({ id: 'c1' });
+    const section = { items: [cluster], nextCursor: 'abc', totalCount: 5 };
+    mockApiRequest.mockResolvedValueOnce(okResult(section));
+
+    const result = await getHomeSection('active_now');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items).toHaveLength(1);
+    expect(result.value.items[0]?.id).toBe('c1');
+    expect(result.value.nextCursor).toBe('abc');
+    expect(result.value.totalCount).toBe(5);
   });
 });
 
