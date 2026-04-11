@@ -40,10 +40,10 @@ function unwrap<T>(result: Result<T, ApiError>): T {
   throw new ApiResultError(result.error);
 }
 
-export function useHome() {
+export function useHome(localityId?: string | null) {
   return useQuery<HomeResponse, ApiResultError>({
-    queryKey: ['home'],
-    queryFn: async () => unwrap(await getHome()),
+    queryKey: ['home', localityId ?? null],
+    queryFn: async () => unwrap(await getHome(localityId ?? undefined)),
     staleTime: 30_000,
   });
 }

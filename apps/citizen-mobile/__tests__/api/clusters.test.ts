@@ -86,13 +86,25 @@ describe('getHome', () => {
     mockApiRequest.mockReset();
   });
 
-  it('calls GET /v1/home with no query params', async () => {
+  it('calls GET /v1/home with no query params when no localityId', async () => {
     mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
 
     await getHome();
 
     expect(mockApiRequest).toHaveBeenCalledTimes(1);
     expect(mockApiRequest).toHaveBeenCalledWith('/v1/home', { method: 'GET' });
+  });
+
+  it('calls GET /v1/home?localityId=<uuid> when localityId is provided', async () => {
+    mockApiRequest.mockResolvedValueOnce(okResult(emptyHome()));
+    const localityId = '11111111-2222-3333-4444-555555555555';
+
+    await getHome(localityId);
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      `/v1/home?localityId=${localityId}`,
+      { method: 'GET' },
+    );
   });
 
   it('returns the full four-section PagedSection response on success', async () => {
@@ -190,6 +202,34 @@ describe('getHomeSection', () => {
 
     expect(mockApiRequest).toHaveBeenCalledWith(
       '/v1/home?section=active_now&cursor=a%2Bb%2Fc%3D',
+      { method: 'GET' },
+    );
+  });
+
+  it('appends localityId when provided alongside section', async () => {
+    mockApiRequest.mockResolvedValueOnce(
+      okResult(makeSection<ClusterResponse>([])),
+    );
+    const localityId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+    await getHomeSection('active_now', undefined, localityId);
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      `/v1/home?section=active_now&localityId=${localityId}`,
+      { method: 'GET' },
+    );
+  });
+
+  it('appends localityId together with section and cursor', async () => {
+    mockApiRequest.mockResolvedValueOnce(
+      okResult(makeSection<ClusterResponse>([])),
+    );
+    const localityId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+    await getHomeSection('recurring_at_this_time', 'cursor123', localityId);
+
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      `/v1/home?section=recurring_at_this_time&cursor=cursor123&localityId=${localityId}`,
       { method: 'GET' },
     );
   });

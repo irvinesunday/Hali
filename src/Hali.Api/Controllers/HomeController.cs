@@ -51,9 +51,14 @@ public class HomeController : ControllerBase
     public async Task<IActionResult> GetHome(
         [FromQuery] string? section,
         [FromQuery] string? cursor,
+        [FromQuery] Guid? localityId,
         CancellationToken ct)
     {
-        var localityIds = await GetFollowedLocalityIdsAsync(ct);
+        // When an explicit localityId is provided, scope the feed to that
+        // single locality instead of all followed localities.
+        var localityIds = localityId.HasValue
+            ? new List<Guid> { localityId.Value }
+            : await GetFollowedLocalityIdsAsync(ct);
         var cursorDt = DecodeCursor(cursor);
 
         // Section-specific paginated request — skip cache, return single section

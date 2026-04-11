@@ -594,6 +594,17 @@ paths:
           schema:
             type: string
           description: Opaque pagination cursor from a previous response's nextCursor
+        - name: localityId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            When provided, scopes the feed to a single locality.
+            When absent, the backend derives scope from the authenticated user's
+            followed localities (or returns empty sections for unauthenticated users).
+            Combines with section and cursor — locality scoping applies regardless.
       responses:
         '200':
           description: |
