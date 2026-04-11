@@ -26,36 +26,30 @@ import type {
  * parameter. Calling this with no follows (or unauthenticated) returns all
  * sections with items: [].
  *
- * Pass a `section` name to fetch only that section (paginated via cursor).
+ * For single-section pagination, use {@link getHomeSection} instead.
  */
-export async function getHome(
-  options: { section?: HomeSectionName; cursor?: string } = {},
-): Promise<Result<HomeResponse, ApiError>> {
-  const query: string[] = [];
-  if (options.section) {
-    query.push(`section=${encodeURIComponent(options.section)}`);
-  }
-  if (options.cursor) {
-    query.push(`cursor=${encodeURIComponent(options.cursor)}`);
-  }
-  const path = query.length > 0 ? `/v1/home?${query.join('&')}` : '/v1/home';
-  return apiRequest<HomeResponse>(path, { method: 'GET' });
+export async function getHome(): Promise<Result<HomeResponse, ApiError>> {
+  return apiRequest<HomeResponse>('/v1/home', { method: 'GET' });
 }
 
 /**
  * GET /v1/home?section=...&cursor=... — fetch a single paginated section.
  * Use this when paging "Load more" inside a specific section.
- * The backend returns a PagedSection<T> wrapper directly (not a HomeResponse).
+ * The backend returns a PagedSection<T> directly (not a HomeResponse).
+ *
+ * Callers should specify the item type explicitly when fetching
+ * official_updates: `getHomeSection<OfficialPostResponse>(...)`.
+ * Defaults to ClusterResponse for the three cluster sections.
  */
-export async function getHomeSection(
+export async function getHomeSection<T = ClusterResponse>(
   section: HomeSectionName,
   cursor?: string,
-): Promise<Result<PagedSection<ClusterResponse>, ApiError>> {
+): Promise<Result<PagedSection<T>, ApiError>> {
   const query: string[] = [`section=${encodeURIComponent(section)}`];
   if (cursor) {
     query.push(`cursor=${encodeURIComponent(cursor)}`);
   }
-  return apiRequest<PagedSection<ClusterResponse>>(
+  return apiRequest<PagedSection<T>>(
     `/v1/home?${query.join('&')}`,
     { method: 'GET' },
   );
