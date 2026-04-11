@@ -70,7 +70,13 @@ public class SignalIngestionService : ISignalIngestionService
 		{
 			throw new InvalidOperationException("SIGNAL_INVALID_CATEGORY");
 		}
-		if (request.Latitude < -90 || request.Latitude > 90 || request.Longitude < -180 || request.Longitude > 180)
+		if (!request.Latitude.HasValue || !request.Longitude.HasValue)
+		{
+			throw new InvalidOperationException("SIGNAL_MISSING_COORDINATES");
+		}
+		double lat = request.Latitude.Value;
+		double lng = request.Longitude.Value;
+		if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
 		{
 			throw new InvalidOperationException("SIGNAL_INVALID_COORDINATES");
 		}
@@ -78,7 +84,7 @@ public class SignalIngestionService : ISignalIngestionService
 		string spatialCellId;
 		try
 		{
-			spatialCellId = _h3.LatLngToCell(request.Latitude, request.Longitude, H3Resolution);
+			spatialCellId = _h3.LatLngToCell(lat, lng, H3Resolution);
 		}
 		catch (Exception)
 		{
@@ -88,13 +94,6 @@ public class SignalIngestionService : ISignalIngestionService
 		if (string.IsNullOrEmpty(spatialCellId))
 		{
 			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
-		}
-
-		string geocodedLabel = null;
-		GeocodingResult geo = await _geocoding.ReverseGeocodeAsync(request.Latitude, request.Longitude, ct);
-		if (geo?.DisplayName != null)
-		{
-			geocodedLabel = geo.DisplayName;
 		}
 
 		string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");
@@ -109,10 +108,10 @@ public class SignalIngestionService : ISignalIngestionService
 			FreeText = request.FreeText,
 			NeutralSummary = request.NeutralSummary,
 			TemporalType = temporalType,
-			Latitude = request.Latitude,
-			Longitude = request.Longitude,
+			Latitude = lat,
+			Longitude = lng,
 			LocationConfidence = ((request.LocationConfidence > 0.0) ? new decimal?((decimal)request.LocationConfidence) : ((decimal?)null)),
-			LocationSource = ((geocodedLabel != null) ? "geocode" : request.LocationSource),
+			LocationSource = request.LocationSource,
 			ConditionConfidence = ((request.ConditionConfidence > 0.0) ? new decimal?((decimal)request.ConditionConfidence) : ((decimal?)null)),
 			OccurredAt = DateTime.UtcNow,
 			CreatedAt = DateTime.UtcNow,

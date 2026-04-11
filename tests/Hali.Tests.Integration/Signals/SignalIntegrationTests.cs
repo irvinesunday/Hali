@@ -69,7 +69,6 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
             temporalType          = "temporary",
             neutralSummary        = "Severe pothole on Test Road.",
             sourceLanguage        = "en",
-            spatialCellId         = "8a390d24cbfffff",
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -94,9 +93,10 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
             category            = "water",
             subcategorySlug     = "outage",
             conditionConfidence = 0.80,
+            latitude            = -1.2921,
+            longitude           = 36.8219,
             locationConfidence  = 0.70,
             locationSource      = "user",
-            spatialCellId       = "8a390d24ccfffff",
         };
 
         var first = await authClient.PostAsJsonAsync("/v1/signals/submit", payload);

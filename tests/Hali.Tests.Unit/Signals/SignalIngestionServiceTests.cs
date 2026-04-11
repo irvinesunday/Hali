@@ -183,6 +183,20 @@ public class SignalIngestionServiceTests
 	// --- Phase A1: Spatial cell derivation tests ---
 
 	[Fact]
+	public async Task SubmitAsync_MissingCoordinates_ThrowsMissingCoordinates()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { Latitude = null, Longitude = null };
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("SIGNAL_MISSING_COORDINATES", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+
+	[Fact]
 	public async Task SubmitAsync_ValidCoordinates_DerivesSpatialCellId()
 	{
 		SetupDefaultRepo();

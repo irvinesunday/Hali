@@ -134,8 +134,8 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
             migrationBuilder.DropTable(
                 name: "cluster_event_links");
 
-            migrationBuilder.DropTable(
-                name: "outbox_events");
+            // outbox_events is a shared table used by multiple modules — do not drop on rollback
+            // migrationBuilder.DropTable(name: "outbox_events");
 
             migrationBuilder.DropTable(
                 name: "signal_clusters");

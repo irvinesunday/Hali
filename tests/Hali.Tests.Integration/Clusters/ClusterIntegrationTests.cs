@@ -38,10 +38,11 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             category            = "roads",
             subcategorySlug     = "flooding",
             conditionConfidence = 0.88,
+            latitude            = -1.2921,
+            longitude           = 36.8219,
             locationConfidence  = 0.80,
             locationSource      = "user",
             neutralSummary      = "Road flooding near bridge.",
-            spatialCellId       = "8a390d24cdfffff",   // unique cell → new cluster
         });
         submitResp.EnsureSuccessStatusCode();
 
@@ -78,9 +79,10 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             category            = "electricity",
             subcategorySlug     = "outage",
             conditionConfidence = 0.90,
+            latitude            = -1.2850,
+            longitude           = 36.8300,
             locationConfidence  = 0.75,
             locationSource      = "user",
-            spatialCellId       = "8a390d24cfffff0",
         });
 
         var clusterId = await GetLatestClusterIdAsync();

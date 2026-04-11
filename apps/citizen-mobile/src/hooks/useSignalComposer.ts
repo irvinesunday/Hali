@@ -48,8 +48,17 @@ export function useSignalComposer(deviceHash: string) {
       const preview = { ...state.preview, ...overrides } as SignalPreviewResponse;
 
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') throw new Error('Location permission required');
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      let position: Location.LocationObject | null = null;
+      if (status === 'granted') {
+        try {
+          position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        } catch {
+          position = await Location.getLastKnownPositionAsync();
+        }
+      } else {
+        position = await Location.getLastKnownPositionAsync();
+      }
+      if (!position) throw new Error('Could not determine location. Please enable location services and try again.');
 
       // Generate a fresh idempotency key per submit attempt
       const idempotencyKey = await Crypto.digestStringAsync(

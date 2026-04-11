@@ -1,3 +1,4 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
@@ -8,8 +9,10 @@ public class ClustersDbContextFactory : IDesignTimeDbContextFactory<ClustersDbCo
 {
 	public ClustersDbContext CreateDbContext(string[] args)
 	{
+		var connectionString = Environment.GetEnvironmentVariable("HALI_DB_CONNECTION")
+			?? "Host=localhost;Port=5432;Database=hali;Username=hali;Password=changeme";
 		DbContextOptionsBuilder<ClustersDbContext> dbContextOptionsBuilder = new DbContextOptionsBuilder<ClustersDbContext>();
-		dbContextOptionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=hali;Username=hali;Password=changeme", delegate(NpgsqlDbContextOptionsBuilder npgsql)
+		dbContextOptionsBuilder.UseNpgsql(connectionString, delegate(NpgsqlDbContextOptionsBuilder npgsql)
 		{
 			npgsql.UseNetTopologySuite();
 		});
