@@ -1,0 +1,34 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  format:
+    name: Lint / Format
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore src/Hali.Api/Hali.Api.csproj
+
+      - name: Check formatting
+        run: |
+          dotnet format src/Hali.Api/Hali.Api.csproj \
+            --verify-no-changes \
+            --no-restore \
+            --verbosity diagnostic

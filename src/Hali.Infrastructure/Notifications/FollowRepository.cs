@@ -34,19 +34,20 @@ public class FollowRepository : IFollowRepository
     public Task<int> CountByAccountAsync(Guid accountId, CancellationToken ct = default)
         => _db.Follows.CountAsync(f => f.AccountId == accountId, ct);
 
-    public async Task ReplaceFollowsAsync(Guid accountId, IEnumerable<Guid> localityIds, CancellationToken ct = default)
+    public async Task ReplaceFollowsAsync(Guid accountId, IEnumerable<FollowEntry> entries, CancellationToken ct = default)
     {
         var existing = await _db.Follows.Where(f => f.AccountId == accountId).ToListAsync(ct);
         _db.Follows.RemoveRange(existing);
 
         var now = DateTime.UtcNow;
-        foreach (var localityId in localityIds)
+        foreach (var entry in entries)
         {
             _db.Follows.Add(new Follow
             {
                 Id = Guid.NewGuid(),
                 AccountId = accountId,
-                LocalityId = localityId,
+                LocalityId = entry.LocalityId,
+                DisplayLabel = entry.DisplayLabel,
                 CreatedAt = now
             });
         }

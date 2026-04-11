@@ -1,4 +1,9 @@
-// Phone Entry screen — Flow A step 1
+// apps/citizen-mobile/app/(auth)/phone.tsx
+//
+// Phone entry screen — Kenya (+254) prefix.
+// POST /v1/auth/otp then navigate to /(auth)/otp with destination.
+// States: idle | loading | error.
+
 import React, { useState } from 'react';
 import {
   View,
@@ -7,111 +12,190 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Button } from '../../src/components/common/Button';
+import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { requestOtp } from '../../src/api/auth';
-import { normalisePhone, isValidE164 } from '../../src/utils/validators';
-import { DEFAULT_COUNTRY_CODE } from '../../src/config/env';
+import { Button } from '../../src/components/common/Button';
+import { STRINGS } from '../../src/config/strings';
+import { normaliseKenyaPhone, isValidKenyaPhoneInput } from '../../src/utils/phone';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+  ScreenPaddingH,
+} from '../../src/theme';
 
-export default function PhoneEntryScreen() {
-  const router = useRouter();
-  const [phone, setPhone] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type ScreenState = 'idle' | 'loading' | 'error';
+const KENYA_PREFIX = '+254';
 
-  const normalisedPhone = normalisePhone(phone.trim(), DEFAULT_COUNTRY_CODE);
-  const isValid = isValidE164(normalisedPhone);
+export default function PhoneScreen(): React.ReactElement {
+  const [phoneInput, setPhoneInput] = useState('');
+  const [screenState, setScreenState] = useState<ScreenState>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  async function handleSendOtp() {
-    if (!isValid) return;
-    setError(null);
-    setLoading(true);
-    try {
-      await requestOtp({ destination: normalisedPhone, authMethod: 'phone_otp' });
-      router.push({ pathname: '/(auth)/otp', params: { destination: normalisedPhone } });
-    } catch {
-      setError('Failed to send OTP. Please check the number and try again.');
-    } finally {
-      setLoading(false);
+  const isSubmittable = screenState !== 'loading' && isValidKenyaPhoneInput(phoneInput);
+
+  async function handleSubmit(): Promise<void> {
+    const destination = normaliseKenyaPhone(phoneInput);
+    if (destination === null) return;
+
+    setScreenState('loading');
+    setErrorMessage('');
+
+    const result = await requestOtp({ destination, authMethod: 'phone_otp' });
+
+    if (result.ok) {
+      setScreenState('idle');
+      router.push({ pathname: '/(auth)/otp', params: { destination } });
+    } else {
+      setScreenState('error');
+      setErrorMessage(
+        result.error.status === 429
+          ? STRINGS.AUTH.OTP_RATE_LIMIT
+          : result.error.message || STRINGS.AUTH.OTP_REQUEST_FAILED,
+      );
     }
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
         style={styles.flex}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.top}>
-          <Text style={styles.wordmark}>hali</Text>
+        <View style={styles.container}>
+          <Text style={styles.title}>{STRINGS.AUTH.PHONE_TITLE}</Text>
+          <Text style={styles.subtitle}>{STRINGS.AUTH.PHONE_SUBTITLE}</Text>
+
+          <View style={styles.inputRow}>
+            <View
+              style={styles.prefixContainer}
+              accessible
+              accessibilityLabel="Country code Kenya plus two five four"
+            >
+              <Text style={styles.prefixText}>{KENYA_PREFIX}</Text>
+            </View>
+            <TextInput
+              style={styles.input}
+              value={phoneInput}
+              onChangeText={(text) => {
+                setPhoneInput(text);
+                if (screenState === 'error') {
+                  setScreenState('idle');
+                  setErrorMessage('');
+                }
+              }}
+              keyboardType="phone-pad"
+              placeholder={STRINGS.AUTH.PHONE_PLACEHOLDER}
+              placeholderTextColor={Colors.faintForeground}
+              maxLength={12}
+              returnKeyType="done"
+              onSubmitEditing={isSubmittable ? handleSubmit : undefined}
+              autoFocus
+              accessibilityLabel={STRINGS.AUTH.PHONE_INPUT_LABEL}
+              accessibilityHint={STRINGS.AUTH.PHONE_INPUT_HINT}
+              editable={screenState !== 'loading'}
+            />
+          </View>
+
+          {screenState === 'error' && errorMessage !== '' && (
+            <Text
+              style={styles.errorText}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {errorMessage}
+            </Text>
+          )}
+
+          <Button
+            label={STRINGS.AUTH.PHONE_SUBMIT}
+            onPress={handleSubmit}
+            disabled={!isSubmittable}
+            loading={screenState === 'loading'}
+            accessibilityRole="button"
+            accessibilityLabel={STRINGS.AUTH.PHONE_SUBMIT_LABEL}
+            accessibilityState={{
+              disabled: !isSubmittable,
+              busy: screenState === 'loading',
+            }}
+          />
+
+          <Text style={styles.note}>{STRINGS.AUTH.PHONE_NOTE}</Text>
         </View>
-
-        <Text style={styles.heading}>Enter your phone number</Text>
-        <Text style={styles.sub}>
-          We'll send a one-time code to verify your number.
-        </Text>
-
-        <TextInput
-          style={styles.input}
-          value={phone}
-          onChangeText={(v) => { setPhone(v); setError(null); }}
-          placeholder="+254 7XX XXX XXX"
-          placeholderTextColor="#9ca3af"
-          keyboardType="phone-pad"
-          autoComplete="tel"
-          textContentType="telephoneNumber"
-          returnKeyType="done"
-          onSubmitEditing={handleSendOtp}
-        />
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Button
-          label="Send code"
-          onPress={handleSendOtp}
-          loading={loading}
-          disabled={!isValid}
-          style={styles.cta}
-        />
-
-        <Text style={styles.legal}>
-          By continuing you agree to Hali's terms of service and privacy policy.
-        </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
-  content: { flexGrow: 1, padding: 24, gap: 16 },
-  top: { marginBottom: 16 },
-  wordmark: { fontSize: 28, fontWeight: '800', color: '#1a3a2f' },
-  heading: { fontSize: 26, fontWeight: '700', color: '#111827' },
-  sub: { fontSize: 15, color: '#6b7280', lineHeight: 22 },
-  input: {
-    borderWidth: 1.5,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 18,
-    color: '#111827',
-    backgroundColor: '#fff',
+  safe: { flex: 1, backgroundColor: Colors.card },
+  flex: { flex: 1 },
+  container: {
+    flex: 1,
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing['4xl'],
+    paddingBottom: Spacing['3xl'],
   },
-  error: { fontSize: 14, color: '#dc2626' },
-  cta: { marginTop: 4 },
-  legal: {
-    fontSize: 12,
-    color: '#9ca3af',
+  title: {
+    fontSize: 28,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+    marginBottom: Spacing.sm,
+  },
+  subtitle: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    marginBottom: Spacing['3xl'],
+    lineHeight: FontSize.body * 1.5,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    marginBottom: Spacing.sm,
+  },
+  prefixContainer: {
+    backgroundColor: Colors.muted,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+  },
+  prefixText: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+  },
+  input: {
+    flex: 1,
+    fontSize: 18,
+    fontFamily: FontFamily.regular,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    color: Colors.foreground,
+    letterSpacing: 0.5,
+  },
+  errorText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.destructive,
+    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
+  },
+  note: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+    marginTop: Spacing.xl,
     textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 8,
+    lineHeight: FontSize.bodySmall * 1.5,
   },
 });

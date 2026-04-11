@@ -65,6 +65,55 @@ public class CivisCalculatorTests
 	}
 
 	[Fact]
+	public void ComputeMacf_SafetyCategory_AppliesSensitivityUplift()
+	{
+		// base 2 + log2(1+1)=1 + safetyUplift 1 + 0 = 4 → ceil 4
+		CivisCategoryOptions opts = new CivisCategoryOptions
+		{
+			BaseFloor = 2,
+			MacfMin = 2,
+			MacfMax = 6
+		};
+		int nonSafety = CivisCalculator.ComputeMacf(1.0, opts, isSafetyCategory: false);
+		int safety = CivisCalculator.ComputeMacf(1.0, opts, isSafetyCategory: true);
+		Assert.Equal(3, nonSafety);
+		Assert.Equal(4, safety);
+	}
+
+	[Fact]
+	public void ComputeMacf_LowLocationConfidence_AppliesGeoUncertaintyUplift()
+	{
+		// base 2 + log2(1+1)=1 + 0 + (0.5 * 0.5)=0.25 → 3.25 → ceil 4
+		CivisCategoryOptions opts = new CivisCategoryOptions
+		{
+			BaseFloor = 2,
+			MacfMin = 2,
+			MacfMax = 6
+		};
+		int highConfidence = CivisCalculator.ComputeMacf(1.0, opts, locationConfidence: 1.0);
+		int lowConfidence = CivisCalculator.ComputeMacf(1.0, opts, locationConfidence: 0.4);
+		int boundary = CivisCalculator.ComputeMacf(1.0, opts, locationConfidence: 0.5);
+		Assert.Equal(3, highConfidence);
+		Assert.Equal(4, lowConfidence);
+		// boundary: locationConfidence == 0.5 → NOT < 0.5, so no uplift
+		Assert.Equal(3, boundary);
+	}
+
+	[Fact]
+	public void ComputeMacf_SafetyAndLowConfidence_AppliesBothUplifts()
+	{
+		// base 2 + 1 + 1 + 0.25 = 4.25 → ceil 5
+		CivisCategoryOptions opts = new CivisCategoryOptions
+		{
+			BaseFloor = 2,
+			MacfMin = 2,
+			MacfMax = 6
+		};
+		int actual = CivisCalculator.ComputeMacf(1.0, opts, isSafetyCategory: true, locationConfidence: 0.4);
+		Assert.Equal(5, actual);
+	}
+
+	[Fact]
 	public void ComputeSds_WrabBelowBaseFloor_UsesBaseFloor()
 	{
 		double actual = CivisCalculator.ComputeSds(4.0, 0.0, 2);

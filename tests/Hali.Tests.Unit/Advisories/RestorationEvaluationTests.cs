@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
@@ -33,6 +34,7 @@ public class RestorationEvaluationTests
         public Task<int> ComputeWrabCountAsync(Guid c, int d, CancellationToken ct) => Task.FromResult(0);
         public Task<int> ComputeActiveMassCountAsync(Guid c, int h, CancellationToken ct) => Task.FromResult(0);
         public Task<int> CountUniqueDevicesAsync(Guid c, CancellationToken ct) => Task.FromResult(0);
+        public Task<double> GetMinLocationConfidenceAsync(Guid c, CancellationToken ct) => Task.FromResult(1.0);
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task<IReadOnlyList<SignalCluster>> GetPossibleRestorationClustersAsync(CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
@@ -61,6 +63,10 @@ public class RestorationEvaluationTests
 
         public Task<ParticipationEntity?> GetByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
             => Task.FromResult(_store.Find(x => x.ClusterId == clusterId && x.DeviceId == deviceId));
+
+        public Task<ParticipationEntity?> GetMostRecentByAccountAsync(Guid clusterId, Guid accountId, CancellationToken ct)
+            => Task.FromResult(_store.FindAll(x => x.ClusterId == clusterId && x.AccountId == accountId)
+                .OrderByDescending(x => x.CreatedAt).FirstOrDefault());
 
         public Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
         { _store.RemoveAll(x => x.ClusterId == clusterId && x.DeviceId == deviceId); return Task.CompletedTask; }

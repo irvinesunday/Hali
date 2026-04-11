@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -49,13 +50,16 @@ public class NominatimGeocodingService : IGeocodingService
 		}
 		catch (Exception ex)
 		{
-			Exception ex2 = ex;
-			_logger.LogWarning(ex2, "Nominatim request failed for {Lat},{Lng}", latitude, longitude);
+			// Do not include caller-supplied coordinates in the log message —
+			// they are user PII (CodeQL cs/exposure-of-private-information).
+			// The exception itself is logged for diagnostics; coordinates are
+			// redacted.
+			_logger.LogWarning(ex, "Nominatim reverse geocode request failed (coordinates redacted)");
 			return null;
 		}
 		if (!response.IsSuccessStatusCode)
 		{
-			_logger.LogWarning("Nominatim returned {Status} for {Lat},{Lng}", response.StatusCode, latitude, longitude);
+			_logger.LogWarning("Nominatim reverse geocode returned {Status} (coordinates redacted)", response.StatusCode);
 			return null;
 		}
 		GeocodingResult result = ParseNominatimResponse(await response.Content.ReadAsStringAsync(ct));
@@ -65,6 +69,54 @@ public class NominatimGeocodingService : IGeocodingService
 			await _redis.StringSetAsync(cacheKey, serialized, CacheTtl);
 		}
 		return result;
+	}
+
+	public async Task<IReadOnlyList<GeocodingCandidate>> SearchAsync(string query, CancellationToken ct = default)
+	{
+		if (string.IsNullOrWhiteSpace(query))
+			return Array.Empty<GeocodingCandidate>();
+
+		var encoded = Uri.EscapeDataString(query.Trim());
+		var url = $"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&countrycodes=ke&limit=5";
+
+		using var req = new HttpRequestMessage(HttpMethod.Get, url);
+		req.Headers.Add("User-Agent", "Hali/1.0 (civic signal platform)");
+
+		try
+		{
+			using var response = await _http.SendAsync(req, ct);
+
+			if (!response.IsSuccessStatusCode)
+			{
+				// Do not log the user-supplied query — it is private input
+				// (CodeQL cs/exposure-of-private-information).
+				_logger.LogWarning("Nominatim forward search returned {Status} (query redacted)", response.StatusCode);
+				return Array.Empty<GeocodingCandidate>();
+			}
+
+			var json = await response.Content.ReadAsStringAsync(ct);
+			using var doc = JsonDocument.Parse(json);
+			if (doc.RootElement.ValueKind != JsonValueKind.Array)
+				return Array.Empty<GeocodingCandidate>();
+
+			var list = new List<GeocodingCandidate>();
+			foreach (var el in doc.RootElement.EnumerateArray())
+			{
+				var displayName = el.TryGetProperty("display_name", out var dn) ? dn.GetString() : null;
+				var latStr = el.TryGetProperty("lat", out var la) ? la.GetString() : null;
+				var lonStr = el.TryGetProperty("lon", out var lo) ? lo.GetString() : null;
+				if (displayName is null || latStr is null || lonStr is null) continue;
+				if (!double.TryParse(latStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lat)) continue;
+				if (!double.TryParse(lonStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lon)) continue;
+				list.Add(new GeocodingCandidate(displayName, lat, lon));
+			}
+			return list;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Nominatim forward search failed or response could not be parsed (query redacted)");
+			return Array.Empty<GeocodingCandidate>();
+		}
 	}
 
 	private GeocodingResult? ParseNominatimResponse(string json)

@@ -1,7 +1,5 @@
-using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 
 namespace Hali.Infrastructure.Data.Clusters;
 
@@ -9,13 +7,11 @@ public class ClustersDbContextFactory : IDesignTimeDbContextFactory<ClustersDbCo
 {
 	public ClustersDbContext CreateDbContext(string[] args)
 	{
-		var connectionString = Environment.GetEnvironmentVariable("HALI_DB_CONNECTION")
-			?? "Host=localhost;Port=5432;Database=hali;Username=hali;Password=changeme";
-		DbContextOptionsBuilder<ClustersDbContext> dbContextOptionsBuilder = new DbContextOptionsBuilder<ClustersDbContext>();
-		dbContextOptionsBuilder.UseNpgsql(connectionString, delegate(NpgsqlDbContextOptionsBuilder npgsql)
-		{
-			npgsql.UseNetTopologySuite();
-		});
+		var dataSource = HaliNpgsqlDataSourceFactory.Build(
+			"Host=localhost;Port=5432;Database=hali;Username=hali;Password=changeme",
+			useNetTopologySuite: true);
+		var dbContextOptionsBuilder = new DbContextOptionsBuilder<ClustersDbContext>();
+		dbContextOptionsBuilder.UseNpgsql(dataSource, npgsql => npgsql.UseNetTopologySuite());
 		return new ClustersDbContext(dbContextOptionsBuilder.Options);
 	}
 }

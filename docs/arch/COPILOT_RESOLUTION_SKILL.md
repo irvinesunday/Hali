@@ -98,6 +98,65 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies \
   -X POST -f body="<reason for skipping>"
 ```
 
+### Step 8 — Resolve the conversation thread via GraphQL
+
+Posting a reply does not mark the thread resolved — GitHub's branch ruleset
+on `develop` requires `required_review_thread_resolution`, so unresolved
+threads block merge even after all replies are posted. Always run the
+GraphQL `resolveReviewThread` mutation after replying.
+
+Get all review thread IDs for the PR. Use GraphQL variables to avoid
+hardcoding the repository coordinates — replace `{owner}`, `{repo}`, and
+`{pr_number}` with real values before running:
+
+```bash
+gh api graphql \
+  -F owner='{owner}' \
+  -F repo='{repo}' \
+  -F pr={pr_number} \
+  -f query='
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes { databaseId }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}'
+```
+
+`databaseId` on each thread's first comment corresponds to the comment ID
+used in the Step 7 REST call (`pulls/{pr}/comments/{id}`). Match on this
+value to confirm you are resolving only the threads you replied to.
+
+If `pageInfo.hasNextPage` is `true`, re-run the query passing
+`after: "END_CURSOR"` to `reviewThreads` until all threads have been
+retrieved.
+
+For each unresolved thread you addressed, resolve it using its node ID:
+
+```bash
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "THREAD_NODE_ID"}) {
+    thread { isResolved }
+  }
+}'
+```
+
+Replace `THREAD_NODE_ID` with the node `id` from the query above.
+
+Confirm `isResolved: true` is returned for each thread before proceeding
+to merge.
+
 ---
 
 ## Handling "Outdated" comments
@@ -141,3 +200,95 @@ After all comments on a PR are processed, post a summary comment:
 
 All changes committed and pushed. Ready for re-review.
 ```
+
+---
+
+## Mandatory: Lesson Recording Step (runs at every PR close point)
+
+This step runs in TWO situations — not just when addressing Copilot comments:
+
+### Situation A: You just addressed Copilot comments on a PR
+After fixing code, replying to threads, and resolving conversations:
+
+1. Check if a lesson entry already exists for this PR:
+   ```bash
+   grep "## PR #<N>" docs/arch/LESSONS_LEARNED.md
+   ```
+
+2. If no entry exists, OR if this specific issue is not yet documented:
+   Append a new entry using the template in LESSONS_LEARNED.md.
+
+3. This append MUST happen in the same commit as the code fix.
+   Never commit the fix without the lesson. Never commit the lesson without the fix.
+
+### Situation B: You are finishing ANY session that pushed to a PR branch
+
+SKIP this check if Situation A already ran in this session.
+Situation A is considered to have run if the session prompt contained
+any of: "address Copilot", "fix Copilot", "resolve Copilot", or
+explicitly referenced COPILOT_RESOLUTION_SKILL.md as the primary task.
+In that case, all lessons were already captured — do not re-fetch.
+
+At the end of every session that included a `git push origin <branch>`,
+run the following before declaring the session complete:
+
+```bash
+# Get the PR number for the current branch
+BRANCH=$(git branch --show-current)
+PR_NUMBER=$(gh pr list \
+  --repo irvinesunday/Hali \
+  --head "$BRANCH" \
+  --state open \
+  --json number \
+  --jq '.[0].number // empty' 2>/dev/null)
+
+if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+  echo "Checking PR #$PR_NUMBER for unrecorded Copilot comments..."
+
+  # Fetch all Copilot inline comments
+  gh api repos/irvinesunday/Hali/pulls/${PR_NUMBER}/comments \
+    --jq '.[] | select(.user.login | test("copilot";"i")) |
+          "COMMENT: " + .path + " | " + (.body | split("\n")[0])' \
+    2>/dev/null
+
+  # Fetch all Copilot review bodies
+  gh api repos/irvinesunday/Hali/pulls/${PR_NUMBER}/reviews \
+    --jq '.[] | select(.user.login | test("copilot";"i")) |
+          select(.body != "") |
+          "REVIEW: " + (.body | split("\n")[0])' \
+    2>/dev/null
+fi
+```
+
+If this output shows Copilot comments that are NOT yet in LESSONS_LEARNED.md:
+  - Append the lessons NOW, before the session ends
+  - Commit them to the current branch with message:
+    `docs: record Copilot lessons from PR #N`
+  - Push to the PR branch
+
+If the PR has no Copilot comments, or all are already recorded: continue normally.
+
+### What a lesson entry must contain
+
+```markdown
+## PR #N — [PR title]
+
+### Lesson [sequential number]: [one-line description]
+**File:** `path/to/file` (or "PR-level" if not file-specific)
+**What Copilot flagged:** [direct quote or close paraphrase]
+**Root cause:** [why did Claude Code generate this — be specific]
+**Fix applied:** [what changed]
+**Rule added:** [text of new rule or existing rule name this reinforces]
+```
+
+### What counts as a lesson worth recording
+
+RECORD:
+- Any Copilot inline review comment on a file
+- Any Copilot PR-level review body with a specific concern
+- Any CI failure caused by code Claude Code generated
+
+DO NOT RECORD:
+- Copilot comments that say "Looks good" or are purely positive
+- Dependabot PR activity
+- Comments on files Claude Code did not touch in this PR

@@ -1,5 +1,14 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Text, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { Text, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
+import { Colors, FontFamily, FontSize, Spacing, Radius } from '../../theme';
 
 interface ToastProps {
   message: string;
@@ -8,25 +17,21 @@ interface ToastProps {
 }
 
 export function Toast({ message, visible, variant = 'info' }: ToastProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.delay(2400),
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      opacity.value = withSequence(
+        withTiming(1, { duration: 200, easing: Easing.out(Easing.ease) }),
+        withDelay(
+          2400,
+          withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) }),
+        ),
+      );
     }
-  }, [visible, message, opacity]);
+  }, [visible, message]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
   return (
     <Animated.View
@@ -34,7 +39,7 @@ export function Toast({ message, visible, variant = 'info' }: ToastProps) {
         styles.container,
         variant === 'error' && styles.error,
         variant === 'success' && styles.success,
-        { opacity },
+        animatedStyle,
       ]}
       pointerEvents="none"
     >
@@ -46,17 +51,22 @@ export function Toast({ message, visible, variant = 'info' }: ToastProps) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 90,
-    left: 24,
-    right: 24,
-    backgroundColor: '#1f2937',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    bottom: 96,
+    left: Spacing.lg,
+    right: Spacing.lg,
+    backgroundColor: Colors.foreground,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     alignItems: 'center',
-    zIndex: 999,
+    zIndex: 100,
   },
-  error: { backgroundColor: '#991b1b' },
-  success: { backgroundColor: '#166534' },
-  text: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  error:   { backgroundColor: Colors.destructive },
+  success: { backgroundColor: Colors.emerald },
+  text: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.primaryForeground,
+    textAlign: 'center',
+  },
 });

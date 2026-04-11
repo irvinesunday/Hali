@@ -1,5 +1,17 @@
-// Home Feed — four sections, ward selector, floating Report button
-import React, { useState } from 'react';
+// apps/citizen-mobile/app/(app)/home.tsx
+//
+// Home feed — four canonical sections + calm state + persistent Report FAB.
+//
+// Section order (canonical, must not be reordered):
+//   1. Active now
+//   2. Official updates
+//   3. Recurring at this time
+//   4. Other active signals
+//
+// Guest mode: unauthenticated users see the full feed read-only.
+// Contribution gates are handled per-action downstream.
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,318 +19,746 @@ import {
   RefreshControl,
   TouchableOpacity,
   StyleSheet,
-  Modal,
+  TextInput,
   FlatList,
+  ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { MapPin, ChevronDown, Search, Navigation, X, Check } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ClusterCard } from '../../src/components/clusters/ClusterCard';
-import { Empty } from '../../src/components/common/Empty';
+
+import { ClusterCard } from '../../src/components/feed/ClusterCard';
 import { Loading } from '../../src/components/common/Loading';
-import { getHome } from '../../src/api/clusters';
-import { getFollowedLocalities } from '../../src/api/localities';
+import {
+  SectionHeader,
+  CalmState,
+  FAB,
+  OfficialUpdateRow,
+  FeedbackButton,
+} from '../../src/components/shared';
+
+import { getFollowedLocalities, searchLocalities } from '../../src/api/localities';
+import { useHome, ApiResultError } from '../../src/hooks/useClusters';
 import { useLocalityContext } from '../../src/context/LocalityContext';
-import type { ClusterResponse, OfficialPostResponse } from '../../src/types/api';
+import { useAuth } from '../../src/context/AuthContext';
+import { formatRelativeTime, getCategoryInstitutionName } from '../../src/utils/formatters';
+import {
+  Colors,
+  FontFamily,
+  FontSize,
+  Spacing,
+  Radius,
+  Shadows,
+  ScreenPaddingH,
+  ScreenPaddingBottom,
+} from '../../src/theme';
+import type {
+  ClusterResponse,
+  OfficialPostResponse,
+  PagedSection,
+  LocalitySearchResult,
+} from '../../src/types/api';
 
-export default function HomeScreen() {
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function isSectionEmpty<T>(section: PagedSection<T> | undefined): boolean {
+  return !section || section.items.length === 0;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export default function HomeScreen(): React.ReactElement {
   const router = useRouter();
-  const { activeLocalityId, followedLocalityIds, setActiveLocalityId, setFollowedLocalityIds } =
-    useLocalityContext();
-  const [wardPickerVisible, setWardPickerVisible] = useState(false);
+  const { authState } = useAuth();
+  const isAuthenticated = authState.status === 'authenticated';
+  const {
+    activeLocality,
+    followedLocalities,
+    setActiveLocalityId,
+    setFollowedLocalities,
+  } = useLocalityContext();
 
-  // Seed followed wards on mount
+  const [localitySelectorOpen, setLocalitySelectorOpen] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+
+  // ── Load followed localities ──────────────────────────────────────────────
+  // Guests have no follows; calling /v1/localities/followed without tokens
+  // would trigger the API client's 401 refresh flow and leave followsLoaded
+  // false, blanking the feed. Skip the request entirely and treat guests as
+  // a loaded-empty follows list so the NoFollowsState renders correctly.
   const localitiesQuery = useQuery({
     queryKey: ['localities', 'followed'],
     queryFn: async () => {
-      const res = await getFollowedLocalities();
-      setFollowedLocalityIds(res.localityIds);
-      return res;
+      const result = await getFollowedLocalities();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
     },
     staleTime: 60_000,
+    retry: 1,
+    enabled: isAuthenticated,
   });
 
-  const homeQuery = useQuery({
-    queryKey: ['home', activeLocalityId],
-    queryFn: () => getHome(activeLocalityId!),
-    enabled: !!activeLocalityId,
-    staleTime: 30_000,
-  });
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setFollowedLocalities([]);
+      return;
+    }
+    if (localitiesQuery.data) {
+      setFollowedLocalities(localitiesQuery.data);
+    }
+  }, [isAuthenticated, localitiesQuery.data, setFollowedLocalities]);
 
-  const isLoading = homeQuery.isLoading && !homeQuery.data;
+  // ── Home feed ─────────────────────────────────────────────────────────────
+  const homeQuery = useHome();
+
+  useEffect(() => {
+    if (homeQuery.dataUpdatedAt > 0) {
+      setLastUpdatedAt(new Date(homeQuery.dataUpdatedAt));
+    }
+  }, [homeQuery.dataUpdatedAt]);
+
+  // ── Derived state ─────────────────────────────────────────────────────────
   const feed = homeQuery.data;
 
-  const allEmpty =
-    feed &&
-    feed.activeNow.length === 0 &&
-    feed.officialUpdates.length === 0 &&
-    feed.recurringAtThisTime.length === 0 &&
-    feed.otherActiveSignals.length === 0;
+  const isCalmState = useMemo<boolean>(() => {
+    if (!feed) return false;
+    return (
+      isSectionEmpty(feed.activeNow) &&
+      isSectionEmpty(feed.officialUpdates) &&
+      isSectionEmpty(feed.recurringAtThisTime) &&
+      isSectionEmpty(feed.otherActiveSignals)
+    );
+  }, [feed]);
 
+  // Derive readiness locally from React Query state so that a guest→auth
+  // transition doesn't flash NoFollowsState while the authed follows query
+  // is still in flight. `followsLoaded` from context is permanently true
+  // once set (including by the guest branch), so it cannot be relied on
+  // after auth state changes without a full remount of LocalityProvider.
+  const followsReady =
+    !isAuthenticated ||
+    localitiesQuery.isSuccess ||
+    localitiesQuery.isError;
+
+  const hasNoFollows = followsReady && followedLocalities.length === 0;
+
+  const localityDisplayName =
+    activeLocality?.displayLabel ??
+    activeLocality?.wardName ??
+    'Select an area';
+
+  const localityStateText = (() => {
+    if (!followsReady) return '';
+    if (hasNoFollows) return 'Follow a ward to see activity';
+    if (isCalmState) return 'Currently calm';
+    const count = (feed?.activeNow.items.length ?? 0) +
+                  (feed?.otherActiveSignals.items.length ?? 0);
+    if (count === 0) return 'No active signals';
+    if (count === 1) return '1 active signal';
+    return `${count} active signals`;
+  })();
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
+
+      {/* ── Header ───────────────────────────────────────────────────── */}
       <View style={styles.header}>
-        <Text style={styles.wordmark}>hali</Text>
+        <Text style={styles.wordmark}>Hali</Text>
         <TouchableOpacity
-          style={styles.wardPill}
-          onPress={() => setWardPickerVisible(true)}
+          style={styles.localitySelector}
+          onPress={() => setLocalitySelectorOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Change area"
         >
-          <Text style={styles.wardPillText} numberOfLines={1}>
-            {activeLocalityId
-              ? `Ward: ${activeLocalityId.slice(0, 8)}…`
-              : 'Select ward'}
+          <MapPin size={14} color={Colors.primary} strokeWidth={2} />
+          <Text style={styles.localityName} numberOfLines={1}>
+            {localityDisplayName}
           </Text>
-          <Ionicons name="chevron-down" size={14} color="#1a3a2f" />
+          <ChevronDown size={14} color={Colors.mutedForeground} strokeWidth={2} />
         </TouchableOpacity>
+        {localityStateText !== '' && (
+          <Text style={styles.localityStateText}>{localityStateText}</Text>
+        )}
       </View>
 
-      {isLoading ? (
+      {/* ── Feed body ────────────────────────────────────────────────── */}
+      {homeQuery.isLoading && !feed ? (
         <Loading />
-      ) : !activeLocalityId ? (
-        <View style={styles.center}>
-          <Empty
-            message="No ward selected"
-            subMessage="Go to Settings → Wards to follow a ward."
-          />
-        </View>
-      ) : allEmpty ? (
-        <View style={styles.center}>
-          <Empty
-            message="Currently calm in this ward"
-            subMessage="No active signals right now."
-          />
-        </View>
+      ) : homeQuery.isError ? (
+        <ErrorState
+          message={(homeQuery.error as ApiResultError).message}
+          onRetry={() => void homeQuery.refetch()}
+        />
       ) : (
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={homeQuery.isFetching}
-              onRefresh={() => homeQuery.refetch()}
-              tintColor="#1a3a2f"
+              refreshing={homeQuery.isFetching && !homeQuery.isLoading}
+              onRefresh={() => void homeQuery.refetch()}
+              tintColor={Colors.primary}
             />
           }
         >
-          {/* Section 1 — Active now */}
-          <Section
-            title="Active now"
-            clusters={feed?.activeNow ?? []}
-            emptyMessage="No active signals right now."
-          />
-
-          {/* Section 2 — Official updates */}
-          {(feed?.officialUpdates ?? []).length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Official updates</Text>
-              {feed!.officialUpdates.map((post) => (
-                <OfficialPostCard key={post.id} post={post} />
-              ))}
-            </View>
+          {hasNoFollows ? (
+            <NoFollowsState
+              onOpenPicker={() => setLocalitySelectorOpen(true)}
+            />
+          ) : isCalmState ? (
+            <CalmState
+              localityName={localityDisplayName}
+              lastCheckedText={
+                lastUpdatedAt
+                  ? `Last checked ${formatRelativeTime(lastUpdatedAt.toISOString())}`
+                  : undefined
+              }
+            />
+          ) : (
+            <>
+              <FeedSection
+                title="Active Now"
+                clusters={feed?.activeNow.items ?? []}
+              />
+              <OfficialUpdatesSection
+                posts={feed?.officialUpdates.items ?? []}
+              />
+              <FeedSection
+                title="Recurring at This Time"
+                clusters={feed?.recurringAtThisTime.items ?? []}
+              />
+              <FeedSection
+                title="Other Active Signals"
+                clusters={feed?.otherActiveSignals.items ?? []}
+              />
+              {lastUpdatedAt !== null && (
+                <Text style={styles.lastUpdated}>
+                  Updated {formatRelativeTime(lastUpdatedAt.toISOString())}
+                </Text>
+              )}
+            </>
           )}
-          {(feed?.officialUpdates ?? []).length === 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Official updates</Text>
-              <Empty message="No official updates." />
-            </View>
-          )}
-
-          {/* Section 3 — Recurring */}
-          <Section
-            title="Recurring at this time"
-            clusters={feed?.recurringAtThisTime ?? []}
-            emptyMessage="No recurring signals."
-          />
-
-          {/* Section 4 — Other active */}
-          <Section
-            title="Other active signals"
-            clusters={feed?.otherActiveSignals ?? []}
-            emptyMessage="Nothing else active."
-          />
         </ScrollView>
       )}
 
-      {/* Floating Report button */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.85}
-        onPress={() => router.push('/(app)/compose/text')}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {/* ── Persistent FAB ──────────────────────────────────────────── */}
+      <FAB onPress={() => router.push('/(app)/compose/text')} />
 
-      {/* Ward picker modal */}
-      <Modal
-        visible={wardPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setWardPickerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Select ward</Text>
-            {followedLocalityIds.length === 0 ? (
-              <Empty
-                message="No wards followed"
-                subMessage="Go to Settings → Wards to follow up to 5 wards."
-              />
-            ) : (
-              <FlatList
-                data={followedLocalityIds}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.wardRow,
-                      item === activeLocalityId && styles.wardRowActive,
-                    ]}
-                    onPress={() => {
-                      setActiveLocalityId(item);
-                      setWardPickerVisible(false);
-                    }}
-                  >
-                    <Text style={styles.wardRowText}>
-                      Ward {item.slice(0, 8)}…
-                    </Text>
-                    {item === activeLocalityId && (
-                      <Ionicons name="checkmark" size={18} color="#1a3a2f" />
-                    )}
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setWardPickerVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* ── Feedback button ─────────────────────────────────────────── */}
+      <FeedbackButton screen="home" />
+
+      {/* ── Locality selector sheet ──────────────────────────────────── */}
+      {localitySelectorOpen && (
+        <LocalitySelectorSheet
+          onClose={() => setLocalitySelectorOpen(false)}
+          followedLocalities={followedLocalities}
+          activeLocalityId={activeLocality?.localityId ?? null}
+          onSelectLocality={(id) => {
+            setActiveLocalityId(id);
+            setLocalitySelectorOpen(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-function Section({
+// ─── Feed sections ──────────────────────────────────────────────────────────
+
+function FeedSection({
   title,
   clusters,
-  emptyMessage,
 }: {
   title: string;
   clusters: ClusterResponse[];
-  emptyMessage: string;
-}) {
+}): React.ReactElement | null {
+  if (clusters.length === 0) return null;
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {clusters.length === 0 ? (
-        <Empty message={emptyMessage} />
-      ) : (
-        clusters.map((c) => <ClusterCard key={c.id} cluster={c} />)
-      )}
+      <SectionHeader label={title} />
+      <View style={styles.cardList}>
+        {clusters.map((c) => (
+          <ClusterCard key={c.id} cluster={c} />
+        ))}
+      </View>
     </View>
   );
 }
 
-function OfficialPostCard({ post }: { post: OfficialPostResponse }) {
+function OfficialUpdatesSection({
+  posts,
+}: {
+  posts: OfficialPostResponse[];
+}): React.ReactElement | null {
+  if (posts.length === 0) return null;
   return (
-    <View style={styles.officialCard}>
-      <Text style={styles.officialTitle}>{post.title}</Text>
-      <Text style={styles.officialBody} numberOfLines={3}>
-        {post.body}
-      </Text>
+    <View style={styles.section}>
+      <SectionHeader label="Official Updates" />
+      <View style={styles.officialList}>
+        {posts.map((post) => (
+          <OfficialUpdateRow
+            key={post.id}
+            institutionName={getCategoryInstitutionName(post.category)}
+            message={post.title}
+          />
+        ))}
+      </View>
     </View>
   );
 }
+
+// ─── Empty / error states ───────────────────────────────────────────────────
+
+function NoFollowsState({
+  onOpenPicker,
+}: {
+  onOpenPicker: () => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.emptyContainer}>
+      <MapPin size={32} color={Colors.mutedForeground} strokeWidth={1.5} />
+      <Text style={styles.emptyTitle}>Follow a ward to see activity</Text>
+      <Text style={styles.emptyBody}>
+        Hali shows you civic signals in the wards you follow. Pick up to 5.
+      </Text>
+      <TouchableOpacity
+        style={styles.primaryCta}
+        onPress={onOpenPicker}
+        accessibilityRole="button"
+      >
+        <Text style={styles.primaryCtaText}>Choose an area</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyTitle}>Couldn't load the feed</Text>
+      <Text style={styles.emptyBody}>{message}</Text>
+      <TouchableOpacity
+        style={styles.primaryCta}
+        onPress={onRetry}
+        accessibilityRole="button"
+      >
+        <Text style={styles.primaryCtaText}>Try again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Locality selector sheet ────────────────────────────────────────────────
+
+interface LocalitySelectorSheetProps {
+  onClose: () => void;
+  followedLocalities: Array<{ localityId: string; wardName: string; displayLabel: string | null }>;
+  activeLocalityId: string | null;
+  onSelectLocality: (id: string) => void;
+}
+
+function LocalitySelectorSheet({
+  onClose,
+  followedLocalities,
+  activeLocalityId,
+  onSelectLocality,
+}: LocalitySelectorSheetProps): React.ReactElement {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<LocalitySearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  const latestSearchRequestRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current);
+        searchTimeout.current = null;
+      }
+    };
+  }, []);
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+      searchTimeout.current = null;
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      // Invalidate any in-flight request and clear results immediately.
+      latestSearchRequestRef.current += 1;
+      setSearching(false);
+      setSearchResults([]);
+      return;
+    }
+
+    const requestId = ++latestSearchRequestRef.current;
+    searchTimeout.current = setTimeout(async () => {
+      if (!isMountedRef.current || requestId !== latestSearchRequestRef.current) {
+        return;
+      }
+      setSearching(true);
+      try {
+        const result = await searchLocalities(trimmed);
+        if (
+          !isMountedRef.current ||
+          requestId !== latestSearchRequestRef.current
+        ) {
+          return;
+        }
+        // Always reflect the latest request — clear stale results on
+        // error so the UI never shows results for a different query.
+        if (result.ok) {
+          setSearchResults(result.value);
+        } else {
+          setSearchResults([]);
+        }
+      } catch {
+        if (
+          isMountedRef.current &&
+          requestId === latestSearchRequestRef.current
+        ) {
+          setSearchResults([]);
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          requestId === latestSearchRequestRef.current
+        ) {
+          setSearching(false);
+        }
+      }
+    }, 350);
+  };
+
+  const showFollowed = searchQuery.trim().length < 2;
+
+  // Normalise both data sources into a single shape for FlatList
+  const listData: Array<{ localityId: string; label: string }> = showFollowed
+    ? followedLocalities.map((l) => ({
+        localityId: l.localityId,
+        label: l.displayLabel ?? l.wardName,
+      }))
+    : searchResults.map((r) => ({
+        localityId: r.localityId,
+        label: r.placeLabel,
+      }));
+
+  return (
+    <View style={styles.sheetOverlay}>
+      <TouchableOpacity
+        style={styles.sheetBackdrop}
+        activeOpacity={1}
+        onPress={() => { Keyboard.dismiss(); onClose(); }}
+      />
+      <View style={styles.sheet}>
+        {/* Sheet header */}
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>Your areas</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <X size={20} color={Colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Search input */}
+        <View style={styles.searchRow}>
+          <Search size={16} color={Colors.mutedForeground} strokeWidth={2} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for an area…"
+            placeholderTextColor={Colors.faintForeground}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searching && (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          )}
+        </View>
+
+        {/* GPS opt-in */}
+        <TouchableOpacity
+          style={styles.gpsRow}
+          onPress={() => {
+            // GPS opt-in — navigates to wards settings where
+            // ILocalityService.ResolveByCoordinatesAsync is wired.
+            // Full GPS resolution implemented in Phase G (settings screen).
+            onClose();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Use my current location"
+        >
+          <Navigation size={14} color={Colors.primary} strokeWidth={2} />
+          <Text style={styles.gpsText}>Use my current location</Text>
+        </TouchableOpacity>
+
+        {/* Results list */}
+        <FlatList
+          data={listData}
+          keyExtractor={(item) => item.localityId}
+          renderItem={({ item }) => {
+            const id = item.localityId;
+            const label = item.label;
+            const isActive = id === activeLocalityId;
+            // setActiveLocalityId only accepts ids that exist in
+            // followedLocalities. Search results that aren't already
+            // followed are non-selectable until follow/unfollow is wired
+            // (Phase G — wards settings).
+            const isFollowed = followedLocalities.some(
+              (l) => l.localityId === id,
+            );
+
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.localityRow,
+                  isActive && styles.localityRowActive,
+                  !isFollowed && styles.localityRowDisabled,
+                ]}
+                disabled={!isFollowed}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  if (!isFollowed) return;
+                  onSelectLocality(id);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive, disabled: !isFollowed }}
+              >
+                <Text
+                  style={[
+                    styles.localityRowText,
+                    isActive && styles.localityRowTextActive,
+                  ]}
+                >
+                  {label}
+                </Text>
+                {isActive && (
+                  <Check size={16} color={Colors.primary} strokeWidth={2.5} />
+                )}
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            searchQuery.trim().length >= 2 && !searching ? (
+              <Text style={styles.searchEmpty}>No areas found</Text>
+            ) : null
+          }
+          keyboardShouldPersistTaps="handled"
+          style={styles.sheetList}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f9fafb' },
-  flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  wordmark: { fontSize: 22, fontWeight: '800', color: '#1a3a2f' },
-  wardPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0fdf4',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 4,
-    maxWidth: 180,
-  },
-  wardPillText: { fontSize: 13, color: '#1a3a2f', fontWeight: '500' },
-  scrollContent: { padding: 16, gap: 8, paddingBottom: 100 },
-  section: { gap: 10, marginBottom: 8 },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  officialCard: {
-    backgroundColor: '#fffbeb',
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
-  },
-  officialTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  officialBody: { fontSize: 14, color: '#374151', lineHeight: 20 },
-  fab: {
-    position: 'absolute',
-    bottom: 32,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1a3a2f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  center: { flex: 1, justifyContent: 'center' },
-  modalOverlay: {
+  safe: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: Colors.background,
+  },
+  flex: { flex: 1 },
+
+  // Header
+  header: {
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    backgroundColor: Colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border + '80',
+  },
+  wordmark: {
+    fontSize: FontSize.appName,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+    letterSpacing: -0.5,
+  },
+  localitySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs + 2,
+  },
+  localityName: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.foreground,
+    flexShrink: 1,
+  },
+  localityStateText: {
+    fontSize: FontSize.micro,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    marginTop: 2,
+    marginLeft: 18, // aligns under locality name (icon width + gap)
+  },
+
+  // Feed
+  scrollContent: {
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing.lg,
+    paddingBottom: ScreenPaddingBottom,
+    gap: Spacing['2xl'],
+  },
+  section: { gap: Spacing.md },
+  cardList: { gap: Spacing.md },
+  officialList: { gap: Spacing.sm },
+  lastUpdated: {
+    fontSize: FontSize.micro,
+    fontFamily: FontFamily.regular,
+    color: Colors.faintForeground,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+
+  // Empty / error states
+  emptyContainer: {
+    paddingVertical: Spacing['4xl'],
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    alignItems: 'flex-start',
+  },
+  emptyTitle: {
+    fontSize: FontSize.title,
+    fontFamily: FontFamily.bold,
+    color: Colors.foreground,
+  },
+  emptyBody: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    lineHeight: FontSize.body * 1.5,
+  },
+  primaryCta: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.md,
+  },
+  primaryCtaText: {
+    color: Colors.primaryForeground,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+  },
+
+  // Locality selector sheet
+  sheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
     justifyContent: 'flex-end',
   },
-  modalSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '60%',
-    gap: 12,
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  wardRow: {
+  sheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: Radius['2xl'],
+    borderTopRightRadius: Radius['2xl'],
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing['3xl'],
+    maxHeight: '70%',
+    ...Shadows.modal,
+  },
+  sheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    paddingHorizontal: ScreenPaddingH,
+    marginBottom: Spacing.md,
   },
-  wardRowActive: { backgroundColor: '#f0fdf4' },
-  wardRowText: { fontSize: 15, color: '#111827' },
-  modalClose: { paddingVertical: 12, alignItems: 'center' },
-  modalCloseText: { fontSize: 15, color: '#6b7280' },
+  sheetTitle: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.foreground,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: ScreenPaddingH,
+    backgroundColor: Colors.muted,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    marginBottom: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.foreground,
+    padding: 0,
+  },
+  gpsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: ScreenPaddingH,
+    paddingVertical: Spacing.sm + 2,
+    marginBottom: Spacing.xs,
+  },
+  gpsText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
+  },
+  sheetList: {
+    maxHeight: 280,
+  },
+  localityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: ScreenPaddingH,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border + '60',
+  },
+  localityRowActive: {
+    backgroundColor: Colors.primarySubtle,
+  },
+  localityRowDisabled: {
+    opacity: 0.5,
+  },
+  localityRowText: {
+    fontSize: FontSize.body,
+    fontFamily: FontFamily.regular,
+    color: Colors.foreground,
+  },
+  localityRowTextActive: {
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
+  },
+  searchEmpty: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    paddingHorizontal: ScreenPaddingH,
+    paddingVertical: Spacing.md,
+  },
 });

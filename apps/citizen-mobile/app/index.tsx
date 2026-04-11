@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthContext } from '../src/context/AuthContext';
+import { Colors } from '../src/theme/colors';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a3a2f',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -37,8 +38,8 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: 52,
     fontWeight: '800',
-    color: '#fff',
+    color: Colors.primaryForeground,
     letterSpacing: -1,
   },
-  tagline: { fontSize: 16, color: '#86efac' },
+  tagline: { fontSize: 16, color: Colors.primarySubtle },
 });

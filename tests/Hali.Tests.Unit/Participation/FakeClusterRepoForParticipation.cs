@@ -89,6 +89,11 @@ internal sealed class FakeClusterRepoForParticipation : IClusterRepository
 		return Task.FromResult(0);
 	}
 
+	public Task<double> GetMinLocationConfidenceAsync(Guid clusterId, CancellationToken ct)
+	{
+		return Task.FromResult(1.0);
+	}
+
 	public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
 	{
 		return Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
