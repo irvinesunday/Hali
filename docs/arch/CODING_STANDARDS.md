@@ -10,13 +10,11 @@ that should have been caught before the PR was opened. Every item below maps
 to a real past failure. Do not skip any item.
 
 ### CI Failures
-- [ ] If CI fails on a push you made: fix the failure AND record a lesson in
-      docs/arch/LESSONS_LEARNED.md in the same commit that fixes the CI issue
-- [ ] CI failure lesson format: same template as Copilot lessons, with
-      "What Copilot flagged" replaced by "What CI reported"
-- [ ] Never push a second time to fix CI without first checking if the root
-      cause is already covered in docs/arch/LESSONS_LEARNED.md — if it is, note
-      "Existing lesson N reinforced" rather than creating a duplicate
+- [ ] If CI fails on a push you made: fix the failure in the same branch
+- [ ] Note any reusable lesson internally — do NOT write to docs/arch/LESSONS_LEARNED.md
+      or docs/arch/CODING_STANDARDS.md unless an explicit documentation pass is requested
+- [ ] Never push a second time to fix CI without first checking if the root cause
+      is covered in docs/arch/LESSONS_LEARNED.md for context
 
 ### Self-Review (run before every commit — mandatory)
 
@@ -261,3 +259,36 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
       or `dotnet tool restore` step before invoking the tool
 - [ ] PR description is updated to reflect the actual diff scope before review is requested
 - [ ] Shell commands in Markdown fenced code blocks use literal (unescaped) shell syntax
+
+---
+
+## PR Scope Discipline
+
+### Scope purity
+- PRs must remain strictly scoped to the requested task
+- No unrelated refactors, opportunistic improvements, or formatting churn
+- No mixed concerns in a single PR
+- If a separate issue is discovered during implementation, note it — do not fix it in the same PR
+
+### Documentation hygiene
+During implementation, maintenance passes, or PR review resolution, do NOT modify
+documentation files unless the task explicitly requests documentation changes.
+
+Protected files (modify only in a dedicated documentation pass):
+- `docs/arch/CODING_STANDARDS.md`
+- `docs/arch/LESSONS_LEARNED.md`
+- Architecture docs (`docs/arch/*.md`)
+- Process docs, workflow docs, runbooks
+
+### Lessons and reusable patterns
+If a reusable lesson or pattern is identified during feature work or review resolution:
+- Note it internally for future reference
+- Do NOT auto-write it to LESSONS_LEARNED.md or CODING_STANDARDS.md
+- Wait for an explicit documentation-pass instruction from the user
+
+### Review resolution discipline
+When resolving Copilot or PR review comments:
+- Apply the smallest correct code fix
+- Do not broaden scope beyond the comment
+- Do not add documentation changes unless explicitly requested
+- Decline incorrect comments with an explanation — do not force bad changes

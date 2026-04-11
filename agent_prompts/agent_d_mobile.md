@@ -550,10 +550,10 @@ After the PR is opened, run the end-of-session check from
 `docs/arch/COPILOT_RESOLUTION_SKILL.md` (Situation B).
 
 If any Copilot comments appear after push:
-1. Fix the issue
-2. Append to `docs/arch/LESSONS_LEARNED.md`
-3. Update `docs/arch/CODING_STANDARDS.md` if a new rule is needed
-4. All in the same commit as the fix
+1. Fix the code issue only
+2. Do NOT auto-write to `docs/arch/LESSONS_LEARNED.md` or `docs/arch/CODING_STANDARDS.md`
+   — documentation updates happen in a separate pass when explicitly requested
+3. See `docs/arch/CODING_STANDARDS.md` → "PR Scope Discipline"
 
 ---
 
