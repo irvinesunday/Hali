@@ -91,18 +91,20 @@ public class HomeLocalityFilterTests
         Assert.All(filtered, c => Assert.Equal(localityA, c.LocalityId));
     }
 
-    // ── Test 4: cache key differs for single vs multi locality ───────────────
+    // ── Test 4: cache key is order-independent for the same locality set ─────
 
     [Fact]
-    public void CacheKey_DiffersForSingleVsMultiLocality()
+    public void CacheKey_IsOrderIndependent_ForSameLocalitySet()
     {
         var localityA = Guid.NewGuid();
         var localityB = Guid.NewGuid();
 
-        var multiKey = BuildCacheKey(new List<Guid> { localityA, localityB });
-        var singleKey = BuildCacheKey(new List<Guid> { localityA });
+        var orderedKey = BuildCacheKey(new List<Guid> { localityA, localityB });
+        var reversedKey = BuildCacheKey(new List<Guid> { localityB, localityA });
+        var distinctSetKey = BuildCacheKey(new List<Guid> { localityA });
 
-        Assert.NotEqual(multiKey, singleKey);
+        Assert.Equal(orderedKey, reversedKey);
+        Assert.NotEqual(orderedKey, distinctSetKey);
     }
 
     // ── Test 5: section fetch with localityId still applies scoping ──────────
@@ -136,6 +138,24 @@ public class HomeLocalityFilterTests
         var followedIds = new List<Guid>(); // unauthenticated
 
         var effectiveIds = explicitLocalityId.HasValue
+            ? new List<Guid> { explicitLocalityId.Value }
+            : followedIds;
+
+        Assert.Empty(effectiveIds);
+    }
+
+    // ── Test 7: unauthenticated with localityId still returns empty ──────────
+
+    [Fact]
+    public void Unauthenticated_WithLocalityId_IgnoresLocalityId()
+    {
+        // Even when localityId is provided, unauthenticated callers should
+        // fall through to the followed-localities path (which is empty).
+        bool isAuthenticated = false;
+        Guid? explicitLocalityId = Guid.NewGuid();
+        var followedIds = new List<Guid>(); // unauthenticated
+
+        var effectiveIds = explicitLocalityId.HasValue && isAuthenticated
             ? new List<Guid> { explicitLocalityId.Value }
             : followedIds;
 

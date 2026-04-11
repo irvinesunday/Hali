@@ -54,9 +54,11 @@ public class HomeController : ControllerBase
         [FromQuery] Guid? localityId,
         CancellationToken ct)
     {
-        // When an explicit localityId is provided, scope the feed to that
-        // single locality instead of all followed localities.
-        var localityIds = localityId.HasValue
+        // Only authenticated users may scope the feed to an explicit locality.
+        // Anonymous callers fall back to the followed-localities path, which
+        // returns empty sections for guests.
+        bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+        var localityIds = localityId.HasValue && isAuthenticated
             ? new List<Guid> { localityId.Value }
             : await GetFollowedLocalityIdsAsync(ct);
         var cursorDt = DecodeCursor(cursor);
