@@ -22,9 +22,11 @@ public class SignalIngestionServiceTests
 
 	private readonly IH3CellService _h3 = Substitute.For<IH3CellService>();
 
+	private readonly ILocalityLookupRepository _localityLookup = Substitute.For<ILocalityLookupRepository>();
+
 	private SignalIngestionService CreateService()
 	{
-		return new SignalIngestionService(_nlp, _repo, _clustering, _h3);
+		return new SignalIngestionService(_nlp, _repo, _clustering, _h3, _localityLookup);
 	}
 
 	private static NlpExtractionResultDto MakeNlpResult(string category = "roads")
@@ -37,9 +39,17 @@ public class SignalIngestionServiceTests
 		return new SignalSubmitRequestDto(idempKey, "device-hash-1", "Big potholes on Lusaka Road", "roads", "potholes", "difficult", 0.85, -1.3, 36.8, "Potholes on Lusaka Road", "road", 0.8, "nlp", "temporary", "Potholes on Lusaka Road.", "en");
 	}
 
+	private static readonly Guid DefaultLocalityId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
 	private void SetupDefaultH3()
 	{
 		_h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Returns("892a1008003ffff");
+	}
+
+	private void SetupDefaultLocality()
+	{
+		_localityLookup.FindByPointAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
+			.Returns(new LocalitySummary(DefaultLocalityId, "Nairobi West", "Nairobi", "Nairobi"));
 	}
 
 	private void SetupDefaultRepo()
@@ -55,7 +65,8 @@ public class SignalIngestionServiceTests
 				CreatedAt = s.CreatedAt,
 				OccurredAt = s.OccurredAt,
 				Category = s.Category,
-				SpatialCellId = s.SpatialCellId
+				SpatialCellId = s.SpatialCellId,
+				LocalityId = s.LocalityId
 			};
 		});
 	}
@@ -106,13 +117,15 @@ public class SignalIngestionServiceTests
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, true);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 		SetupDefaultH3();
+		SetupDefaultLocality();
 		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(new SignalEvent
 		{
 			Id = Guid.NewGuid(),
 			CreatedAt = DateTime.UtcNow,
 			OccurredAt = DateTime.UtcNow,
 			Category = CivicCategory.Roads,
-			SpatialCellId = "892a1008003ffff"
+			SpatialCellId = "892a1008003ffff",
+			LocalityId = DefaultLocalityId
 		});
 		SignalIngestionService svc = CreateService();
 		Assert.NotNull(await svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null));
@@ -143,6 +156,7 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
+		SetupDefaultLocality();
 		SignalIngestionService svc = CreateService();
 		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 		Assert.NotEqual(Guid.Empty, result.SignalEventId);
@@ -163,6 +177,7 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
+		SetupDefaultLocality();
 		SignalSubmitRequestDto request = MakeSubmitRequest() with { Category = category };
 		SignalIngestionService svc = CreateService();
 		if (shouldSucceed)
@@ -194,6 +209,7 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		_h3.LatLngToCell(-1.3, 36.8, 9).Returns("892a1008003ffff");
+		SetupDefaultLocality();
 		SignalIngestionService svc = CreateService();
 		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 
@@ -207,6 +223,7 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
+		SetupDefaultLocality();
 		SignalIngestionService svc = CreateService();
 		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 
@@ -256,5 +273,52 @@ public class SignalIngestionServiceTests
 		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
 		Assert.Equal("SIGNAL_SPATIAL_DERIVATION_FAILED", ex.Message);
 		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+	// --- Phase A2: Locality resolution tests ---
+
+	[Fact]
+	public async Task SubmitAsync_ValidCoordinates_ResolvesLocalityAndPersistsLocalityId()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		SignalIngestionService svc = CreateService();
+
+		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		await _repo.Received(1).PersistSignalAsync(
+			Arg.Is<SignalEvent>(s => s.LocalityId == DefaultLocalityId),
+			Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_LocalityUnresolved_ThrowsAndDoesNotPersist()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		SetupDefaultH3();
+		_localityLookup.FindByPointAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
+			.Returns((LocalitySummary?)null);
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+		Assert.Equal("SIGNAL_LOCALITY_UNRESOLVED", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_ValidSubmissionWithLocality_ReachesClusteringWithLocalityId()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		SignalIngestionService svc = CreateService();
+
+		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		await _clustering.Received(1).RouteSignalAsync(
+			Arg.Is<SignalEvent>(s => s.LocalityId == DefaultLocalityId),
+			Arg.Any<CancellationToken>());
 	}
 }

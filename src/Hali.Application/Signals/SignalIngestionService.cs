@@ -19,18 +19,21 @@ public class SignalIngestionService : ISignalIngestionService
 
 	private readonly IH3CellService _h3;
 
+	private readonly ILocalityLookupRepository _localityLookup;
+
 	private const int H3Resolution = 9;
 
 	private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "roads", "transport", "electricity", "water", "environment", "safety", "governance", "infrastructure" };
 
 	private static readonly HashSet<string> AllowedTemporalTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "temporary", "continuous", "recurring", "scheduled", "episodic_unknown" };
 
-	public SignalIngestionService(INlpExtractionService nlp, ISignalRepository repo, IClusteringService clustering, IH3CellService h3)
+	public SignalIngestionService(INlpExtractionService nlp, ISignalRepository repo, IClusteringService clustering, IH3CellService h3, ILocalityLookupRepository localityLookup)
 	{
 		_nlp = nlp;
 		_repo = repo;
 		_clustering = clustering;
 		_h3 = h3;
+		_localityLookup = localityLookup;
 	}
 
 	public async Task<SignalPreviewResponseDto> PreviewAsync(SignalPreviewRequestDto request, CancellationToken ct = default(CancellationToken))
@@ -93,6 +96,12 @@ public class SignalIngestionService : ISignalIngestionService
 			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
 		}
 
+		LocalitySummary? locality = await _localityLookup.FindByPointAsync(lat, lng, ct);
+		if (locality is null)
+		{
+			throw new InvalidOperationException("SIGNAL_LOCALITY_UNRESOLVED");
+		}
+
 		string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");
 		SignalEvent signal = new SignalEvent
 		{
@@ -115,6 +124,7 @@ public class SignalIngestionService : ISignalIngestionService
 			SourceLanguage = request.SourceLanguage,
 			SourceChannel = "app",
 			SpatialCellId = spatialCellId,
+			LocalityId = locality.Id,
 			CivisPrecheck = "{}"
 		};
 		SignalEvent saved = await _repo.PersistSignalAsync(signal, ct);

@@ -138,5 +138,12 @@ public class SignalsController : ControllerBase
                 error = "Unable to derive spatial cell from provided coordinates."
             });
         }
+        catch (InvalidOperationException ex7) when (ex7.Message == "SIGNAL_LOCALITY_UNRESOLVED")
+        {
+            return UnprocessableEntity(new
+            {
+                error = "The provided coordinates do not fall within a known locality."
+            });
+        }
     }
 }

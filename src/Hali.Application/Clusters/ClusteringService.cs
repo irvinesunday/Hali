@@ -30,16 +30,24 @@ public class ClusteringService : IClusteringService
 
 	public async Task RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
 	{
-		if (signal.SpatialCellId == null)
+		if (signal.SpatialCellId is null)
 		{
 			return;
 		}
 		string[] searchCells = _h3.GetKRingCells(signal.SpatialCellId, 1);
 		IReadOnlyList<SignalCluster> candidates = await _repo.FindCandidateClustersAsync(searchCells, signal.Category, ct);
-		SignalCluster bestCluster = null;
+		SignalCluster? bestCluster = null;
 		double bestScore = 0.0;
 		foreach (SignalCluster candidate in candidates)
 		{
+			// Skip candidates with a different locality to prevent inconsistency
+			if (signal.LocalityId.HasValue
+				&& candidate.LocalityId.HasValue
+				&& candidate.LocalityId.Value != signal.LocalityId.Value)
+			{
+				continue;
+			}
+
 			double score = ComputeJoinScore(signal, candidate);
 			if (score >= _options.JoinThreshold && score > bestScore)
 			{
@@ -47,7 +55,7 @@ public class ClusteringService : IClusteringService
 				bestCluster = candidate;
 			}
 		}
-		if (bestCluster != null)
+		if (bestCluster is not null)
 		{
 			await _repo.AttachToClusterAsync(bestCluster.Id, signal.Id, signal.DeviceId, "join", ct);
 			bestCluster.LastSeenAt = DateTime.UtcNow;
@@ -80,6 +88,7 @@ public class ClusteringService : IClusteringService
 			SignalCluster newCluster = new SignalCluster
 			{
 				Id = Guid.NewGuid(),
+				LocalityId = signal.LocalityId,
 				Category = signal.Category,
 				SubcategorySlug = signal.SubcategorySlug,
 				DominantConditionSlug = signal.ConditionSlug,
