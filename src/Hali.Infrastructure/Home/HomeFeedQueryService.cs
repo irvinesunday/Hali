@@ -11,32 +11,30 @@ using Hali.Domain.Entities.Clusters;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Clusters;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hali.Infrastructure.Home;
 
 /// <summary>
-/// Read-only home feed query service. Each method creates and disposes
-/// its own DbContext via IDbContextFactory, making concurrent calls safe.
-/// All queries use AsNoTracking — this service never mutates data.
+/// Read-only home feed query service. Each method creates a new DI scope
+/// and resolves a fresh DbContext, making concurrent calls safe — no two
+/// tasks share a DbContext instance. All queries use AsNoTracking.
 /// </summary>
 public class HomeFeedQueryService : IHomeFeedQueryService
 {
-    private readonly IDbContextFactory<ClustersDbContext> _clustersFactory;
-    private readonly IDbContextFactory<AdvisoriesDbContext> _advisoriesFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public HomeFeedQueryService(
-        IDbContextFactory<ClustersDbContext> clustersFactory,
-        IDbContextFactory<AdvisoriesDbContext> advisoriesFactory)
+    public HomeFeedQueryService(IServiceScopeFactory scopeFactory)
     {
-        _clustersFactory = clustersFactory;
-        _advisoriesFactory = advisoriesFactory;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(
         IEnumerable<Guid> localityIds, bool? recurringOnly, int limit,
         DateTime? cursorBefore, CancellationToken ct)
     {
-        await using var db = await _clustersFactory.CreateDbContextAsync(ct);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClustersDbContext>();
 
         var ids = localityIds.ToList();
         var q = db.SignalClusters
@@ -58,7 +56,8 @@ public class HomeFeedQueryService : IHomeFeedQueryService
         IEnumerable<Guid> excludeLocalityIds, int limit,
         DateTime? cursorBefore, CancellationToken ct)
     {
-        await using var db = await _clustersFactory.CreateDbContextAsync(ct);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClustersDbContext>();
 
         var excludeIds = excludeLocalityIds.ToList();
         var q = db.SignalClusters
@@ -75,7 +74,8 @@ public class HomeFeedQueryService : IHomeFeedQueryService
     public async Task<List<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
         Guid localityId, CancellationToken ct)
     {
-        await using var db = await _advisoriesFactory.CreateDbContextAsync(ct);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AdvisoriesDbContext>();
 
         var postIds = await db.OfficialPostScopes
             .AsNoTracking()

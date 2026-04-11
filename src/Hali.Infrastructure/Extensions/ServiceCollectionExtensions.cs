@@ -117,24 +117,8 @@ public static class ServiceCollectionExtensions
 			}));
 		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
 
-		// DbContext factories for concurrent read queries (home feed).
-		// AddDbContextFactory coexists with AddDbContext — the scoped context
-		// remains available for write paths while the factory creates isolated
-		// instances for parallel reads.
-		services.AddDbContextFactory<ClustersDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Clusters, npgsql =>
-			{
-				npgsql.UseNetTopologySuite();
-				npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
-				npgsql.MapEnum<SignalState>("signal_state", null, Snake);
-			}));
-		services.AddDbContextFactory<AdvisoriesDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Advisories, npgsql =>
-			{
-				npgsql.UseNetTopologySuite();
-				npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
-				npgsql.MapEnum<OfficialPostType>("official_post_type", null, Snake);
-			}));
+		// Home feed read-query service — creates isolated DbContext instances
+		// per query via IServiceScopeFactory to enable safe concurrent reads.
 		services.AddSingleton<IHomeFeedQueryService, HomeFeedQueryService>();
 
 		// Notifications
