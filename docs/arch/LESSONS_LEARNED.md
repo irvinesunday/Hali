@@ -1119,3 +1119,10 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** During merge conflict resolution between branches with different versions of the file, a lowercase `claude.md` was left alongside the canonical `CLAUDE.md`.
 **Fix applied:** Deleted `claude.md`. `CLAUDE.md` remains as the sole canonical master brief.
 **Rule added:** Repo hygiene → "After merge conflict resolution, verify no duplicate files were created — especially on case-insensitive dev machines where `claude.md` and `CLAUDE.md` may appear identical but coexist on case-sensitive CI/Linux."
+
+### Lesson 4: Dead locals and unused parameters in test helpers
+**File:** `tests/Hali.Tests.Unit/Signals/SignalIngestionServiceTests.cs`
+**What Copilot flagged:** `SetupDefaultRepo` declared `id` and `now` locals and an `expectedId` parameter, none of which were used — the lambda echoed back the signal's own fields.
+**Root cause:** Helper was written with a deterministic-ID intent that was never wired through; the lambda already mirrors the input signal's properties.
+**Fix applied:** Removed the unused parameter and dead locals.
+**Rule added:** Tests → "After writing a test helper, verify every parameter and local is actually consumed. Unused parameters signal an incomplete implementation or a copy-paste artifact."

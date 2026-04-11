@@ -42,12 +42,10 @@ public class SignalIngestionServiceTests
 		_h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Returns("892a1008003ffff");
 	}
 
-	private void SetupDefaultRepo(Guid? expectedId = null)
+	private void SetupDefaultRepo()
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		Guid id = expectedId ?? Guid.NewGuid();
-		DateTime now = DateTime.UtcNow;
 		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(ci =>
 		{
 			var s = ci.ArgAt<SignalEvent>(0);
