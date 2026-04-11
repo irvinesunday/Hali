@@ -283,7 +283,7 @@ Protected files (modify only in a dedicated documentation pass):
 ### Lessons and reusable patterns
 If a reusable lesson or pattern is identified during feature work or review resolution:
 - Note it internally for future reference
-- Do NOT auto-write it to LESSONS_LEARNED.md or CODING_STANDARDS.md
+- Do NOT auto-write it to docs/arch/LESSONS_LEARNED.md or docs/arch/CODING_STANDARDS.md
 - Wait for an explicit documentation-pass instruction from the user
 - If needed, include a brief note in the PR description instead of modifying documentation files
 
