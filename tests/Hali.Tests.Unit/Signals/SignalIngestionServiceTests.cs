@@ -16,8 +16,6 @@ public class SignalIngestionServiceTests
 {
 	private readonly INlpExtractionService _nlp = Substitute.For<INlpExtractionService>();
 
-	private readonly IGeocodingService _geocoding = Substitute.For<IGeocodingService>();
-
 	private readonly ISignalRepository _repo = Substitute.For<ISignalRepository>();
 
 	private readonly IClusteringService _clustering = Substitute.For<IClusteringService>();
@@ -26,7 +24,7 @@ public class SignalIngestionServiceTests
 
 	private SignalIngestionService CreateService()
 	{
-		return new SignalIngestionService(_nlp, _geocoding, _repo, _clustering, _h3);
+		return new SignalIngestionService(_nlp, _repo, _clustering, _h3);
 	}
 
 	private static NlpExtractionResultDto MakeNlpResult(string category = "roads")
@@ -109,7 +107,6 @@ public class SignalIngestionServiceTests
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, true);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns((GeocodingResult)null!);
 		SetupDefaultH3();
 		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(new SignalEvent
 		{
@@ -148,7 +145,6 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns(new GeocodingResult("Lusaka Road, Nairobi", "Lusaka Road", "Nairobi West", "Nairobi", "Kenya"));
 		SignalIngestionService svc = CreateService();
 		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 		Assert.NotEqual(Guid.Empty, result.SignalEventId);
@@ -169,7 +165,6 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns((GeocodingResult)null!);
 		SignalSubmitRequestDto request = MakeSubmitRequest() with { Category = category };
 		SignalIngestionService svc = CreateService();
 		if (shouldSucceed)
@@ -201,7 +196,6 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		_h3.LatLngToCell(-1.3, 36.8, 9).Returns("892a1008003ffff");
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns((GeocodingResult)null!);
 		SignalIngestionService svc = CreateService();
 		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 
@@ -215,7 +209,6 @@ public class SignalIngestionServiceTests
 	{
 		SetupDefaultRepo();
 		SetupDefaultH3();
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns((GeocodingResult)null!);
 		SignalIngestionService svc = CreateService();
 		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
 

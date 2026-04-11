@@ -13,8 +13,6 @@ public class SignalIngestionService : ISignalIngestionService
 {
 	private readonly INlpExtractionService _nlp;
 
-	private readonly IGeocodingService _geocoding;
-
 	private readonly ISignalRepository _repo;
 
 	private readonly IClusteringService _clustering;
@@ -27,10 +25,9 @@ public class SignalIngestionService : ISignalIngestionService
 
 	private static readonly HashSet<string> AllowedTemporalTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "temporary", "continuous", "recurring", "scheduled", "episodic_unknown" };
 
-	public SignalIngestionService(INlpExtractionService nlp, IGeocodingService geocoding, ISignalRepository repo, IClusteringService clustering, IH3CellService h3)
+	public SignalIngestionService(INlpExtractionService nlp, ISignalRepository repo, IClusteringService clustering, IH3CellService h3)
 	{
 		_nlp = nlp;
-		_geocoding = geocoding;
 		_repo = repo;
 		_clustering = clustering;
 		_h3 = h3;
@@ -86,9 +83,9 @@ public class SignalIngestionService : ISignalIngestionService
 		{
 			spatialCellId = _h3.LatLngToCell(lat, lng, H3Resolution);
 		}
-		catch (Exception)
+		catch (Exception ex) when (ex is not OperationCanceledException)
 		{
-			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
+			throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED", ex);
 		}
 
 		if (string.IsNullOrEmpty(spatialCellId))
