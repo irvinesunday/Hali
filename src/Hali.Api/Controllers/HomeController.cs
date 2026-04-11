@@ -6,8 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Hali.Application.Advisories;
-using Hali.Application.Clusters;
+using Hali.Application.Home;
 using Hali.Application.Notifications;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
@@ -29,19 +28,16 @@ public class HomeController : ControllerBase
     private const int LimitOtherActive = 10;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
-    private readonly IClusterRepository _clusters;
-    private readonly IOfficialPostsService _officialPosts;
+    private readonly IHomeFeedQueryService _feedQuery;
     private readonly IFollowService _follows;
     private readonly IDatabase _redis;
 
     public HomeController(
-        IClusterRepository clusters,
-        IOfficialPostsService officialPosts,
+        IHomeFeedQueryService feedQuery,
         IFollowService follows,
         IDatabase redis)
     {
-        _clusters = clusters;
-        _officialPosts = officialPosts;
+        _feedQuery = feedQuery;
         _follows = follows;
         _redis = redis;
     }
@@ -105,14 +101,21 @@ public class HomeController : ControllerBase
 
     private async Task<HomeResponseDto> BuildFullResponseAsync(List<Guid> localityIds, CancellationToken ct)
     {
-        // Sections run sequentially because all repository calls share a
-        // single scoped DbContext, which is not thread-safe.
+        // Each section task is safe to run concurrently because
+        // IHomeFeedQueryService creates an isolated DbContext per call.
+        var activeNowTask = BuildActiveNowSectionAsync(localityIds, null, ct);
+        var officialUpdatesTask = BuildOfficialUpdatesSectionAsync(localityIds, null, ct);
+        var recurringTask = BuildRecurringSectionAsync(localityIds, null, ct);
+        var otherActiveTask = BuildOtherActiveSectionAsync(localityIds, null, ct);
+
+        await Task.WhenAll(activeNowTask, officialUpdatesTask, recurringTask, otherActiveTask);
+
         return new HomeResponseDto
         {
-            ActiveNow = await BuildActiveNowSectionAsync(localityIds, null, ct),
-            OfficialUpdates = await BuildOfficialUpdatesSectionAsync(localityIds, null, ct),
-            RecurringAtThisTime = await BuildRecurringSectionAsync(localityIds, null, ct),
-            OtherActiveSignals = await BuildOtherActiveSectionAsync(localityIds, null, ct)
+            ActiveNow = await activeNowTask,
+            OfficialUpdates = await officialUpdatesTask,
+            RecurringAtThisTime = await recurringTask,
+            OtherActiveSignals = await otherActiveTask
         };
     }
 
@@ -122,7 +125,7 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyClusterSection();
 
-        var raw = await _clusters.GetActiveByLocalitiesPagedAsync(
+        var raw = await _feedQuery.GetActiveByLocalitiesPagedAsync(
             localityIds, recurringOnly: false, limit: LimitActiveNow + 1, cursorBefore, ct);
 
         return ToPagedClusterSection(raw, LimitActiveNow);
@@ -137,7 +140,7 @@ public class HomeController : ControllerBase
         var allPosts = new List<OfficialPostResponseDto>();
         foreach (var lid in localityIds)
         {
-            var posts = await _officialPosts.GetActiveByLocalityAsync(lid, ct);
+            var posts = await _feedQuery.GetOfficialPostsByLocalityAsync(lid, ct);
             allPosts.AddRange(posts);
         }
 
@@ -166,7 +169,7 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyClusterSection();
 
-        var raw = await _clusters.GetActiveByLocalitiesPagedAsync(
+        var raw = await _feedQuery.GetActiveByLocalitiesPagedAsync(
             localityIds, recurringOnly: true, limit: LimitRecurring + 1, cursorBefore, ct);
 
         return ToPagedClusterSection(raw, LimitRecurring);
@@ -175,7 +178,7 @@ public class HomeController : ControllerBase
     private async Task<PagedSection<ClusterResponseDto>> BuildOtherActiveSectionAsync(
         List<Guid> localityIds, DateTime? cursorBefore, CancellationToken ct)
     {
-        var raw = await _clusters.GetAllActivePagedAsync(localityIds, LimitOtherActive + 1, cursorBefore, ct);
+        var raw = await _feedQuery.GetAllActivePagedAsync(localityIds, LimitOtherActive + 1, cursorBefore, ct);
         return ToPagedClusterSection(raw, LimitOtherActive);
     }
 

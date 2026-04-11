@@ -2,6 +2,7 @@ using System;
 using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
+using Hali.Application.Home;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -9,6 +10,7 @@ using Hali.Domain.Enums;
 using Hali.Infrastructure.Advisories;
 using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Clusters;
+using Hali.Infrastructure.Home;
 using Hali.Infrastructure.Data;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Auth;
@@ -114,6 +116,10 @@ public static class ServiceCollectionExtensions
 				npgsql.MapEnum<OfficialPostType>("official_post_type", null, Snake);
 			}));
 		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
+
+		// Home feed read-query service — creates isolated DbContext instances
+		// per query via IServiceScopeFactory to enable safe concurrent reads.
+		services.AddSingleton<IHomeFeedQueryService, HomeFeedQueryService>();
 
 		// Notifications
 		services.AddDbContext<NotificationsDbContext>((sp, opts) =>
