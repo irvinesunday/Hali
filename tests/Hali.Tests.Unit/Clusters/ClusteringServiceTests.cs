@@ -78,12 +78,13 @@ public class ClusteringServiceTests
     // -----------------------------------------------------------------------
 
     [Fact]
-    public async Task RouteSignal_WhenSpatialCellIdIsNull_ReturnsImmediately()
+    public async Task RouteSignal_WhenSpatialCellIdIsNull_Throws()
     {
         var (svc, repo, h3, civis) = Build();
         var signal = MakeSignal(spatialCellId: null);
 
-        await svc.RouteSignalAsync(signal);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RouteSignalAsync(signal));
+        Assert.Equal("CLUSTERING_NO_SPATIAL_CELL", ex.Message);
 
         h3.DidNotReceive().GetKRingCells(Arg.Any<string>(), Arg.Any<int>());
         await repo.DidNotReceive().FindCandidateClustersAsync(
@@ -106,9 +107,12 @@ public class ClusteringServiceTests
         repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
             .Returns(new List<SignalCluster> { existingCluster });
 
-        await svc.RouteSignalAsync(signal);
+        var result = await svc.RouteSignalAsync(signal);
 
         await repo.Received(1).AttachToClusterAsync(existingCluster.Id, signal.Id, signal.DeviceId, "join", Arg.Any<CancellationToken>());
+        Assert.Equal(existingCluster.Id, result.ClusterId);
+        Assert.True(result.WasJoined);
+        Assert.False(result.WasCreated);
     }
 
     [Fact]
@@ -184,7 +188,7 @@ public class ClusteringServiceTests
         repo.CreateClusterAsync(Arg.Do<SignalCluster>(c => created = c), signal.Id, signal.DeviceId, Arg.Any<CancellationToken>())
             .Returns(callInfo => Task.FromResult(callInfo.Arg<SignalCluster>()));
 
-        await svc.RouteSignalAsync(signal);
+        var result = await svc.RouteSignalAsync(signal);
 
         await repo.Received(1).CreateClusterAsync(
             Arg.Any<SignalCluster>(), signal.Id, signal.DeviceId, Arg.Any<CancellationToken>());
@@ -192,6 +196,10 @@ public class ClusteringServiceTests
         Assert.Equal(SignalState.Unconfirmed, created!.State);
         Assert.Equal(signal.Category, created.Category);
         Assert.Equal(1, created.RawConfirmationCount);
+        Assert.Equal(created.Id, result.ClusterId);
+        Assert.True(result.WasCreated);
+        Assert.False(result.WasJoined);
+        Assert.Equal("unconfirmed", result.ClusterState);
     }
 
     [Fact]
@@ -378,5 +386,26 @@ public class ClusteringServiceTests
         // Null locality on cluster should not block join (pre-A2 clusters)
         await repo.Received(1).AttachToClusterAsync(
             nullLocalityCluster.Id, signal.Id, signal.DeviceId, "join", Arg.Any<CancellationToken>());
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase A3: ClusterState wire format (snake_case)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task RouteSignal_JoinToClusterInPossibleRestoration_ReturnsSnakeCaseState()
+    {
+        var (svc, repo, h3, civis) = Build();
+        var signal = MakeSignal();
+        var cluster = MakeCluster(lastSeenAgoHours: 0.1);
+        cluster.State = SignalState.PossibleRestoration;
+
+        h3.GetKRingCells(signal.SpatialCellId!, 1).Returns(new[] { signal.SpatialCellId! });
+        repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster> { cluster });
+
+        var result = await svc.RouteSignalAsync(signal);
+
+        Assert.Equal("possible_restoration", result.ClusterState);
     }
 }

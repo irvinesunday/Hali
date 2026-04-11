@@ -28,11 +28,11 @@ public class ClusteringService : IClusteringService
 		_options = options.Value;
 	}
 
-	public async Task RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
+	public async Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
 	{
 		if (signal.SpatialCellId is null)
 		{
-			return;
+			throw new InvalidOperationException("CLUSTERING_NO_SPATIAL_CELL");
 		}
 		string[] searchCells = _h3.GetKRingCells(signal.SpatialCellId, 1);
 		IReadOnlyList<SignalCluster> candidates = await _repo.FindCandidateClustersAsync(searchCells, signal.Category, ct);
@@ -81,6 +81,12 @@ public class ClusteringService : IClusteringService
 				OccurredAt = DateTime.UtcNow
 			}, ct);
 			await _civis.EvaluateClusterAsync(bestCluster.Id, ct);
+			return new ClusterRoutingResult(
+				bestCluster.Id,
+				WasCreated: false,
+				WasJoined: true,
+				ToSnakeCase(bestCluster.State),
+				bestCluster.LocalityId);
 		}
 		else
 		{
@@ -119,6 +125,12 @@ public class ClusteringService : IClusteringService
 				OccurredAt = now
 			}, ct);
 			await _civis.EvaluateClusterAsync(newCluster.Id, ct);
+			return new ClusterRoutingResult(
+				newCluster.Id,
+				WasCreated: true,
+				WasJoined: false,
+				ToSnakeCase(newCluster.State),
+				newCluster.LocalityId);
 		}
 	}
 
@@ -129,6 +141,19 @@ public class ClusteringService : IClusteringService
 		double num2 = Math.Max(0.0, 1.0 - totalHours / _options.TimeScoreMaxAgeHours);
 		double num3 = ((!string.IsNullOrEmpty(signal.ConditionSlug) && signal.ConditionSlug == cluster.DominantConditionSlug) ? 1.0 : 0.0);
 		return 0.4 + 0.25 * num + 0.2 * num2 + 0.15 * num3;
+	}
+
+	private static string ToSnakeCase(SignalState state)
+	{
+		string pascal = state.ToString();
+		var sb = new System.Text.StringBuilder(pascal.Length + 4);
+		for (int i = 0; i < pascal.Length; i++)
+		{
+			char c = pascal[i];
+			if (i > 0 && char.IsUpper(c)) sb.Append('_');
+			sb.Append(char.ToLowerInvariant(c));
+		}
+		return sb.ToString();
 	}
 
 	private static string BuildClusterTitle(SignalEvent signal)

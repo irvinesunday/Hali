@@ -24,14 +24,21 @@ export default function ComposerSubmitScreen(): React.ReactElement {
   return (
     <SubmitScreenContent
       freeText={freeText} preview={preview} deviceHash={deviceHash}
-      onSuccess={() => { reset(); router.replace('/(app)/home'); }}
+      onSuccess={(clusterId?: string) => {
+        reset();
+        if (clusterId) {
+          router.replace(`/(app)/clusters/${clusterId}`);
+        } else {
+          router.replace('/(app)/home');
+        }
+      }}
     />
   );
 }
 
 function SubmitScreenContent({
   freeText, preview, deviceHash, onSuccess,
-}: { freeText: string; preview: SignalPreviewResponse; deviceHash: string; onSuccess: () => void }): React.ReactElement {
+}: { freeText: string; preview: SignalPreviewResponse; deviceHash: string; onSuccess: (clusterId?: string) => void }): React.ReactElement {
   const router = useRouter();
   const [screenState, setScreenState] = useState<ScreenState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -75,9 +82,9 @@ function SubmitScreenContent({
       neutralSummary: preview.neutralSummary ?? undefined,
     };
     const result = await submitSignal(body);
-    if (result.ok) { onSuccess(); return; }
+    if (result.ok) { onSuccess(result.value.clusterId); return; }
     setScreenState('error');
-    if (result.error.status === 409) { onSuccess(); return; }
+    if (result.error.status === 409) { onSuccess(undefined); return; }
     if (result.error.status === 429) {
       setErrorMessage('Too many signals submitted. Please wait a moment and try again.');
     } else if (result.error.status === 422) {

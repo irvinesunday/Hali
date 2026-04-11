@@ -247,6 +247,13 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
   spans auth transitions; derive readiness from React Query `isSuccess`/`isError` instead so the
   flag resets when auth state changes
 
+## Enum serialization rules
+
+- Never use `.ToString().ToLowerInvariant()` on multi-word PascalCase enums for wire output — it
+  produces `possiblerestoration` instead of `possible_restoration`. Use a PascalCase→snake_case
+  helper (see `ClusteringService.ToSnakeCase`, `ClustersController.ToSnakeCase`)
+- Wire-format enum values must match the OpenAPI `enum` array exactly (e.g. `possible_restoration`)
+
 ## GitHub Actions rules
 
 - [ ] All CI workflows reference the .NET SDK version via a shared `env.DOTNET_VERSION` variable

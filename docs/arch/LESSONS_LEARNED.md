@@ -1126,3 +1126,12 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** Helper was written with a deterministic-ID intent that was never wired through; the lambda already mirrors the input signal's properties.
 **Fix applied:** Removed the unused parameter and dead locals.
 **Rule added:** Tests → "After writing a test helper, verify every parameter and local is actually consumed. Unused parameters signal an incomplete implementation or a copy-paste artifact."
+
+## PR #94 — Phase A3: return cluster outcome in submit response
+
+### Lesson 1: Enum.ToString().ToLowerInvariant() breaks multi-word enum wire values
+**File:** `src/Hali.Application/Clusters/ClusteringService.cs`
+**What Copilot flagged:** `bestCluster.State.ToString().ToLowerInvariant()` serializes `SignalState.PossibleRestoration` as `"possiblerestoration"` instead of the documented wire value `"possible_restoration"`. This mismatches the OpenAPI enum and breaks clients.
+**Root cause:** Used `.ToString().ToLowerInvariant()` as a shortcut for enum-to-wire conversion. This works for single-word values (`Unconfirmed` → `"unconfirmed"`) but silently fails for multi-word PascalCase values (`PossibleRestoration` → `"possiblerestoration"` instead of `"possible_restoration"`).
+**Fix applied:** Added a private `ToSnakeCase(SignalState)` helper (matching the existing pattern in `ClustersController` and `OfficialPostsService`) and used it in both the join and create return paths. Added a regression test asserting `PossibleRestoration` maps to `"possible_restoration"`.
+**Rule added:** Enum serialization → "Never use `.ToString().ToLowerInvariant()` on multi-word PascalCase enums for wire output. Use a PascalCase→snake_case helper."
