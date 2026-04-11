@@ -1096,3 +1096,33 @@ a CLI silently ignore a user-supplied option."
 **Root cause:** Relied on existing default-arg call sites still passing as evidence the change was safe. That validates backward compatibility, not the new behavior.
 **Fix applied:** Added three tests: safety uplift, low-confidence geo uplift (including the boundary at exactly 0.5, which must NOT uplift), and combined safety + low-confidence path.
 **Rule added:** Tests → "When adding a parameter that creates a new branch in a calculation, add at least one unit test per new branch AND a boundary test for any threshold the branch uses. Backward-compat tests do not substitute."
+
+## PR #92 — Phase A1: derive spatial cell server-side for signal routing
+
+### Lesson 1: Bare catch(Exception) swallows OperationCanceledException
+**File:** `src/Hali.Application/Signals/SignalIngestionService.cs`
+**What Copilot flagged:** `catch (Exception)` in the H3 derivation block converts all exceptions — including `OperationCanceledException` — into `SIGNAL_SPATIAL_DERIVATION_FAILED`, and discards the inner exception.
+**Root cause:** Used a blanket catch to wrap H3 library failures without considering that the catch filter also traps cancellation tokens and loses diagnostic context.
+**Fix applied:** Changed to `catch (Exception ex) when (ex is not OperationCanceledException)` and passed `ex` as the inner exception to the new `InvalidOperationException`.
+**Rule added:** Exception handling → "Never catch bare `Exception` without a `when` filter that excludes `OperationCanceledException`. Always preserve the original exception as `InnerException` when wrapping."
+
+### Lesson 2: Removing a dependency call without removing the dependency itself
+**File:** `src/Hali.Application/Signals/SignalIngestionService.cs`
+**What Copilot flagged:** `IGeocodingService _geocoding` was injected and assigned but never referenced after the reverse geocoding call was removed from `SubmitAsync`.
+**Root cause:** When removing the geocoding call (per an earlier Copilot comment), only the call site was removed — the constructor parameter, field declaration, and test mock were left behind.
+**Fix applied:** Removed `IGeocodingService` from the constructor, field, and all test setup lines.
+**Rule added:** Dependencies → "When removing a method call that was the sole usage of an injected dependency, also remove the dependency from the constructor, field, DI registration (if needed), and test mocks in the same commit."
+
+### Lesson 3: Duplicate root config files on case-sensitive filesystems
+**File:** `claude.md`
+**What Copilot flagged:** Both `claude.md` and `CLAUDE.md` existed at the repo root, creating conflicting instruction entrypoints.
+**Root cause:** During merge conflict resolution between branches with different versions of the file, a lowercase `claude.md` was left alongside the canonical `CLAUDE.md`.
+**Fix applied:** Deleted `claude.md`. `CLAUDE.md` remains as the sole canonical master brief.
+**Rule added:** Repo hygiene → "After merge conflict resolution, verify no duplicate files were created — especially on case-insensitive dev machines where `claude.md` and `CLAUDE.md` may appear identical but coexist on case-sensitive CI/Linux."
+
+### Lesson 4: Dead locals and unused parameters in test helpers
+**File:** `tests/Hali.Tests.Unit/Signals/SignalIngestionServiceTests.cs`
+**What Copilot flagged:** `SetupDefaultRepo` declared `id` and `now` locals and an `expectedId` parameter, none of which were used — the lambda echoed back the signal's own fields.
+**Root cause:** Helper was written with a deterministic-ID intent that was never wired through; the lambda already mirrors the input signal's properties.
+**Fix applied:** Removed the unused parameter and dead locals.
+**Rule added:** Tests → "After writing a test helper, verify every parameter and local is actually consumed. Unused parameters signal an incomplete implementation or a copy-paste artifact."

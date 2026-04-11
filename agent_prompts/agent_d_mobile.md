@@ -1,3 +1,142 @@
+# Agent D — Mobile Architecture Addendum
+**Consolidated architecture guidance for Agent D (mobile).**
+
+---
+
+## New mobile rules (from consolidated architecture)
+
+### Offline behaviour (required)
+
+```
+Write paths — queue locally when offline:
+  POST /v1/signals/submit
+  POST /v1/clusters/{id}/participation
+  POST /v1/clusters/{id}/restoration-response
+  POST /v1/clusters/{id}/context
+
+Read paths — serve cached last response when offline:
+  GET /v1/home  → show "Last updated X ago" timestamp
+  GET /v1/clusters/{id} → show cached cluster detail
+
+Implementation: see docs/arch/04_phase1_mobile.md §offline-queue
+Idempotency keys are generated client-side before queueing, reused on flush.
+User sees: "Queued — will submit when connected" — not an error state.
+```
+
+### Location permission denial flow
+
+```
+If location permission denied:
+  - Home feed: show ward picker ("Which area are you in?")
+  - Signal composer Step 1: show "Search for a place" input as primary
+  - Pass userEnteredPlace instead of lat/lng to POST /v1/signals/preview
+  - Do NOT block reporting or onboarding
+```
+
+### NLP confidence thresholds → Step 2 screen behaviour
+
+```
+Location confidence:
+  >= 0.80  → pre-fill, no mandatory confirm
+  0.50–0.79 → yellow "confirm location" badge — MUST confirm or edit before Step 3
+  < 0.50   → empty field with search input — MUST fill before Step 3
+
+Condition confidence:
+  >= 0.75  → accept as suggested
+  0.50–0.74 → editable dropdown with extracted value pre-selected
+  < 0.50   → empty dropdown — MUST select before Step 3
+```
+
+### Push token registration timing
+
+```
+Register AFTER successful OTP verification — not at app launch.
+Sequence:
+  1. OTP verify succeeds → session established
+  2. Request push permission
+  3. If granted → POST /v1/devices/push-token
+  4. If denied → skip silently, do not block onboarding
+  5. On subsequent launches: if stored token ≠ current Expo token → re-register silently
+```
+
+### Deep link routing for push notifications
+
+```typescript
+// In app/_layout.tsx:
+switch (data.notificationType) {
+  case 'restoration_prompt':
+    router.push(`/(modals)/restoration/${data.clusterId}`);
+    break;
+  case 'cluster_activated_in_followed_ward':
+    router.push(`/(main)/cluster/${data.clusterId}`);
+    break;
+  case 'cluster_resolved':
+    router.push(`/(main)/cluster/${data.clusterId}`);
+    break;
+}
+// Cold launch: navigate after session bootstrap completes
+// Backgrounded: present as modal over current stack
+```
+
+### Calm state (required — not a generic empty illustration)
+
+```
+When GET /v1/home returns isCalmState: true (no active clusters, no official updates):
+  Show: "Currently calm in [localityName]"
+  Show: last checked timestamp
+  Show: upcoming scheduled disruptions if any (still render official updates section)
+  Do NOT show a generic empty state illustration
+```
+
+### Ward following max-5
+
+```
+Server returns 422 policy_blocked code: max_followed_wards_reached on 6th ward attempt.
+Client must:
+  - Show count "N of 5 wards followed" in settings screen
+  - Disable Follow button when at capacity
+  - Show toast: "You can follow up to 5 wards"
+  - PUT /v1/localities/followed (bulk replace) — send all current + new in one call
+```
+
+### Token storage
+
+```
+accessToken  → in-memory only (never persisted)
+refreshToken → Expo SecureStore ONLY (never AsyncStorage, never localStorage)
+```
+
+### Expo Router structure
+
+```
+app/
+  (auth)/
+    index.tsx          -- phone entry
+    verify.tsx         -- OTP verification
+  (main)/
+    index.tsx          -- home feed
+    cluster/[id].tsx   -- cluster detail
+    composer/
+      step1.tsx
+      step2.tsx
+      step3.tsx
+    settings/
+      wards.tsx
+      notifications.tsx
+      account.tsx
+  (modals)/
+    restoration/[clusterId].tsx
+    context/[clusterId].tsx
+```
+
+### What Agent D must never build
+
+- Map view of any kind
+- Comments, replies, or reactions
+- User profiles visible to others
+- Media uploads
+- Admin or institution screens
+- Any screen not in the inventory above
 # Agent D — Mobile Frontend Writer
 # Role: Write React Native screens. Validate own output. Write service tests. Never push broken code.
 # Version: 2.0 — Hali citizen-mobile specific

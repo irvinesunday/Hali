@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Info } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
+import * as Location from 'expo-location';
 import { submitSignal } from '../../../src/api/signals';
 import { useComposerContext } from '../../../src/context/ComposerContext';
 import { Button } from '../../../src/components/common/Button';
@@ -39,6 +40,22 @@ function SubmitScreenContent({
     if (screenState === 'loading') return;
     setScreenState('loading');
     setErrorMessage('');
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    let position: Location.LocationObject | null = null;
+    if (status === 'granted') {
+      try {
+        position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      } catch {
+        position = await Location.getLastKnownPositionAsync();
+      }
+    } else {
+      position = await Location.getLastKnownPositionAsync();
+    }
+    if (!position) {
+      setScreenState('error');
+      setErrorMessage('Could not determine location. Please enable location services and try again.');
+      return;
+    }
     const idempotencyKey = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256, `${freeText}:${Date.now()}`,
     );
@@ -48,6 +65,8 @@ function SubmitScreenContent({
       subcategorySlug: preview.subcategorySlug,
       conditionSlug: preview.conditionSlug ?? undefined,
       conditionConfidence: preview.conditionConfidence,
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
       locationLabel: preview.location.locationLabel ?? undefined,
       locationPrecisionType: preview.location.locationPrecisionType ?? undefined,
       locationConfidence: preview.location.locationConfidence,

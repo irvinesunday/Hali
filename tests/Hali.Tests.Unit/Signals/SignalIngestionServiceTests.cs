@@ -7,23 +7,24 @@ using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace Hali.Tests.Unit.Signals;
 
 public class SignalIngestionServiceTests
 {
-	private readonly INlpExtractionService _nlp = Substitute.For<INlpExtractionService>(Array.Empty<object>());
+	private readonly INlpExtractionService _nlp = Substitute.For<INlpExtractionService>();
 
-	private readonly IGeocodingService _geocoding = Substitute.For<IGeocodingService>(Array.Empty<object>());
+	private readonly ISignalRepository _repo = Substitute.For<ISignalRepository>();
 
-	private readonly ISignalRepository _repo = Substitute.For<ISignalRepository>(Array.Empty<object>());
+	private readonly IClusteringService _clustering = Substitute.For<IClusteringService>();
 
-	private readonly IClusteringService _clustering = Substitute.For<IClusteringService>(Array.Empty<object>());
+	private readonly IH3CellService _h3 = Substitute.For<IH3CellService>();
 
 	private SignalIngestionService CreateService()
 	{
-		return new SignalIngestionService(_nlp, _geocoding, _repo, _clustering);
+		return new SignalIngestionService(_nlp, _repo, _clustering, _h3);
 	}
 
 	private static NlpExtractionResultDto MakeNlpResult(string category = "roads")
@@ -33,7 +34,30 @@ public class SignalIngestionServiceTests
 
 	private static SignalSubmitRequestDto MakeSubmitRequest(string idempKey = "key-abc")
 	{
-		return new SignalSubmitRequestDto(idempKey, "device-hash-1", "Big potholes on Lusaka Road", "roads", "potholes", "difficult", 0.85, -1.3, 36.8, "Potholes on Lusaka Road", "road", 0.8, "nlp", "temporary", "Potholes on Lusaka Road.", "en", null);
+		return new SignalSubmitRequestDto(idempKey, "device-hash-1", "Big potholes on Lusaka Road", "roads", "potholes", "difficult", 0.85, -1.3, 36.8, "Potholes on Lusaka Road", "road", 0.8, "nlp", "temporary", "Potholes on Lusaka Road.", "en");
+	}
+
+	private void SetupDefaultH3()
+	{
+		_h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Returns("892a1008003ffff");
+	}
+
+	private void SetupDefaultRepo()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(ci =>
+		{
+			var s = ci.ArgAt<SignalEvent>(0);
+			return new SignalEvent
+			{
+				Id = s.Id,
+				CreatedAt = s.CreatedAt,
+				OccurredAt = s.OccurredAt,
+				Category = s.Category,
+				SpatialCellId = s.SpatialCellId
+			};
+		});
 	}
 
 	[Fact]
@@ -53,7 +77,7 @@ public class SignalIngestionServiceTests
 	public async Task PreviewAsync_NlpReturnsNull_ThrowsExtractionFailed()
 	{
 		_repo.BuildTaxonomyBlockAsync(Arg.Any<CancellationToken>()).Returns("roads: potholes");
-		_nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns(null, Array.Empty<NlpExtractionResultDto>());
+		_nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns((NlpExtractionResultDto)null!);
 		SignalIngestionService svc = CreateService();
 		Assert.Equal("NLP_EXTRACTION_FAILED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.PreviewAsync(new SignalPreviewRequestDto("test", null, null, null, null, null, null)))).Message);
 	}
@@ -81,14 +105,15 @@ public class SignalIngestionServiceTests
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, true);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns(null, Array.Empty<GeocodingResult>());
-		SubstituteExtensions.Returns(returnThis: new SignalEvent
+		SetupDefaultH3();
+		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(new SignalEvent
 		{
 			Id = Guid.NewGuid(),
 			CreatedAt = DateTime.UtcNow,
 			OccurredAt = DateTime.UtcNow,
-			Category = CivicCategory.Roads
-		}, value: _repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()), returnThese: Array.Empty<SignalEvent>());
+			Category = CivicCategory.Roads,
+			SpatialCellId = "892a1008003ffff"
+		});
 		SignalIngestionService svc = CreateService();
 		Assert.NotNull(await svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null));
 		Assert.Equal("SIGNAL_DUPLICATE", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null))).Message);
@@ -108,10 +133,7 @@ public class SignalIngestionServiceTests
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		SignalSubmitRequestDto request = MakeSubmitRequest()with
-		{
-			Category = "unknown_category"
-		};
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { Category = "unknown_category" };
 		SignalIngestionService svc = CreateService();
 		Assert.Equal("SIGNAL_INVALID_CATEGORY", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null))).Message);
 	}
@@ -119,51 +141,29 @@ public class SignalIngestionServiceTests
 	[Fact]
 	public async Task SubmitAsync_ValidRequest_PersistsAndReturnsId()
 	{
-		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
-		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns(new GeocodingResult("Lusaka Road, Nairobi", "Lusaka Road", "Nairobi West", "Nairobi", "Kenya"));
-		Guid expectedId = Guid.NewGuid();
-		DateTime now = DateTime.UtcNow;
-		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(new SignalEvent
-		{
-			Id = expectedId,
-			CreatedAt = now,
-			OccurredAt = now,
-			Category = CivicCategory.Roads
-		});
+		SetupDefaultRepo();
+		SetupDefaultH3();
 		SignalIngestionService svc = CreateService();
-		Assert.Equal(expectedId, (await svc.SubmitAsync(MakeSubmitRequest(), null, null)).SignalEventId);
+		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+		Assert.NotEqual(Guid.Empty, result.SignalEventId);
 		await _repo.Received(1).PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
 		await _repo.Received(1).SetIdempotencyKeyAsync(Arg.Is((string k) => k.StartsWith("idem:signal-submit:")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
 	}
 
 	[Theory]
-	[InlineData(new object[] { "roads", true })]
-	[InlineData(new object[] { "water", true })]
-	[InlineData(new object[] { "electricity", true })]
-	[InlineData(new object[] { "environment", true })]
-	[InlineData(new object[] { "ROADS", true })]
-	[InlineData(new object[] { "garbage", false })]
-	[InlineData(new object[] { "", false })]
-	[InlineData(new object[] { "road", false })]
+	[InlineData("roads", true)]
+	[InlineData("water", true)]
+	[InlineData("electricity", true)]
+	[InlineData("environment", true)]
+	[InlineData("ROADS", true)]
+	[InlineData("garbage", false)]
+	[InlineData("", false)]
+	[InlineData("road", false)]
 	public async Task SubmitAsync_CategoryValidation(string category, bool shouldSucceed)
 	{
-		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
-		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
-		_geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns(null, Array.Empty<GeocodingResult>());
-		Guid expectedId = Guid.NewGuid();
-		DateTime now = DateTime.UtcNow;
-		_repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()).Returns(new SignalEvent
-		{
-			Id = expectedId,
-			CreatedAt = now,
-			OccurredAt = now,
-			Category = CivicCategory.Roads
-		});
-		SignalSubmitRequestDto request = MakeSubmitRequest()with
-		{
-			Category = category
-		};
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { Category = category };
 		SignalIngestionService svc = CreateService();
 		if (shouldSucceed)
 		{
@@ -171,5 +171,90 @@ public class SignalIngestionServiceTests
 			return;
 		}
 		Assert.Equal("SIGNAL_INVALID_CATEGORY", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null))).Message);
+	}
+
+	// --- Phase A1: Spatial cell derivation tests ---
+
+	[Fact]
+	public async Task SubmitAsync_MissingCoordinates_ThrowsMissingCoordinates()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { Latitude = null, Longitude = null };
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("SIGNAL_MISSING_COORDINATES", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+
+	[Fact]
+	public async Task SubmitAsync_ValidCoordinates_DerivesSpatialCellId()
+	{
+		SetupDefaultRepo();
+		_h3.LatLngToCell(-1.3, 36.8, 9).Returns("892a1008003ffff");
+		SignalIngestionService svc = CreateService();
+		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		await _repo.Received(1).PersistSignalAsync(
+			Arg.Is<SignalEvent>(s => s.SpatialCellId == "892a1008003ffff"),
+			Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_ValidSubmission_ReachesClusteringWithNonNullSpatialCellId()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SignalIngestionService svc = CreateService();
+		await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		await _clustering.Received(1).RouteSignalAsync(
+			Arg.Is<SignalEvent>(s => s.SpatialCellId != null),
+			Arg.Any<CancellationToken>());
+	}
+
+	[Theory]
+	[InlineData(-91.0, 36.8)]
+	[InlineData(91.0, 36.8)]
+	[InlineData(-1.3, -181.0)]
+	[InlineData(-1.3, 181.0)]
+	public async Task SubmitAsync_InvalidCoordinates_ThrowsInvalidCoordinates(double lat, double lng)
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { Latitude = lat, Longitude = lng };
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("SIGNAL_INVALID_COORDINATES", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_SpatialDerivationFails_ThrowsAndDoesNotPersist()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		_h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Throws(new ArgumentException("Invalid coordinates"));
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+		Assert.Equal("SIGNAL_SPATIAL_DERIVATION_FAILED", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_SpatialDerivationReturnsEmpty_ThrowsAndDoesNotPersist()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		_h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Returns("");
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+		Assert.Equal("SIGNAL_SPATIAL_DERIVATION_FAILED", ex.Message);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
 	}
 }

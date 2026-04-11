@@ -50,13 +50,18 @@ namespace Hali.Infrastructure.Data.Participation.Migrations
                 .OldAnnotation("Npgsql:Enum:participation_type", "affected,no_longer_affected,observing,restoration_no,restoration_unsure,restoration_yes")
                 .OldAnnotation("Npgsql:Enum:participation_type.participation_type", "affected,observing,no_longer_affected,restoration_yes,restoration_no,restoration_unsure");
 
-            migrationBuilder.AlterColumn<int>(
-                name: "participation_type",
-                table: "participations",
-                type: "integer",
-                nullable: false,
-                oldClrType: typeof(ParticipationType),
-                oldType: "participation_type");
+            // Raw SQL with USING clause — PostgreSQL cannot auto-cast enum to integer
+            migrationBuilder.Sql(@"
+                ALTER TABLE participations
+                ALTER COLUMN participation_type TYPE integer
+                USING (CASE participation_type
+                    WHEN 'affected' THEN 0
+                    WHEN 'no_longer_affected' THEN 1
+                    WHEN 'observing' THEN 2
+                    WHEN 'restoration_no' THEN 3
+                    WHEN 'restoration_unsure' THEN 4
+                    WHEN 'restoration_yes' THEN 5
+                END);");
         }
     }
 }
