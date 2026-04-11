@@ -28,11 +28,11 @@ public class ClusteringService : IClusteringService
 		_options = options.Value;
 	}
 
-	public async Task RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
+	public async Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
 	{
 		if (signal.SpatialCellId is null)
 		{
-			return;
+			throw new InvalidOperationException("CLUSTERING_NO_SPATIAL_CELL");
 		}
 		string[] searchCells = _h3.GetKRingCells(signal.SpatialCellId, 1);
 		IReadOnlyList<SignalCluster> candidates = await _repo.FindCandidateClustersAsync(searchCells, signal.Category, ct);
@@ -81,6 +81,12 @@ public class ClusteringService : IClusteringService
 				OccurredAt = DateTime.UtcNow
 			}, ct);
 			await _civis.EvaluateClusterAsync(bestCluster.Id, ct);
+			return new ClusterRoutingResult(
+				bestCluster.Id,
+				WasCreated: false,
+				WasJoined: true,
+				bestCluster.State.ToString().ToLowerInvariant(),
+				bestCluster.LocalityId);
 		}
 		else
 		{
@@ -119,6 +125,12 @@ public class ClusteringService : IClusteringService
 				OccurredAt = now
 			}, ct);
 			await _civis.EvaluateClusterAsync(newCluster.Id, ct);
+			return new ClusterRoutingResult(
+				newCluster.Id,
+				WasCreated: true,
+				WasJoined: false,
+				newCluster.State.ToString().ToLowerInvariant(),
+				newCluster.LocalityId);
 		}
 	}
 

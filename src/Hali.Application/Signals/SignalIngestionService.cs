@@ -129,7 +129,13 @@ public class SignalIngestionService : ISignalIngestionService
 		};
 		SignalEvent saved = await _repo.PersistSignalAsync(signal, ct);
 		await _repo.SetIdempotencyKeyAsync(idemKey, TimeSpan.FromHours(24), ct);
-		await _clustering.RouteSignalAsync(saved, ct);
-		return new SignalSubmitResponseDto(saved.Id, saved.CreatedAt);
+		var routing = await _clustering.RouteSignalAsync(saved, ct);
+		return new SignalSubmitResponseDto(
+			saved.Id,
+			routing.ClusterId,
+			routing.WasCreated,
+			routing.ClusterState,
+			routing.LocalityId,
+			saved.CreatedAt);
 	}
 }

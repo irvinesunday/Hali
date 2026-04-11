@@ -6,7 +6,7 @@
 //
 // Endpoints:
 //   POST /v1/signals/preview  → single-candidate extraction + shouldSuggestJoin
-//   POST /v1/signals/submit   → { signalEventId, createdAt } (async clustering)
+//   POST /v1/signals/submit   → { signalEventId, clusterId, isNewCluster, clusterState, localityId, createdAt }
 
 import { apiRequest } from './client';
 import type {
@@ -46,11 +46,9 @@ export async function previewSignal(
  * [Authorize] — access token is required. If the token has expired the
  * client's 401 interceptor will silently refresh and retry once.
  *
- * The response is { signalEventId, createdAt } — there is NO clusterId.
- * Clustering happens asynchronously on the server side via a background
- * worker. On success, the mobile screen should navigate to the home feed;
- * the new cluster will appear after the worker runs (typical latency <
- * a few seconds).
+ * The response includes the cluster routing outcome (clusterId, isNewCluster,
+ * clusterState, localityId). On success, the mobile screen navigates to the
+ * cluster detail screen using the returned clusterId.
  */
 export async function submitSignal(
   body: SignalSubmitRequest,

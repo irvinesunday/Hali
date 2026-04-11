@@ -52,6 +52,8 @@ public class SignalIngestionServiceTests
 			.Returns(new LocalitySummary(DefaultLocalityId, "Nairobi West", "Nairobi", "Nairobi"));
 	}
 
+	private static readonly Guid DefaultClusterId = Guid.Parse("cccccccc-dddd-eeee-ffff-000000000000");
+
 	private void SetupDefaultRepo()
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
@@ -69,6 +71,8 @@ public class SignalIngestionServiceTests
 				LocalityId = s.LocalityId
 			};
 		});
+		_clustering.RouteSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>())
+			.Returns(new ClusterRoutingResult(DefaultClusterId, WasCreated: true, WasJoined: false, "unconfirmed", DefaultLocalityId));
 	}
 
 	[Fact]
@@ -127,6 +131,8 @@ public class SignalIngestionServiceTests
 			SpatialCellId = "892a1008003ffff",
 			LocalityId = DefaultLocalityId
 		});
+		_clustering.RouteSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>())
+			.Returns(new ClusterRoutingResult(DefaultClusterId, WasCreated: true, WasJoined: false, "unconfirmed", DefaultLocalityId));
 		SignalIngestionService svc = CreateService();
 		Assert.NotNull(await svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null));
 		Assert.Equal("SIGNAL_DUPLICATE", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null))).Message);
@@ -320,5 +326,59 @@ public class SignalIngestionServiceTests
 		await _clustering.Received(1).RouteSignalAsync(
 			Arg.Is<SignalEvent>(s => s.LocalityId == DefaultLocalityId),
 			Arg.Any<CancellationToken>());
+	}
+
+	// --- Phase A3: Cluster routing result in submit response ---
+
+	[Fact]
+	public async Task SubmitAsync_NewClusterCreated_ResponseIncludesClusterIdAndIsNewCluster()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		var clusterId = Guid.NewGuid();
+		_clustering.RouteSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>())
+			.Returns(new ClusterRoutingResult(clusterId, WasCreated: true, WasJoined: false, "unconfirmed", DefaultLocalityId));
+		SignalIngestionService svc = CreateService();
+
+		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		Assert.Equal(clusterId, result.ClusterId);
+		Assert.True(result.IsNewCluster);
+		Assert.Equal("unconfirmed", result.ClusterState);
+		Assert.Equal(DefaultLocalityId, result.LocalityId);
+	}
+
+	[Fact]
+	public async Task SubmitAsync_JoinedExistingCluster_ResponseIncludesClusterIdAndIsNotNew()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		var clusterId = Guid.NewGuid();
+		_clustering.RouteSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>())
+			.Returns(new ClusterRoutingResult(clusterId, WasCreated: false, WasJoined: true, "active", DefaultLocalityId));
+		SignalIngestionService svc = CreateService();
+
+		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		Assert.Equal(clusterId, result.ClusterId);
+		Assert.False(result.IsNewCluster);
+		Assert.Equal("active", result.ClusterState);
+	}
+
+	[Fact]
+	public async Task SubmitAsync_ResponseAlwaysIncludesSignalEventIdAndCreatedAt()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		SignalIngestionService svc = CreateService();
+
+		var result = await svc.SubmitAsync(MakeSubmitRequest(), null, null);
+
+		Assert.NotEqual(Guid.Empty, result.SignalEventId);
+		Assert.NotEqual(Guid.Empty, result.ClusterId);
+		Assert.NotEqual(default, result.CreatedAt);
 	}
 }

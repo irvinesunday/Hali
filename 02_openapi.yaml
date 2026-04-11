@@ -863,9 +863,13 @@ components:
         sourceLanguage: { type: string, nullable: true }
     SignalSubmitResponse:
       type: object
-      required: [signalEventId, createdAt]
+      required: [signalEventId, clusterId, isNewCluster, clusterState, createdAt]
       properties:
         signalEventId: { type: string, format: uuid }
+        clusterId: { type: string, format: uuid }
+        isNewCluster: { type: boolean }
+        clusterState: { type: string, enum: [unconfirmed, active, possible_restoration, resolved] }
+        localityId: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
 
     # ── Clusters / Participation ─────────────────────────────────────
