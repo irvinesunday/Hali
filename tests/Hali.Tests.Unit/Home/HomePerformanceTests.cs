@@ -34,37 +34,33 @@ public class HomePerformanceTests
             LastSeenAt = DateTime.UtcNow
         };
 
-    // ── Test 1: parallel section builders produce same result as sequential ───
+    // ── Test 1: section filters produce deterministic results ──────────────
 
     [Fact]
-    public async Task ParallelSectionBuild_ProducesSameResultAsSequential()
+    public void SectionFilters_ProduceDeterministicResults()
     {
         var localityId = Guid.NewGuid();
         var clusters = Enumerable.Range(1, 15)
             .Select(i => MakeCluster(localityId, DateTime.UtcNow.AddMinutes(-i)))
             .ToList();
 
-        // Simulate sequential section building
-        var activeNow = FilterSection(clusters, recurring: false, limit: 20);
-        var recurring = FilterSection(clusters, recurring: true, limit: 10);
+        var activeNowA = FilterSection(clusters, recurring: false, limit: 20);
+        var activeNowB = FilterSection(clusters, recurring: false, limit: 20);
 
-        // Simulate parallel section building (same logic, concurrent execution)
-        var activeNowTask = Task.FromResult(FilterSection(clusters, recurring: false, limit: 20));
-        var recurringTask = Task.FromResult(FilterSection(clusters, recurring: true, limit: 10));
-        await Task.WhenAll(activeNowTask, recurringTask);
-
-        Assert.Equal(activeNow.Count, activeNowTask.Result.Count);
-        Assert.Equal(recurring.Count, recurringTask.Result.Count);
+        Assert.Equal(activeNowA.Count, activeNowB.Count);
+        Assert.Equal(
+            activeNowA.Select(c => c.Id).ToList(),
+            activeNowB.Select(c => c.Id).ToList());
     }
 
-    // ── Test 2: parallel official post merge produces correct ordering ────────
+    // ── Test 2: multi-locality official post merge produces correct ordering ──
 
     [Fact]
-    public async Task ParallelOfficialPostMerge_MaintainsDescendingOrder()
+    public void OfficialPostMerge_MaintainsDescendingOrder()
     {
         var now = DateTime.UtcNow;
 
-        // Simulate parallel per-locality fetches merged together
+        // Simulate per-locality fetches merged together
         var localityAPosts = new List<DateTime>
         {
             now.AddMinutes(-1),
@@ -76,12 +72,8 @@ public class HomePerformanceTests
             now.AddMinutes(-3),
         };
 
-        var taskA = Task.FromResult(localityAPosts);
-        var taskB = Task.FromResult(localityBPosts);
-        var results = await Task.WhenAll(taskA, taskB);
-
-        var merged = results
-            .SelectMany(p => p)
+        var merged = localityAPosts
+            .Concat(localityBPosts)
             .OrderByDescending(d => d)
             .ToList();
 

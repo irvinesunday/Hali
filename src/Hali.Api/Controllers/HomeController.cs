@@ -105,19 +105,14 @@ public class HomeController : ControllerBase
 
     private async Task<HomeResponseDto> BuildFullResponseAsync(List<Guid> localityIds, CancellationToken ct)
     {
-        var activeNowTask = BuildActiveNowSectionAsync(localityIds, null, ct);
-        var officialUpdatesTask = BuildOfficialUpdatesSectionAsync(localityIds, null, ct);
-        var recurringTask = BuildRecurringSectionAsync(localityIds, null, ct);
-        var otherActiveTask = BuildOtherActiveSectionAsync(localityIds, null, ct);
-
-        await Task.WhenAll(activeNowTask, officialUpdatesTask, recurringTask, otherActiveTask);
-
+        // Sections run sequentially because all repository calls share a
+        // single scoped DbContext, which is not thread-safe.
         return new HomeResponseDto
         {
-            ActiveNow = activeNowTask.Result,
-            OfficialUpdates = officialUpdatesTask.Result,
-            RecurringAtThisTime = recurringTask.Result,
-            OtherActiveSignals = otherActiveTask.Result
+            ActiveNow = await BuildActiveNowSectionAsync(localityIds, null, ct),
+            OfficialUpdates = await BuildOfficialUpdatesSectionAsync(localityIds, null, ct),
+            RecurringAtThisTime = await BuildRecurringSectionAsync(localityIds, null, ct),
+            OtherActiveSignals = await BuildOtherActiveSectionAsync(localityIds, null, ct)
         };
     }
 
@@ -139,9 +134,12 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyPostSection();
 
-        var postTasks = localityIds.Select(lid => _officialPosts.GetActiveByLocalityAsync(lid, ct));
-        var postResults = await Task.WhenAll(postTasks);
-        var allPosts = postResults.SelectMany(p => p).ToList();
+        var allPosts = new List<OfficialPostResponseDto>();
+        foreach (var lid in localityIds)
+        {
+            var posts = await _officialPosts.GetActiveByLocalityAsync(lid, ct);
+            allPosts.AddRange(posts);
+        }
 
         // Sort by CreatedAt descending, apply cursor
         var sorted = allPosts
