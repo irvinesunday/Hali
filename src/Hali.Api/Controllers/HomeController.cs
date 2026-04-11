@@ -112,10 +112,10 @@ public class HomeController : ControllerBase
 
         return new HomeResponseDto
         {
-            ActiveNow = activeNowTask.Result,
-            OfficialUpdates = officialUpdatesTask.Result,
-            RecurringAtThisTime = recurringTask.Result,
-            OtherActiveSignals = otherActiveTask.Result
+            ActiveNow = await activeNowTask,
+            OfficialUpdates = await officialUpdatesTask,
+            RecurringAtThisTime = await recurringTask,
+            OtherActiveSignals = await otherActiveTask
         };
     }
 

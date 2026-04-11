@@ -139,10 +139,10 @@ public class HomeFeedConcurrencyTests
 
         await Task.WhenAll(t1, t2, t3, t4);
 
-        Assert.NotEmpty(t1.Result);
-        Assert.NotNull(t2.Result);
-        Assert.NotEmpty(t3.Result);
-        Assert.NotEmpty(t4.Result);
+        Assert.NotEmpty(await t1);
+        Assert.NotNull(await t2);
+        Assert.NotEmpty(await t3);
+        Assert.NotEmpty(await t4);
     }
 
     // ── Test 3: single-section fetch is also safe (no concurrency needed) ────
@@ -173,8 +173,7 @@ public class HomeFeedConcurrencyTests
         var result = await svc.GetActiveByLocalitiesPagedAsync(
             empty, false, 21, null, CancellationToken.None);
 
-        // The fake returns a cluster even for empty — the real guard is in the controller
-        Assert.NotNull(result);
+        Assert.Empty(result);
     }
 
     // ── Test 5: concurrent execution preserves section-specific filtering ────
@@ -191,9 +190,9 @@ public class HomeFeedConcurrencyTests
         await Task.WhenAll(activeNowTask, recurringTask);
 
         // activeNow should have non-recurring cluster
-        Assert.All(activeNowTask.Result, c => Assert.NotEqual("recurring", c.TemporalType));
+        Assert.All(await activeNowTask, c => Assert.NotEqual("recurring", c.TemporalType));
 
         // recurring should have recurring cluster
-        Assert.All(recurringTask.Result, c => Assert.Equal("recurring", c.TemporalType));
+        Assert.All(await recurringTask, c => Assert.Equal("recurring", c.TemporalType));
     }
 }
