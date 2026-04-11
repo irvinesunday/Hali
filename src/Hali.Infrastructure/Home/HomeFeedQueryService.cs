@@ -71,7 +71,7 @@ public class HomeFeedQueryService : IHomeFeedQueryService
         return await q.OrderByDescending(c => c.ActivatedAt).Take(limit).ToListAsync(ct);
     }
 
-    public async Task<List<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
+    public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
         Guid localityId, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();

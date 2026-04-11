@@ -35,6 +35,6 @@ public interface IHomeFeedQueryService
     /// <summary>
     /// Returns published official posts scoped to a locality, mapped to response DTOs.
     /// </summary>
-    Task<List<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
+    Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
         Guid localityId, CancellationToken ct);
 }

@@ -77,7 +77,7 @@ public class HomeFeedConcurrencyTests
             finally { Exit(); }
         }
 
-        public async Task<List<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
+        public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
             Guid localityId, CancellationToken ct)
         {
             Enter();
