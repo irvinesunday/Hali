@@ -10,6 +10,7 @@ import type {
   ApiError,
   Result,
   ClusterResponse,
+  OfficialPostResponse,
   HomeResponse,
   HomeSectionName,
   PagedSection,
@@ -17,6 +18,10 @@ import type {
   ContextRequest,
   RestorationResponseRequest,
 } from '../types/api';
+
+/** Maps each home section name to its item type on the wire. */
+type SectionItemType<S extends HomeSectionName> =
+  S extends 'official_updates' ? OfficialPostResponse : ClusterResponse;
 
 /**
  * GET /v1/home
@@ -26,36 +31,30 @@ import type {
  * parameter. Calling this with no follows (or unauthenticated) returns all
  * sections with items: [].
  *
- * Pass a `section` name to fetch only that section (paginated via cursor).
+ * For single-section pagination, use {@link getHomeSection} instead.
  */
-export async function getHome(
-  options: { section?: HomeSectionName; cursor?: string } = {},
-): Promise<Result<HomeResponse, ApiError>> {
-  const query: string[] = [];
-  if (options.section) {
-    query.push(`section=${encodeURIComponent(options.section)}`);
-  }
-  if (options.cursor) {
-    query.push(`cursor=${encodeURIComponent(options.cursor)}`);
-  }
-  const path = query.length > 0 ? `/v1/home?${query.join('&')}` : '/v1/home';
-  return apiRequest<HomeResponse>(path, { method: 'GET' });
+export async function getHome(): Promise<Result<HomeResponse, ApiError>> {
+  return apiRequest<HomeResponse>('/v1/home', { method: 'GET' });
 }
 
 /**
  * GET /v1/home?section=...&cursor=... — fetch a single paginated section.
  * Use this when paging "Load more" inside a specific section.
- * The backend returns a PagedSection<T> wrapper directly (not a HomeResponse).
+ * The backend returns a PagedSection<T> directly (not a HomeResponse).
+ *
+ * The item type is inferred from the section name:
+ *   - 'official_updates' → OfficialPostResponse
+ *   - all others → ClusterResponse
  */
-export async function getHomeSection(
-  section: HomeSectionName,
+export async function getHomeSection<S extends HomeSectionName>(
+  section: S,
   cursor?: string,
-): Promise<Result<PagedSection<ClusterResponse>, ApiError>> {
+): Promise<Result<PagedSection<SectionItemType<S>>, ApiError>> {
   const query: string[] = [`section=${encodeURIComponent(section)}`];
   if (cursor) {
     query.push(`cursor=${encodeURIComponent(cursor)}`);
   }
-  return apiRequest<PagedSection<ClusterResponse>>(
+  return apiRequest<PagedSection<SectionItemType<S>>>(
     `/v1/home?${query.join('&')}`,
     { method: 'GET' },
   );

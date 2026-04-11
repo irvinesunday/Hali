@@ -596,11 +596,17 @@ paths:
           description: Opaque pagination cursor from a previous response's nextCursor
       responses:
         '200':
-          description: Home feed (all sections or single section depending on query params)
+          description: |
+            Without `section`: returns HomeResponse (all four sections).
+            With `section`: returns the matching typed PagedSection directly
+            (ClusterPagedSection or OfficialPostPagedSection).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HomeResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/HomeResponse'
+                  - $ref: '#/components/schemas/ClusterPagedSection'
+                  - $ref: '#/components/schemas/OfficialPostPagedSection'
         '400':
           description: Unknown section name
           content:
@@ -1027,13 +1033,30 @@ components:
           $ref: '#/components/schemas/NotificationSettings'
 
     # ── Home Feed ────────────────────────────────────────────────────
-    PagedSection:
+    ClusterPagedSection:
       type: object
-      description: A paginated section of home feed items
+      description: Paginated section containing ClusterResponse items.
+      required: [items, nextCursor, totalCount]
       properties:
         items:
           type: array
-          items: {}
+          items:
+            $ref: '#/components/schemas/ClusterResponse'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Opaque base64-encoded cursor; null means no more pages
+        totalCount:
+          type: integer
+    OfficialPostPagedSection:
+      type: object
+      description: Paginated section containing OfficialPostResponse items.
+      required: [items, nextCursor, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfficialPostResponse'
         nextCursor:
           type: string
           nullable: true
@@ -1042,20 +1065,21 @@ components:
           type: integer
     HomeResponse:
       type: object
+      required: [activeNow, officialUpdates, recurringAtThisTime, otherActiveSignals]
       properties:
         activeNow:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Non-recurring active clusters in followed localities (max 20)
         officialUpdates:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/OfficialPostPagedSection'
           description: Official posts for followed localities (max 5)
         recurringAtThisTime:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Recurring clusters in followed localities (max 10)
         otherActiveSignals:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Active clusters outside followed localities (max 10)
