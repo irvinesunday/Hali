@@ -61,7 +61,7 @@ public class SignalIngestionService : ISignalIngestionService
     {
         var sw = Stopwatch.StartNew();
         _logger?.LogInformation("{EventName} category={Category}",
-            ObservabilityEvents.SignalSubmitStarted, request.Category);
+            ObservabilityEvents.SignalSubmitStarted, ObservabilityEvents.SanitizeForLog(request.Category));
 
         try
         {
@@ -165,11 +165,13 @@ public class SignalIngestionService : ISignalIngestionService
                 routing.LocalityId,
                 saved.CreatedAt);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             sw.Stop();
             _logger?.LogWarning("{EventName} reason={Reason} durationMs={DurationMs}",
-                ObservabilityEvents.SignalSubmitFailed, ex.Message, sw.ElapsedMilliseconds);
+                ObservabilityEvents.SignalSubmitFailed,
+                ObservabilityEvents.SanitizeForLog(ex.GetType().Name),
+                sw.ElapsedMilliseconds);
             throw;
         }
     }

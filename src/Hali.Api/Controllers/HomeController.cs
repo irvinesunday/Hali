@@ -34,13 +34,13 @@ public class HomeController : ControllerBase
     private readonly IHomeFeedQueryService _feedQuery;
     private readonly IFollowService _follows;
     private readonly IDatabase _redis;
-    private readonly ILogger<HomeController> _logger;
+    private readonly ILogger<HomeController>? _logger;
 
     public HomeController(
         IHomeFeedQueryService feedQuery,
         IFollowService follows,
         IDatabase redis,
-        ILogger<HomeController> logger)
+        ILogger<HomeController>? logger = null)
     {
         _feedQuery = feedQuery;
         _follows = follows;
@@ -57,7 +57,7 @@ public class HomeController : ControllerBase
         CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        _logger.LogInformation("{EventName}", ObservabilityEvents.HomeRequestStarted);
+        _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeRequestStarted);
 
         try
         {
@@ -72,24 +72,32 @@ public class HomeController : ControllerBase
 
             // Log locality scoping mode
             if (localityId.HasValue && isAuthenticated)
-                _logger.LogInformation("{EventName} localityId={LocalityId}",
+                _logger?.LogInformation("{EventName} localityId={LocalityId}",
                     ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value);
             else if (localityIds.Count > 0)
-                _logger.LogInformation("{EventName} localityCount={LocalityCount}",
+                _logger?.LogInformation("{EventName} localityCount={LocalityCount}",
                     ObservabilityEvents.HomeLocalityScopeFallback, localityIds.Count);
             else
-                _logger.LogInformation("{EventName}", ObservabilityEvents.HomeLocalityScopeGuestEmpty);
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeLocalityScopeGuestEmpty);
 
             // Section-specific paginated request — skip cache, return single section
             if (section is not null)
             {
                 var paged = await GetPagedSectionAsync(section, localityIds, cursorDt, ct);
-                if (paged is null) return BadRequest(new { error = "Unknown section name" });
+                string safeSection = ObservabilityEvents.SanitizeForLog(section);
+                if (paged is null)
+                {
+                    sw.Stop();
+                    _logger?.LogInformation(
+                        "{EventName} section={Section} statusCode={StatusCode} durationMs={DurationMs}",
+                        ObservabilityEvents.HomeRequestCompleted, safeSection, 400, sw.ElapsedMilliseconds);
+                    return BadRequest(new { error = "Unknown section name" });
+                }
 
                 sw.Stop();
-                _logger.LogInformation(
+                _logger?.LogInformation(
                     "{EventName} section={Section} durationMs={DurationMs}",
-                    ObservabilityEvents.HomeRequestCompleted, section, sw.ElapsedMilliseconds);
+                    ObservabilityEvents.HomeRequestCompleted, safeSection, sw.ElapsedMilliseconds);
                 return Ok(paged);
             }
 
@@ -97,28 +105,28 @@ public class HomeController : ControllerBase
             if (cursor is null && localityIds.Count > 0)
             {
                 var cacheKey = BuildCacheKey(localityIds);
-                _logger.LogInformation("{EventName}", ObservabilityEvents.HomeCacheChecked);
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheChecked);
 
                 RedisValue cached = await _redis.StringGetAsync(cacheKey);
                 if (cached.HasValue)
                 {
                     sw.Stop();
-                    _logger.LogInformation("{EventName} durationMs={DurationMs}",
+                    _logger?.LogInformation("{EventName} durationMs={DurationMs}",
                         ObservabilityEvents.HomeCacheHit, sw.ElapsedMilliseconds);
-                    _logger.LogInformation(
+                    _logger?.LogInformation(
                         "{EventName} durationMs={DurationMs} cacheHit={CacheHit}",
                         ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds, true);
                     return Content(cached!, "application/json");
                 }
 
-                _logger.LogInformation("{EventName}", ObservabilityEvents.HomeCacheMiss);
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheMiss);
 
                 var response = await BuildFullResponseAsync(localityIds, ct);
                 var json = JsonSerializer.Serialize(response);
                 await _redis.StringSetAsync(cacheKey, json, CacheTtl);
 
                 sw.Stop();
-                _logger.LogInformation(
+                _logger?.LogInformation(
                     "{EventName} durationMs={DurationMs} cacheHit={CacheHit}",
                     ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds, false);
                 return Ok(response);
@@ -126,7 +134,7 @@ public class HomeController : ControllerBase
 
             var fullResponse = await BuildFullResponseAsync(localityIds, ct);
             sw.Stop();
-            _logger.LogInformation(
+            _logger?.LogInformation(
                 "{EventName} durationMs={DurationMs}",
                 ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds);
             return Ok(fullResponse);
@@ -134,7 +142,7 @@ public class HomeController : ControllerBase
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             sw.Stop();
-            _logger.LogError(ex,
+            _logger?.LogError(ex,
                 "{EventName} durationMs={DurationMs}",
                 ObservabilityEvents.HomeRequestFailed, sw.ElapsedMilliseconds);
             throw;
@@ -193,7 +201,7 @@ public class HomeController : ControllerBase
             _ => 0
         };
 
-        _logger.LogInformation(
+        _logger?.LogInformation(
             "{EventName} section={Section} itemCount={ItemCount} durationMs={DurationMs}",
             ObservabilityEvents.HomeSectionBuilt, sectionName, itemCount, sw.ElapsedMilliseconds);
 

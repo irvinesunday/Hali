@@ -143,8 +143,6 @@ public sealed class EvaluatePossibleRestorationJob(
                 {
                     try
                     {
-                        logger.LogInformation("{EventName} clusterId={ClusterId}",
-                            ObservabilityEvents.ClusterRestorationConfirmed, cluster.Id);
                         await notificationQueue.QueueClusterResolvedAsync(cluster.Id, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
                     }
                     catch (Exception ex)
