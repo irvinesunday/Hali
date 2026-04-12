@@ -1,21 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Hali.Application.Advisories;
-using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Home;
 using Hali.Application.Notifications;
+using Hali.Application.Observability;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
 using Hali.Contracts.Home;
 using Hali.Domain.Entities.Clusters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace Hali.Api.Controllers;
@@ -30,21 +32,21 @@ public class HomeController : ControllerBase
     private const int LimitOtherActive = 10;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
-    private readonly IClusterRepository _clusters;
-    private readonly IOfficialPostsService _officialPosts;
+    private readonly IHomeFeedQueryService _feedQuery;
     private readonly IFollowService _follows;
     private readonly IDatabase _redis;
+    private readonly ILogger<HomeController>? _logger;
 
     public HomeController(
-        IClusterRepository clusters,
-        IOfficialPostsService officialPosts,
+        IHomeFeedQueryService feedQuery,
         IFollowService follows,
-        IDatabase redis)
+        IDatabase redis,
+        ILogger<HomeController>? logger = null)
     {
-        _clusters = clusters;
-        _officialPosts = officialPosts;
+        _feedQuery = feedQuery;
         _follows = follows;
         _redis = redis;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -52,35 +54,100 @@ public class HomeController : ControllerBase
     public async Task<IActionResult> GetHome(
         [FromQuery] string? section,
         [FromQuery] string? cursor,
+        [FromQuery] Guid? localityId,
         CancellationToken ct)
     {
-        var localityIds = await GetFollowedLocalityIdsAsync(ct);
-        var cursorDt = DecodeCursor(cursor);
+        var sw = Stopwatch.StartNew();
+        _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeRequestStarted);
 
-        // Section-specific paginated request — skip cache, return single section
-        if (section is not null)
+        try
         {
-            var paged = await GetPagedSectionAsync(section, localityIds, cursorDt, ct);
-            if (paged is null)
-                throw new ValidationException("Unknown section name.", code: "validation.invalid_section");
-            return Ok(paged);
-        }
+            // Only authenticated users may scope the feed to an explicit locality.
+            // Anonymous callers fall back to the followed-localities path, which
+            // returns empty sections for guests.
+            bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+            var localityIds = localityId.HasValue && isAuthenticated
+                ? new List<Guid> { localityId.Value }
+                : await GetFollowedLocalityIdsAsync(ct);
+            var cursorDt = DecodeCursor(cursor);
 
-        // Full home response — try Redis cache for first page
-        if (cursor is null && localityIds.Count > 0)
+            // Log locality scoping mode
+            if (localityId.HasValue && isAuthenticated)
+                _logger?.LogInformation("{EventName} localityId={LocalityId}",
+                    ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value);
+            else if (localityIds.Count > 0)
+                _logger?.LogInformation("{EventName} localityCount={LocalityCount}",
+                    ObservabilityEvents.HomeLocalityScopeFallback, localityIds.Count);
+            else
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeLocalityScopeGuestEmpty);
+
+            // Section-specific paginated request — skip cache, return single section
+            if (section is not null)
+            {
+                var paged = await GetPagedSectionAsync(section, localityIds, cursorDt, ct);
+                string safeSection = ObservabilityEvents.SanitizeForLog(section);
+                if (paged is null)
+                {
+                    sw.Stop();
+                    _logger?.LogInformation(
+                        "{EventName} section={Section} statusCode={StatusCode} durationMs={DurationMs}",
+                        ObservabilityEvents.HomeRequestCompleted, safeSection, 400, sw.ElapsedMilliseconds);
+                    throw new ValidationException("Unknown section name.", code: "validation.invalid_section");
+                }
+
+                sw.Stop();
+                _logger?.LogInformation(
+                    "{EventName} section={Section} durationMs={DurationMs}",
+                    ObservabilityEvents.HomeRequestCompleted, safeSection, sw.ElapsedMilliseconds);
+                return Ok(paged);
+            }
+
+            // Full home response — try Redis cache for first page
+            if (cursor is null && localityIds.Count > 0)
+            {
+                var cacheKey = BuildCacheKey(localityIds);
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheChecked);
+
+                RedisValue cached = await _redis.StringGetAsync(cacheKey);
+                if (cached.HasValue)
+                {
+                    sw.Stop();
+                    _logger?.LogInformation("{EventName} durationMs={DurationMs}",
+                        ObservabilityEvents.HomeCacheHit, sw.ElapsedMilliseconds);
+                    _logger?.LogInformation(
+                        "{EventName} durationMs={DurationMs} cacheHit={CacheHit}",
+                        ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds, true);
+                    return Content(cached!, "application/json");
+                }
+
+                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheMiss);
+
+                var response = await BuildFullResponseAsync(localityIds, ct);
+                var json = JsonSerializer.Serialize(response);
+                await _redis.StringSetAsync(cacheKey, json, CacheTtl);
+
+                sw.Stop();
+                _logger?.LogInformation(
+                    "{EventName} durationMs={DurationMs} cacheHit={CacheHit}",
+                    ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds, false);
+                return Ok(response);
+            }
+
+            var fullResponse = await BuildFullResponseAsync(localityIds, ct);
+            sw.Stop();
+            _logger?.LogInformation(
+                "{EventName} durationMs={DurationMs}",
+                ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds);
+            return Ok(fullResponse);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            var cacheKey = BuildCacheKey(localityIds);
-            RedisValue cached = await _redis.StringGetAsync(cacheKey);
-            if (cached.HasValue)
-                return Content(cached!, "application/json");
-
-            var response = await BuildFullResponseAsync(localityIds, ct);
-            var json = JsonSerializer.Serialize(response);
-            await _redis.StringSetAsync(cacheKey, json, CacheTtl);
-            return Ok(response);
+            sw.Stop();
+            _logger?.LogError(ex,
+                "{EventName} durationMs={DurationMs}",
+                ObservabilityEvents.HomeRequestFailed, sw.ElapsedMilliseconds);
+            throw;
         }
-
-        return Ok(await BuildFullResponseAsync(localityIds, ct));
     }
 
     // ── Section helpers ──────────────────────────────────────────────────────
@@ -100,13 +167,46 @@ public class HomeController : ControllerBase
 
     private async Task<HomeResponseDto> BuildFullResponseAsync(List<Guid> localityIds, CancellationToken ct)
     {
+        // Each section task is safe to run concurrently because
+        // IHomeFeedQueryService creates an isolated DbContext per call.
+        var activeNowTask = BuildTimedSectionAsync("active_now",
+            () => BuildActiveNowSectionAsync(localityIds, null, ct));
+        var officialUpdatesTask = BuildTimedSectionAsync("official_updates",
+            () => BuildOfficialUpdatesSectionAsync(localityIds, null, ct));
+        var recurringTask = BuildTimedSectionAsync("recurring_at_this_time",
+            () => BuildRecurringSectionAsync(localityIds, null, ct));
+        var otherActiveTask = BuildTimedSectionAsync("other_active_signals",
+            () => BuildOtherActiveSectionAsync(localityIds, null, ct));
+
+        await Task.WhenAll(activeNowTask, officialUpdatesTask, recurringTask, otherActiveTask);
+
         return new HomeResponseDto
         {
-            ActiveNow = await BuildActiveNowSectionAsync(localityIds, null, ct),
-            OfficialUpdates = await BuildOfficialUpdatesSectionAsync(localityIds, null, ct),
-            RecurringAtThisTime = await BuildRecurringSectionAsync(localityIds, null, ct),
-            OtherActiveSignals = await BuildOtherActiveSectionAsync(localityIds, null, ct)
+            ActiveNow = await activeNowTask,
+            OfficialUpdates = await officialUpdatesTask,
+            RecurringAtThisTime = await recurringTask,
+            OtherActiveSignals = await otherActiveTask
         };
+    }
+
+    private async Task<T> BuildTimedSectionAsync<T>(string sectionName, Func<Task<T>> buildFunc)
+    {
+        var sw = Stopwatch.StartNew();
+        var result = await buildFunc();
+        sw.Stop();
+
+        int itemCount = result switch
+        {
+            PagedSection<ClusterResponseDto> cs => cs.Items.Count,
+            PagedSection<OfficialPostResponseDto> ps => ps.Items.Count,
+            _ => 0
+        };
+
+        _logger?.LogInformation(
+            "{EventName} section={Section} itemCount={ItemCount} durationMs={DurationMs}",
+            ObservabilityEvents.HomeSectionBuilt, sectionName, itemCount, sw.ElapsedMilliseconds);
+
+        return result;
     }
 
     private async Task<PagedSection<ClusterResponseDto>> BuildActiveNowSectionAsync(
@@ -115,7 +215,7 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyClusterSection();
 
-        var raw = await _clusters.GetActiveByLocalitiesPagedAsync(
+        var raw = await _feedQuery.GetActiveByLocalitiesPagedAsync(
             localityIds, recurringOnly: false, limit: LimitActiveNow + 1, cursorBefore, ct);
 
         return ToPagedClusterSection(raw, LimitActiveNow);
@@ -128,9 +228,9 @@ public class HomeController : ControllerBase
             return EmptyPostSection();
 
         var allPosts = new List<OfficialPostResponseDto>();
-        foreach (var localityId in localityIds)
+        foreach (var lid in localityIds)
         {
-            var posts = await _officialPosts.GetActiveByLocalityAsync(localityId, ct);
+            var posts = await _feedQuery.GetOfficialPostsByLocalityAsync(lid, ct);
             allPosts.AddRange(posts);
         }
 
@@ -159,7 +259,7 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyClusterSection();
 
-        var raw = await _clusters.GetActiveByLocalitiesPagedAsync(
+        var raw = await _feedQuery.GetActiveByLocalitiesPagedAsync(
             localityIds, recurringOnly: true, limit: LimitRecurring + 1, cursorBefore, ct);
 
         return ToPagedClusterSection(raw, LimitRecurring);
@@ -168,7 +268,7 @@ public class HomeController : ControllerBase
     private async Task<PagedSection<ClusterResponseDto>> BuildOtherActiveSectionAsync(
         List<Guid> localityIds, DateTime? cursorBefore, CancellationToken ct)
     {
-        var raw = await _clusters.GetAllActivePagedAsync(localityIds, LimitOtherActive + 1, cursorBefore, ct);
+        var raw = await _feedQuery.GetAllActivePagedAsync(localityIds, LimitOtherActive + 1, cursorBefore, ct);
         return ToPagedClusterSection(raw, LimitOtherActive);
     }
 

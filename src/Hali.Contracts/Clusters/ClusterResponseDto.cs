@@ -20,4 +20,24 @@ public record ClusterResponseDto(
     DateTime? ResolvedAt)
 {
     public List<OfficialPostResponseDto> OfficialPosts { get; init; } = new();
+
+    /// <summary>
+    /// Per-caller participation summary used by the mobile UI to gate the
+    /// "Add Further Context" and restoration-response CTAs server-side.
+    /// Null for unauthenticated callers or when the caller has no
+    /// participation record on this cluster.
+    /// </summary>
+    public MyParticipationDto? MyParticipation { get; init; }
 }
+
+/// <summary>
+/// Snapshot of the authenticated caller's most recent participation on a
+/// cluster, plus the server's verdict on whether the two restricted CTAs
+/// may be shown. This is the source of truth — the mobile app must NOT
+/// gate these CTAs on local state alone.
+/// </summary>
+public record MyParticipationDto(
+    string Type,
+    DateTime CreatedAt,
+    bool CanAddContext,
+    bool CanRespondToRestoration);

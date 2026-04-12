@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Notifications;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -39,7 +40,12 @@ public class CivisEvaluationService : ICivisEvaluationService
             int wrabCount = await _repo.ComputeWrabCountAsync(clusterId, _options.WrabRollingWindowDays, ct);
             int effectiveWrab = Math.Max(wrabCount, opts.BaseFloor);
             double sds = CivisCalculator.ComputeSds(await _repo.ComputeActiveMassCountAsync(clusterId, _options.ActiveMassHorizonHours, ct), wrabCount, opts.BaseFloor);
-            int macf = CivisCalculator.ComputeMacf(sds, opts);
+            double minLocationConfidence = await _repo.GetMinLocationConfidenceAsync(clusterId, ct);
+            int macf = CivisCalculator.ComputeMacf(
+                sds,
+                opts,
+                cluster.Category == CivicCategory.Safety,
+                minLocationConfidence);
             int uniqueDevices = await _repo.CountUniqueDevicesAsync(clusterId, ct);
             DateTime now = DateTime.UtcNow;
             cluster.Wrab = effectiveWrab;
@@ -84,8 +90,8 @@ public class CivisEvaluationService : ICivisEvaluationService
                 }, ct);
 
                 _logger?.LogInformation(
-                    "{eventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
-                    "cluster.activated", clusterId, cluster.LocalityId, cluster.Category);
+                    "{EventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
+                    ObservabilityEvents.ClusterActivated, clusterId, cluster.LocalityId, cluster.Category);
 
                 if (_notificationQueue != null)
                 {
@@ -177,12 +183,14 @@ public class CivisEvaluationService : ICivisEvaluationService
                 {
                     if (toState == SignalState.PossibleRestoration)
                     {
-                        _logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.possible_restoration", clusterId);
+                        _logger?.LogInformation("{EventName} clusterId={ClusterId}",
+                            ObservabilityEvents.ClusterPossibleRestoration, clusterId);
                         await _notificationQueue.QueueRestorationPromptAsync(clusterId, cluster.Title ?? "Civic issue", ct);
                     }
                     else if (toState == SignalState.Resolved)
                     {
-                        _logger?.LogInformation("{eventName} clusterId={ClusterId}", "cluster.resolved_by_decay", clusterId);
+                        _logger?.LogInformation("{EventName} clusterId={ClusterId}",
+                            ObservabilityEvents.ClusterResolvedByDecay, clusterId);
                         await _notificationQueue.QueueClusterResolvedAsync(clusterId, cluster.LocalityId, cluster.Title ?? "Civic issue", ct);
                     }
                 }

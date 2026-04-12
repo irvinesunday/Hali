@@ -6,5 +6,5 @@ namespace Hali.Application.Clusters;
 
 public interface IClusteringService
 {
-    Task RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken));
+	Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken));
 }

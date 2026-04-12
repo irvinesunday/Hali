@@ -4,9 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Participation;
 using Hali.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hali.Application.Participation;
@@ -19,11 +21,14 @@ public class ParticipationService : IParticipationService
 
     private readonly CivisOptions _options;
 
-    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options)
+    private readonly ILogger<ParticipationService>? _logger;
+
+    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null)
     {
         _participationRepo = participationRepo;
         _clusterRepo = clusterRepo;
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task RecordParticipationAsync(Guid clusterId, Guid deviceId, Guid? accountId, ParticipationType type, string? idempotencyKey, CancellationToken ct)
@@ -59,9 +64,20 @@ public class ParticipationService : IParticipationService
 
     public async Task RecordRestorationResponseAsync(Guid clusterId, Guid deviceId, Guid? accountId, string response, CancellationToken ct)
     {
-        if (1 == 0)
+        // Server-side gating: the caller must currently hold an `affected`
+        // participation on this cluster. The mobile app gates the CTA on
+        // myParticipation.canRespondToRestoration; this re-check enforces
+        // the rule at the trust boundary, not just the UI.
+        var current = await _participationRepo.GetByDeviceAsync(clusterId, deviceId, ct);
+        if (current == null && accountId.HasValue)
         {
+            current = await _participationRepo.GetMostRecentByAccountAsync(clusterId, accountId.Value, ct);
         }
+        if (current == null || current.ParticipationType != ParticipationType.Affected)
+        {
+            throw new ConflictException("participation.restoration_requires_affected", "Restoration response requires an active affected participation.");
+        }
+
         ParticipationType participationType = response switch
         {
             "restored" => ParticipationType.RestorationYes,
@@ -69,11 +85,7 @@ public class ParticipationService : IParticipationService
             "not_sure" => ParticipationType.RestorationUnsure,
             _ => throw new ValidationException("Invalid restoration response value.", code: "validation.invalid_restoration_response"),
         };
-        if (1 == 0)
-        {
-        }
-        ParticipationType type = participationType;
-        await RecordParticipationAsync(clusterId, deviceId, accountId, type, null, ct);
+        await RecordParticipationAsync(clusterId, deviceId, accountId, participationType, null, ct);
         await EvaluateRestorationAsync(clusterId, ct);
     }
 
@@ -125,6 +137,10 @@ public class ParticipationService : IParticipationService
                     }),
                     OccurredAt = now
                 }, ct);
+
+                _logger?.LogInformation(
+                    "{EventName} clusterId={ClusterId} restorationYes={RestorationYes} totalResponses={TotalResponses}",
+                    ObservabilityEvents.ClusterPossibleRestoration, clusterId, restorationYes, totalResponses);
             }
         }
     }

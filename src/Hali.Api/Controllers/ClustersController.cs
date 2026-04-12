@@ -14,6 +14,7 @@ using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Hali.Api.Controllers;
 
@@ -22,20 +23,26 @@ namespace Hali.Api.Controllers;
 public class ClustersController : ControllerBase
 {
     private readonly IParticipationService _participation;
+    private readonly IParticipationRepository _participationRepo;
     private readonly IClusterRepository _clusters;
     private readonly IAuthRepository _auth;
     private readonly IOfficialPostsService _officialPosts;
+    private readonly CivisOptions _civisOptions;
 
     public ClustersController(
         IParticipationService participation,
+        IParticipationRepository participationRepo,
         IClusterRepository clusters,
         IAuthRepository auth,
-        IOfficialPostsService officialPosts)
+        IOfficialPostsService officialPosts,
+        IOptions<CivisOptions> civisOptions)
     {
         _participation = participation;
+        _participationRepo = participationRepo;
         _clusters = clusters;
         _auth = auth;
         _officialPosts = officialPosts;
+        _civisOptions = civisOptions.Value;
     }
 
     [HttpGet("{id:guid}")]
@@ -48,6 +55,29 @@ public class ClustersController : ControllerBase
             throw new NotFoundException("cluster.not_found", "Cluster not found.");
         }
         var officialPosts = await _officialPosts.GetByClusterIdAsync(id, ct);
+
+        // Per-caller participation snapshot — only populated for
+        // authenticated callers. The mobile app gates "Add Further Context"
+        // and the restoration response CTA on these flags.
+        MyParticipationDto? myParticipation = null;
+        if (User.Identity?.IsAuthenticated == true
+            && Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var callerAccountId))
+        {
+            var current = await _participationRepo.GetMostRecentByAccountAsync(id, callerAccountId, ct);
+            if (current != null)
+            {
+                var typeStr = ToSnakeCase(current.ParticipationType.ToString());
+                var isAffected = current.ParticipationType == ParticipationType.Affected;
+                var withinWindow = isAffected
+                    && DateTime.UtcNow <= current.CreatedAt.AddMinutes(_civisOptions.ContextEditWindowMinutes);
+                myParticipation = new MyParticipationDto(
+                    typeStr,
+                    current.CreatedAt,
+                    CanAddContext: withinWindow,
+                    CanRespondToRestoration: isAffected);
+            }
+        }
+
         var dto = new ClusterResponseDto(
             cluster.Id,
             cluster.State.ToString().ToLowerInvariant(),
@@ -63,9 +93,24 @@ public class ClustersController : ControllerBase
             cluster.PossibleRestorationAt,
             cluster.ResolvedAt)
         {
-            OfficialPosts = officialPosts
+            OfficialPosts = officialPosts,
+            MyParticipation = myParticipation,
         };
         return Ok(dto);
+    }
+
+    // PascalCase enum name → snake_case_lower, matching the global
+    // JsonStringEnumConverter naming policy used elsewhere in the API.
+    private static string ToSnakeCase(string pascal)
+    {
+        var sb = new System.Text.StringBuilder(pascal.Length + 4);
+        for (int i = 0; i < pascal.Length; i++)
+        {
+            char c = pascal[i];
+            if (i > 0 && char.IsUpper(c)) sb.Append('_');
+            sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
     }
 
     [HttpPost("{id:guid}/participation")]

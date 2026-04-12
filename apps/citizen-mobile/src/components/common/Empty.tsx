@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Colors } from '../../theme/colors';
 
 interface EmptyProps {
   message: string;
@@ -23,10 +24,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  message: { fontSize: 15, color: '#6b7280', textAlign: 'center' },
+  message: { fontSize: 15, color: Colors.mutedForeground, textAlign: 'center' },
   subMessage: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: Colors.faintForeground,
     textAlign: 'center',
     marginTop: 4,
   },

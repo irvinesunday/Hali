@@ -85,6 +85,17 @@ public class ClusterRepository : IClusterRepository
 		return await _db.ClusterEventLinks.Where((ClusterEventLink l) => l.ClusterId == clusterId && l.LinkedAt >= cutoff).CountAsync(ct);
 	}
 
+	public async Task<double> GetMinLocationConfidenceAsync(Guid clusterId, CancellationToken ct)
+	{
+		decimal? min = await _db.Database.SqlQuery<decimal?>($@"
+			SELECT MIN(se.location_confidence) AS ""Value""
+			FROM cluster_event_links cel
+			JOIN signal_events se ON se.id = cel.signal_event_id
+			WHERE cel.cluster_id = {clusterId}
+			  AND se.location_confidence IS NOT NULL").FirstOrDefaultAsync(ct);
+		return min.HasValue ? (double)min.Value : 1.0;
+	}
+
 	public async Task<int> CountUniqueDevicesAsync(Guid clusterId, CancellationToken ct)
 	{
 		return await _db.Database.SqlQuery<int>($"SELECT COUNT(DISTINCT se.device_id)::int AS \"Value\"\n               FROM cluster_event_links cel\n               JOIN signal_events se ON se.id = cel.signal_event_id\n               WHERE cel.cluster_id = {clusterId} AND se.device_id IS NOT NULL").FirstOrDefaultAsync(ct);
@@ -146,6 +157,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var ids = localityIds.ToList();
 		return await _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1)
 			.OrderByDescending(c => c.ActivatedAt)
 			.ToListAsync(ct);
@@ -156,6 +168,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var ids = localityIds.ToList();
 		var q = _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => c.LocalityId != null && ids.Contains(c.LocalityId.Value) && (int)c.State == 1);
 
 		if (recurringOnly == true)
@@ -174,6 +187,7 @@ public class ClusterRepository : IClusterRepository
 	{
 		var excludeIds = excludeLocalityIds.ToList();
 		var q = _db.SignalClusters
+			.AsNoTracking()
 			.Where(c => (int)c.State == 1 &&
 			            (c.LocalityId == null || !excludeIds.Contains(c.LocalityId.Value)));
 

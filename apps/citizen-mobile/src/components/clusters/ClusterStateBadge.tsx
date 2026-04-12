@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Colors, FontFamily, FontSize, Radius, Spacing } from '../../theme';
 import type { ClusterState } from '../../types/api';
 
 interface ClusterStateBadgeProps {
@@ -7,19 +8,19 @@ interface ClusterStateBadgeProps {
 }
 
 const STATE_LABELS: Record<ClusterState, string> = {
-  unconfirmed: 'Unconfirmed',
-  active: 'Active Now',
+  unconfirmed:          'Unconfirmed',
+  active:               'Active Now',
   possible_restoration: 'Possible Restoration',
-  resolved: 'Resolved',
-  recurring_context: 'Recurring',
+  resolved:             'Resolved',
+  recurring_context:    'Recurring',
 };
 
 const STATE_COLORS: Record<ClusterState, { bg: string; text: string }> = {
-  unconfirmed: { bg: '#fef3c7', text: '#92400e' },
-  active: { bg: '#dcfce7', text: '#166534' },
-  possible_restoration: { bg: '#dbeafe', text: '#1e40af' },
-  resolved: { bg: '#f3f4f6', text: '#6b7280' },
-  recurring_context: { bg: '#ede9fe', text: '#5b21b6' },
+  unconfirmed:          { bg: Colors.conditionBadge.amber.bg,   text: Colors.conditionBadge.amber.text },
+  active:               { bg: Colors.primarySubtle,              text: Colors.primary },
+  possible_restoration: { bg: Colors.emeraldSubtle,              text: Colors.emerald },
+  resolved:             { bg: Colors.muted,                      text: Colors.mutedForeground },
+  recurring_context:    { bg: Colors.conditionBadge.violet.bg,  text: Colors.conditionBadge.violet.text },
 };
 
 export function ClusterStateBadge({ state }: ClusterStateBadgeProps) {
@@ -36,9 +37,12 @@ export function ClusterStateBadge({ state }: ClusterStateBadgeProps) {
 const styles = StyleSheet.create({
   badge: {
     alignSelf: 'flex-start',
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    borderRadius: Radius.xs,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
   },
-  text: { fontSize: 12, fontWeight: '600' },
+  text: {
+    fontSize: FontSize.badge,
+    fontFamily: FontFamily.semiBold,
+  },
 });

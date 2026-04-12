@@ -132,11 +132,39 @@ public class ParticipationServiceTests
 		Assert.Equal("participation.context_window_expired", ex.Code);
 	}
 
+	// Restoration responses now require a current `affected` participation
+	// (server-side gating added in Task 3 of the PR #50 follow-ups). Each
+	// restoration test seeds the calling device(s) as affected first.
+	private static Task SeedAffectedAsync(ParticipationService svc, Guid deviceId)
+		=> svc.RecordParticipationAsync(ClusterId, deviceId, null, ParticipationType.Affected, null, default);
+
+	[Fact]
+	public async Task RecordRestorationResponse_WithoutAffectedParticipation_ThrowsRestorationRequiresAffected()
+	{
+		SignalCluster cluster = ActiveCluster();
+		var (svc, _, _) = Build(cluster);
+		var ex = await Assert.ThrowsAsync<ConflictException>(
+			() => svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default));
+		Assert.Equal("participation.restoration_requires_affected", ex.Code);
+	}
+
+	[Fact]
+	public async Task RecordRestorationResponse_WithObservingParticipation_ThrowsRestorationRequiresAffected()
+	{
+		SignalCluster cluster = ActiveCluster();
+		var (svc, _, _) = Build(cluster);
+		await svc.RecordParticipationAsync(ClusterId, DeviceA, null, ParticipationType.Observing, null, default);
+		var ex = await Assert.ThrowsAsync<ConflictException>(
+			() => svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default));
+		Assert.Equal("participation.restoration_requires_affected", ex.Code);
+	}
+
 	[Fact]
 	public async Task RecordRestorationResponse_Restored_MapsToRestorationYes()
 	{
 		SignalCluster cluster = ActiveCluster();
 		var (svc, pRepo, _) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
 		Hali.Domain.Entities.Participation.Participation p = pRepo.All.Single((Hali.Domain.Entities.Participation.Participation x) => x.DeviceId == DeviceA);
 		Assert.Equal(ParticipationType.RestorationYes, p.ParticipationType);
@@ -147,6 +175,7 @@ public class ParticipationServiceTests
 	{
 		SignalCluster cluster = ActiveCluster();
 		var (svc, pRepo, _) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "still_affected", default(CancellationToken));
 		Hali.Domain.Entities.Participation.Participation p = pRepo.All.Single((Hali.Domain.Entities.Participation.Participation x) => x.DeviceId == DeviceA);
 		Assert.Equal(ParticipationType.Affected, p.ParticipationType);
@@ -157,6 +186,7 @@ public class ParticipationServiceTests
 	{
 		SignalCluster cluster = ActiveCluster();
 		var (svc, pRepo, _) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "not_sure", default(CancellationToken));
 		Hali.Domain.Entities.Participation.Participation p = pRepo.All.Single((Hali.Domain.Entities.Participation.Participation x) => x.DeviceId == DeviceA);
 		Assert.Equal(ParticipationType.RestorationUnsure, p.ParticipationType);
@@ -169,6 +199,8 @@ public class ParticipationServiceTests
 		(ParticipationService, FakeParticipationRepo, FakeClusterRepoForParticipation) tuple = Build(cluster);
 		var (svc, _, _) = tuple;
 		_ = tuple.Item3;
+		await SeedAffectedAsync(svc, DeviceA);
+		await SeedAffectedAsync(svc, DeviceB);
 		// Two votes needed (MinRestorationAffectedVotes=2)
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceB, null, "restored", default(CancellationToken));
@@ -181,6 +213,8 @@ public class ParticipationServiceTests
 	{
 		SignalCluster cluster = ActiveCluster();
 		var (svc, _, cRepo) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
+		await SeedAffectedAsync(svc, DeviceB);
 		// Two votes needed (MinRestorationAffectedVotes=2)
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceB, null, "restored", default(CancellationToken));
@@ -200,6 +234,7 @@ public class ParticipationServiceTests
 			MinRestorationAffectedVotes = 3
 		};
 		var (svc, _, cRepo) = Build(cluster, opts);
+		await SeedAffectedAsync(svc, DeviceA);
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
 		Assert.Equal(SignalState.Active, cluster.State);
 		Assert.Empty(cRepo.Decisions);

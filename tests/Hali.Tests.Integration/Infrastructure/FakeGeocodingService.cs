@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Signals;
@@ -15,4 +17,9 @@ internal sealed class FakeGeocodingService : IGeocodingService
         double longitude,
         CancellationToken ct = default)
         => Task.FromResult<GeocodingResult?>(null);
+
+    public Task<IReadOnlyList<GeocodingCandidate>> SearchAsync(
+        string query,
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<GeocodingCandidate>>(Array.Empty<GeocodingCandidate>());
 }

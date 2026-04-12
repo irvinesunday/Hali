@@ -49,6 +49,13 @@ internal sealed class FakeClusterRepo : IClusterRepository
 		return Task.FromResult(UniqueDevices);
 	}
 
+	public double MinLocationConfidence { get; set; } = 1.0;
+
+	public Task<double> GetMinLocationConfidenceAsync(Guid clusterId, CancellationToken ct)
+	{
+		return Task.FromResult(MinLocationConfidence);
+	}
+
 	public Task UpdateClusterAsync(SignalCluster cluster, CancellationToken ct)
 	{
 		Updates.Add(cluster);
