@@ -62,7 +62,7 @@ public class ExceptionHandlingMiddleware
         var correlationId = SanitizeCorrelationId(
             context.Items["CorrelationId"] as string ?? "");
 
-        LogException(exception, mapping, correlationId, context);
+        LogException(exception, mapping, context);
 
         var response = new ApiErrorResponse
         {
@@ -80,21 +80,14 @@ public class ExceptionHandlingMiddleware
         await context.Response.WriteAsync(JsonSerializer.Serialize(response, JsonOptions));
     }
 
-    private const string LogTemplate =
-        "{EventName} error.code={ErrorCode} error.category={ErrorCategory} " +
-        "http.status_code={StatusCode} trace.id={TraceId} " +
-        "route={Route} method={Method}";
-
     /// <summary>
     /// Strip characters that could enable log injection. The correlation ID
     /// originates from the X-Correlation-Id request header (user-controlled)
-    /// so it must be sanitized before inclusion in structured log fields.
+    /// so it must be sanitized before inclusion in the response body.
     /// </summary>
     private static string SanitizeCorrelationId(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        // Allow only hex digits, hyphens, and lowercase letters (covers
-        // Guid.ToString("N") and Guid.ToString("D") formats).
         var span = raw.AsSpan();
         Span<char> buf = stackalloc char[Math.Min(span.Length, 64)];
         int pos = 0;
@@ -107,25 +100,32 @@ public class ExceptionHandlingMiddleware
         return new string(buf[..pos]);
     }
 
-    private void LogException(Exception exception, ApiErrorMapping mapping, string correlationId, HttpContext context)
+    // The correlation ID is already attached to the log scope by
+    // CorrelationIdMiddleware.BeginScope, so it is intentionally omitted
+    // from the log template to avoid duplication and CodeQL cs/log-forging
+    // taint findings (the value originates from the X-Correlation-Id header).
+    private const string LogTemplate =
+        "{EventName} error.code={ErrorCode} error.category={ErrorCategory} " +
+        "http.status_code={StatusCode} route={Route} method={Method}";
+
+    private void LogException(Exception exception, ApiErrorMapping mapping, HttpContext context)
     {
         var category = (exception as AppException)?.Category.ToString() ?? "unexpected";
-        // Use the matched endpoint route pattern (e.g. "v1/signals/submit")
-        // instead of the raw request path to avoid CodeQL log-forging findings.
         var route = context.GetEndpoint()?.DisplayName ?? "unknown";
-        // correlationId is already sanitized at the call site in HandleExceptionAsync.
-        var args = new object?[]
-        {
-            "api.exception_handled", mapping.Code, category,
-            mapping.StatusCode, correlationId,
-            route, context.Request.Method
-        };
 
         // Error+ includes the exception object so stack traces appear in logs;
         // lower severities log structured fields only (no stack trace noise).
         if (mapping.LogLevel >= LogLevel.Error)
-            _logger.Log(mapping.LogLevel, exception, LogTemplate, args);
+        {
+            _logger.Log(mapping.LogLevel, exception, LogTemplate,
+                "api.exception_handled", mapping.Code, category,
+                mapping.StatusCode, route, context.Request.Method);
+        }
         else
-            _logger.Log(mapping.LogLevel, LogTemplate, args);
+        {
+            _logger.Log(mapping.LogLevel, LogTemplate,
+                "api.exception_handled", mapping.Code, category,
+                mapping.StatusCode, route, context.Request.Method);
+        }
     }
 }
