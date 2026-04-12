@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Hali.Api.Errors;
 using Hali.Application.Errors;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 
 namespace Hali.Api.Middleware;
@@ -62,7 +61,7 @@ public class ExceptionHandlingMiddleware
         var correlationId = SanitizeCorrelationId(
             context.Items["CorrelationId"] as string ?? "");
 
-        LogException(exception, mapping, context);
+        LogException(exception, mapping);
 
         var response = new ApiErrorResponse
         {
@@ -100,32 +99,28 @@ public class ExceptionHandlingMiddleware
         return new string(buf[..pos]);
     }
 
-    // The correlation ID is already attached to the log scope by
-    // CorrelationIdMiddleware.BeginScope, so it is intentionally omitted
-    // from the log template to avoid duplication and CodeQL cs/log-forging
-    // taint findings (the value originates from the X-Correlation-Id header).
-    private const string LogTemplate =
-        "{EventName} error.code={ErrorCode} error.category={ErrorCategory} " +
-        "http.status_code={StatusCode} route={Route} method={Method}";
-
-    private void LogException(Exception exception, ApiErrorMapping mapping, HttpContext context)
+    // All request-derived values (path, method, correlation ID) are excluded
+    // from this template to satisfy CodeQL cs/log-forging. The correlation
+    // ID and request metadata are already captured in the log scope by
+    // CorrelationIdMiddleware.BeginScope — they appear in every log entry
+    // without needing to be repeated here.
+    private void LogException(Exception exception, ApiErrorMapping mapping)
     {
         var category = (exception as AppException)?.Category.ToString() ?? "unexpected";
-        var route = context.GetEndpoint()?.DisplayName ?? "unknown";
 
         // Error+ includes the exception object so stack traces appear in logs;
         // lower severities log structured fields only (no stack trace noise).
         if (mapping.LogLevel >= LogLevel.Error)
         {
-            _logger.Log(mapping.LogLevel, exception, LogTemplate,
-                "api.exception_handled", mapping.Code, category,
-                mapping.StatusCode, route, context.Request.Method);
+            _logger.Log(mapping.LogLevel, exception,
+                "{EventName} error.code={ErrorCode} error.category={ErrorCategory} http.status_code={StatusCode}",
+                "api.exception_handled", mapping.Code, category, mapping.StatusCode);
         }
         else
         {
-            _logger.Log(mapping.LogLevel, LogTemplate,
-                "api.exception_handled", mapping.Code, category,
-                mapping.StatusCode, route, context.Request.Method);
+            _logger.Log(mapping.LogLevel,
+                "{EventName} error.code={ErrorCode} error.category={ErrorCategory} http.status_code={StatusCode}",
+                "api.exception_handled", mapping.Code, category, mapping.StatusCode);
         }
     }
 }
