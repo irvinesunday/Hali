@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Home;
 using Hali.Application.Notifications;
 using Hali.Application.Observability;
@@ -91,7 +92,7 @@ public class HomeController : ControllerBase
                     _logger?.LogInformation(
                         "{EventName} section={Section} statusCode={StatusCode} durationMs={DurationMs}",
                         ObservabilityEvents.HomeRequestCompleted, safeSection, 400, sw.ElapsedMilliseconds);
-                    return BadRequest(new { error = "Unknown section name" });
+                    throw new ValidationException("Unknown section name.", code: "validation.invalid_section");
                 }
 
                 sw.Stop();

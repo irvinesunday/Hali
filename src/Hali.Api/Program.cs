@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Auth;
 using Hali.Application.Notifications;
@@ -34,6 +35,7 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
+builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -119,6 +121,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

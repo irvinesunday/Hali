@@ -110,7 +110,7 @@ public class SignalObservabilityTests
         var request = MakeSubmitRequest() with { Category = "aliens" };
         var svc = CreateService();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null));
+        await Assert.ThrowsAsync<Hali.Application.Errors.ValidationException>(() => svc.SubmitAsync(request, null, null));
 
         Assert.Contains(_logger.Messages, m => m.Contains(ObservabilityEvents.SignalSubmitFailed));
     }
@@ -125,7 +125,7 @@ public class SignalObservabilityTests
             .Returns((LocalitySummary?)null);
         var svc = CreateService();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+        await Assert.ThrowsAsync<Hali.Application.Errors.ValidationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
 
         Assert.Contains(_logger.Messages, m => m.Contains(ObservabilityEvents.SignalLocalityFailed));
     }
@@ -138,7 +138,7 @@ public class SignalObservabilityTests
         _h3.LatLngToCell(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<int>()).Returns("");
         var svc = CreateService();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+        await Assert.ThrowsAsync<Hali.Application.Errors.DependencyException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
 
         Assert.Contains(_logger.Messages, m => m.Contains(ObservabilityEvents.SignalSpatialFailed));
     }

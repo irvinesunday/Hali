@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Signals;
 using Hali.Contracts.Notifications;
 using Hali.Domain.Entities.Notifications;
@@ -67,7 +68,9 @@ public class FollowService : IFollowService
             .ToList();
 
         if (deduped.Count > MaxFollowedLocalities)
-            throw new InvalidOperationException("MAX_FOLLOWED_LOCALITIES_EXCEEDED");
+            throw new ValidationException(
+                "You may follow at most 5 localities.",
+                code: "validation.max_followed_localities_exceeded");
 
         await _repo.ReplaceFollowsAsync(accountId, deduped, ct);
     }
