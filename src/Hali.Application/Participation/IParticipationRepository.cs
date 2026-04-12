@@ -9,18 +9,18 @@ namespace Hali.Application.Participation;
 
 public interface IParticipationRepository
 {
-	Task<Hali.Domain.Entities.Participation.Participation?> GetByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct);
+    Task<Hali.Domain.Entities.Participation.Participation?> GetByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct);
 
-	Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct);
+    Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct);
 
-	Task AddAsync(Hali.Domain.Entities.Participation.Participation participation, CancellationToken ct);
+    Task AddAsync(Hali.Domain.Entities.Participation.Participation participation, CancellationToken ct);
 
-	Task UpdateContextAsync(Guid participationId, string contextText, CancellationToken ct);
+    Task UpdateContextAsync(Guid participationId, string contextText, CancellationToken ct);
 
-	Task<int> CountByTypeAsync(Guid clusterId, ParticipationType type, CancellationToken ct);
+    Task<int> CountByTypeAsync(Guid clusterId, ParticipationType type, CancellationToken ct);
 
-	Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct);
+    Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct);
 
-	/// <summary>Returns account IDs of all users with an active affected participation on this cluster.</summary>
-	Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct);
+    /// <summary>Returns account IDs of all users with an active affected participation on this cluster.</summary>
+    Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct);
 }
