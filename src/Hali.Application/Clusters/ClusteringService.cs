@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hali.Application.Clusters;
@@ -20,12 +22,15 @@ public class ClusteringService : IClusteringService
 
 	private readonly CivisOptions _options;
 
-	public ClusteringService(IClusterRepository repo, IH3CellService h3, ICivisEvaluationService civis, IOptions<CivisOptions> options)
+	private readonly ILogger<ClusteringService>? _logger;
+
+	public ClusteringService(IClusterRepository repo, IH3CellService h3, ICivisEvaluationService civis, IOptions<CivisOptions> options, ILogger<ClusteringService>? logger = null)
 	{
 		_repo = repo;
 		_h3 = h3;
 		_civis = civis;
 		_options = options.Value;
+		_logger = logger;
 	}
 
 	public async Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
@@ -81,6 +86,11 @@ public class ClusteringService : IClusteringService
 				OccurredAt = DateTime.UtcNow
 			}, ct);
 			await _civis.EvaluateClusterAsync(bestCluster.Id, ct);
+
+			_logger?.LogInformation(
+				"{EventName} clusterId={ClusterId} outcome={Outcome} joinScore={JoinScore} candidateCount={CandidateCount}",
+				ObservabilityEvents.SignalRouted, bestCluster.Id, "joined", bestScore, candidates.Count);
+
 			return new ClusterRoutingResult(
 				bestCluster.Id,
 				WasCreated: false,
@@ -125,6 +135,11 @@ public class ClusteringService : IClusteringService
 				OccurredAt = now
 			}, ct);
 			await _civis.EvaluateClusterAsync(newCluster.Id, ct);
+
+			_logger?.LogInformation(
+				"{EventName} clusterId={ClusterId} outcome={Outcome} candidateCount={CandidateCount}",
+				ObservabilityEvents.SignalRouted, newCluster.Id, "created", candidates.Count);
+
 			return new ClusterRoutingResult(
 				newCluster.Id,
 				WasCreated: true,

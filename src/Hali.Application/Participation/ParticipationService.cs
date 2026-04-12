@@ -3,9 +3,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Participation;
 using Hali.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hali.Application.Participation;
@@ -18,11 +20,14 @@ public class ParticipationService : IParticipationService
 
 	private readonly CivisOptions _options;
 
-	public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options)
+	private readonly ILogger<ParticipationService>? _logger;
+
+	public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null)
 	{
 		_participationRepo = participationRepo;
 		_clusterRepo = clusterRepo;
 		_options = options.Value;
+		_logger = logger;
 	}
 
 	public async Task RecordParticipationAsync(Guid clusterId, Guid deviceId, Guid? accountId, ParticipationType type, string? idempotencyKey, CancellationToken ct)
@@ -133,6 +138,10 @@ public class ParticipationService : IParticipationService
 					}),
 					OccurredAt = now
 				}, ct);
+
+				_logger?.LogInformation(
+					"{EventName} clusterId={ClusterId} restorationYes={RestorationYes} totalResponses={TotalResponses}",
+					ObservabilityEvents.ClusterPossibleRestoration, clusterId, restorationYes, totalResponses);
 			}
 		}
 	}
