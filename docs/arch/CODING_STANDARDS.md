@@ -117,6 +117,11 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 - [ ] No `Animated` (old API) for new animations — use `react-native-reanimated`
 - [ ] All new components export from their module's barrel index file
 - [ ] Every new shared component has an accessibilityLabel and accessibilityRole
+- [ ] When replacing an inline element with a shared component, diff the old element's
+      accessibility attributes (`accessibilityLabel`, `accessibilityState`, `accessibilityRole`,
+      `accessibilityHint`, `accessibilityLiveRegion`) and ensure all are preserved
+- [ ] Every `setTimeout`, `setInterval`, and Reanimated animation started in a `useEffect`
+      is cancelled in the cleanup function — stale callbacks cause ghost navigation and leaks
 
 ### Security
 - [ ] No secrets, tokens, or API keys in any committed file
@@ -133,6 +138,9 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 - [ ] Never modify an existing migration's Up() or Down() method
 - [ ] Every new migration has a meaningful name (not Migration1, Migration2)
 - [ ] Migration can be reversed — verify Down() is correct
+- [ ] Any Down() that reverts an enum column to integer must use raw SQL with
+      `USING` and `CASE` mapping — a bare `AlterColumn` will throw a type cast error
+- [ ] Down() must never drop shared tables (e.g., `outbox_events`) used by other modules
 - [ ] If a spec or arch doc references a DB table/column that does not exist in the
       current schema, mark it explicitly as a planned schema change before implementation
 
@@ -168,6 +176,23 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 - Services return domain results, not HTTP responses
 - Every service method that mutates state writes an audit log entry
 
+### Exception handling
+- Middleware and service-layer catch-all blocks must handle
+  `OperationCanceledException` before the general `Exception` catch.
+  In middleware: `catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)`
+  — return without writing a response or logging an error.
+  In services: `catch (Exception ex) when (ex is not OperationCanceledException)`.
+  Client disconnects are not server errors.
+
+### Logging safety
+- Never pass raw request-derived values (`Request.Path`, `Request.Method`,
+  `Request.QueryString`, raw header values) into structured log templates.
+  Use `context.GetEndpoint()?.DisplayName` for route identification.
+  For any user-supplied value that must be logged, use
+  `ObservabilityEvents.SanitizeForLog()`.
+- The existing header-sanitization rule (Security section) covers response
+  headers; this rule covers the structured-logging path explicitly.
+
 ### Nullable reference types
 - All new C# files have nullable enabled (#nullable enable or via csproj)
 - Use `??` and `?.` where appropriate; prefer `is null` / `is not null` for explicit null
@@ -178,6 +203,13 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
   its content stream are disposed after reading
 - Any `IDisposable`/`IAsyncDisposable` infrastructure object (NpgsqlDataSource, HttpClient, etc.)
   must be registered in the DI container — not captured in a closure — to ensure proper disposal
+
+### XML documentation
+- `cref` attributes must use fully qualified type names
+  (`<exception cref="Hali.Application.Errors.ValidationException">`),
+  not short names that may not resolve in the target namespace (CS1574).
+- When a service implementation changes which exception it throws, update the
+  interface's XML `<exception>` doc in the same commit.
 
 ### String formatting
 - Always use `CultureInfo.InvariantCulture` when converting numeric types to strings for
@@ -191,6 +223,9 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
   → prefer: `g.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.Field)) ?? g.First()`
 
 ### EF Core
+- `DbContext` is not thread-safe. Never wrap multiple queries in `Task.WhenAll`
+  on a shared context. Use sequential queries on a single context, or resolve
+  separate scoped contexts via `IServiceScopeFactory` for genuinely parallel work.
 - When a `dotnet build` step precedes a `dotnet ef` step in the same CI job,
   always pass `--no-build` to the EF command to avoid redundant builds
 
