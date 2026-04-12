@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Domain.Entities.Notifications;
 using Xunit;
@@ -53,10 +54,10 @@ public class FollowServiceTests
         var accountId = Guid.NewGuid();
         var ids = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid()).ToList();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ValidationException>(
             () => svc.SetFollowedAsync(accountId, ids));
 
-        Assert.Equal("MAX_FOLLOWED_LOCALITIES_EXCEEDED", ex.Message);
+        Assert.Equal("validation.max_followed_localities_exceeded", ex.Code);
     }
 
     [Fact]

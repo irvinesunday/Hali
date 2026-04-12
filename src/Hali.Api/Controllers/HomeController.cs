@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
@@ -60,7 +61,8 @@ public class HomeController : ControllerBase
         if (section is not null)
         {
             var paged = await GetPagedSectionAsync(section, localityIds, cursorDt, ct);
-            if (paged is null) return BadRequest(new { error = "Unknown section name" });
+            if (paged is null)
+                throw new ValidationException("Unknown section name.", code: "validation.invalid_section");
             return Ok(paged);
         }
 

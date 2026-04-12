@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Application.Participation;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Participation;
@@ -92,7 +93,8 @@ public class ParticipationServiceTests
 	public async Task AddContext_WithoutAffectedParticipation_ThrowsContextRequiresAffected()
 	{
 		var (svc, _, _) = Build();
-		Assert.Equal("CONTEXT_REQUIRES_AFFECTED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Test context", default(CancellationToken)))).Message);
+		var ex = await Assert.ThrowsAsync<ConflictException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Test context", default(CancellationToken)));
+		Assert.Equal("participation.context_requires_affected", ex.Code);
 	}
 
 	[Fact]
@@ -100,7 +102,8 @@ public class ParticipationServiceTests
 	{
 		var (svc, _, _) = Build();
 		await svc.RecordParticipationAsync(ClusterId, DeviceA, null, ParticipationType.Observing, null, default(CancellationToken));
-		Assert.Equal("CONTEXT_REQUIRES_AFFECTED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Test context", default(CancellationToken)))).Message);
+		var ex = await Assert.ThrowsAsync<ConflictException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Test context", default(CancellationToken)));
+		Assert.Equal("participation.context_requires_affected", ex.Code);
 	}
 
 	[Fact]
@@ -125,7 +128,8 @@ public class ParticipationServiceTests
 			ParticipationType = ParticipationType.Affected,
 			CreatedAt = DateTime.UtcNow.AddMinutes(-5.0)
 		});
-		Assert.Equal("CONTEXT_EDIT_WINDOW_EXPIRED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Late context", default(CancellationToken)))).Message);
+		var ex = await Assert.ThrowsAsync<ConflictException>(() => svc.AddContextAsync(ClusterId, DeviceA, "Late context", default(CancellationToken)));
+		Assert.Equal("participation.context_window_expired", ex.Code);
 	}
 
 	[Fact]

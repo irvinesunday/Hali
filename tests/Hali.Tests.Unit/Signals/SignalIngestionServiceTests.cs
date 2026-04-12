@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Application.Signals;
 using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Signals;
@@ -55,7 +56,8 @@ public class SignalIngestionServiceTests
 		_repo.BuildTaxonomyBlockAsync(Arg.Any<CancellationToken>()).Returns("roads: potholes");
 		_nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns(null, Array.Empty<NlpExtractionResultDto>());
 		SignalIngestionService svc = CreateService();
-		Assert.Equal("NLP_EXTRACTION_FAILED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.PreviewAsync(new SignalPreviewRequestDto("test", null, null, null, null, null, null)))).Message);
+		var ex = await Assert.ThrowsAsync<DependencyException>(() => svc.PreviewAsync(new SignalPreviewRequestDto("test", null, null, null, null, null, null)));
+		Assert.Equal("dependency.nlp_unavailable", ex.Code);
 	}
 
 	[Fact]
@@ -64,7 +66,8 @@ public class SignalIngestionServiceTests
 		_repo.BuildTaxonomyBlockAsync(Arg.Any<CancellationToken>()).Returns("roads: potholes");
 		_nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns(MakeNlpResult("aliens"));
 		SignalIngestionService svc = CreateService();
-		Assert.Equal("NLP_INVALID_CATEGORY", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.PreviewAsync(new SignalPreviewRequestDto("test", null, null, null, null, null, null)))).Message);
+		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.PreviewAsync(new SignalPreviewRequestDto("test", null, null, null, null, null, null)));
+		Assert.Equal("validation.invalid_category", ex.Code);
 	}
 
 	[Fact]
@@ -72,7 +75,8 @@ public class SignalIngestionServiceTests
 	{
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 		SignalIngestionService svc = CreateService();
-		Assert.Equal("SIGNAL_DUPLICATE", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null))).Message);
+		var ex = await Assert.ThrowsAsync<ConflictException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+		Assert.Equal("signal.duplicate", ex.Code);
 		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
 	}
 
@@ -91,7 +95,8 @@ public class SignalIngestionServiceTests
 		}, value: _repo.PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>()), returnThese: Array.Empty<SignalEvent>());
 		SignalIngestionService svc = CreateService();
 		Assert.NotNull(await svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null));
-		Assert.Equal("SIGNAL_DUPLICATE", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null))).Message);
+		var ex = await Assert.ThrowsAsync<ConflictException>(() => svc.SubmitAsync(MakeSubmitRequest("key-dup"), null, null));
+		Assert.Equal("signal.duplicate", ex.Code);
 	}
 
 	[Fact]
@@ -100,7 +105,8 @@ public class SignalIngestionServiceTests
 		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
 		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
 		SignalIngestionService svc = CreateService();
-		Assert.Equal("SIGNAL_RATE_LIMITED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null))).Message);
+		var ex = await Assert.ThrowsAsync<RateLimitException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
+		Assert.Equal("integrity.rate_limited", ex.Code);
 	}
 
 	[Fact]
@@ -113,7 +119,8 @@ public class SignalIngestionServiceTests
 			Category = "unknown_category"
 		};
 		SignalIngestionService svc = CreateService();
-		Assert.Equal("SIGNAL_INVALID_CATEGORY", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null))).Message);
+		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("validation.invalid_category", ex.Code);
 	}
 
 	[Fact]
@@ -170,6 +177,7 @@ public class SignalIngestionServiceTests
 			Assert.NotNull(await svc.SubmitAsync(request, null, null));
 			return;
 		}
-		Assert.Equal("SIGNAL_INVALID_CATEGORY", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.SubmitAsync(request, null, null))).Message);
+		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("validation.invalid_category", ex.Code);
 	}
 }

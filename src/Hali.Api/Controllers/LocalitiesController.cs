@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
@@ -27,10 +28,10 @@ public class LocalitiesController : ControllerBase
     [HttpGet("followed")]
     public async Task<IActionResult> GetFollowed(CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null) return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var follows = await _follows.GetFollowedAsync(accountId.Value, ct);
+        var follows = await _follows.GetFollowedAsync(accountId, ct);
         return Ok(new { localityIds = follows.Select(f => f.LocalityId) });
     }
 
@@ -39,21 +40,10 @@ public class LocalitiesController : ControllerBase
         [FromBody] FollowedLocalitiesRequestDto dto,
         CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null) return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        try
-        {
-            await _follows.SetFollowedAsync(accountId.Value, dto.LocalityIds, ct);
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "MAX_FOLLOWED_LOCALITIES_EXCEEDED")
-        {
-            return UnprocessableEntity(new
-            {
-                error = "You may follow at most 5 localities.",
-                code = "max_followed_localities_exceeded"
-            });
-        }
+        await _follows.SetFollowedAsync(accountId, dto.LocalityIds, ct);
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
         _logger.LogInformation(
