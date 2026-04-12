@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
@@ -34,6 +35,23 @@ public class ExceptionHandlingMiddlewareTests
     {
         context.Response.Body.Seek(0, SeekOrigin.Begin);
         return await JsonDocument.ParseAsync(context.Response.Body);
+    }
+
+    [Fact]
+    public async Task ClientDisconnect_DoesNotProduce500Envelope()
+    {
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var middleware = CreateMiddleware(_ => throw new OperationCanceledException());
+        var context = CreateContext();
+        context.RequestAborted = cts.Token;
+
+        await middleware.InvokeAsync(context);
+
+        // Should NOT write a 500 error envelope for client disconnects
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Empty(body);
     }
 
     [Fact]

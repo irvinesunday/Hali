@@ -118,7 +118,7 @@ public class SignalIngestionService : ISignalIngestionService
             if (locality is null)
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalLocalityFailed);
-                throw new ValidationException("The provided coordinates do not fall within a known locality.", code: "locality.unresolved");
+                throw new ValidationException("The provided coordinates do not fall within a known locality.", code: "validation.locality_unresolved");
             }
 
             _logger?.LogInformation("{EventName} localityId={LocalityId}",

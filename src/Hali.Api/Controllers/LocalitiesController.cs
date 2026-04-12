@@ -132,7 +132,7 @@ public class LocalitiesController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Locality search geocoding failed for {Query}", query);
+            _logger.LogWarning(ex, "Locality search geocoding failed for query (length={QueryLength})", query.Length);
             return Ok(Array.Empty<LocalitySearchResultDto>());
         }
 

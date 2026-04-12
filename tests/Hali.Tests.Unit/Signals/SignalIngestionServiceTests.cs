@@ -317,7 +317,7 @@ public class SignalIngestionServiceTests
 		SignalIngestionService svc = CreateService();
 
 		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
-		Assert.Equal("locality.unresolved", ex.Code);
+		Assert.Equal("validation.locality_unresolved", ex.Code);
 		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
 	}
 
