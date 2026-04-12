@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Application.Observability;
 using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Signals;
@@ -48,11 +49,11 @@ public class SignalIngestionService : ISignalIngestionService
         NlpExtractionResultDto result = await _nlp.ExtractAsync(nlpRequest, ct);
         if ((object)result == null)
         {
-            throw new InvalidOperationException("NLP_EXTRACTION_FAILED");
+            throw new DependencyException("dependency.nlp_unavailable", "NLP extraction service is currently unavailable.");
         }
         if (!AllowedCategories.Contains(result.Category))
         {
-            throw new InvalidOperationException("NLP_INVALID_CATEGORY");
+            throw new ValidationException("NLP returned an unrecognised category.", code: "validation.invalid_category");
         }
         return new SignalPreviewResponseDto(result.Category, result.Subcategory, result.ConditionLevel, result.ConditionConfidence, new SignalLocationDto(result.Location.AreaName, result.Location.RoadName, result.Location.JunctionName, result.Location.LandmarkName, result.Location.FacilityName, result.Location.LocationLabel, result.Location.LocationPrecisionType, result.Location.LocationConfidence, result.Location.LocationSource), result.TemporalHint?.Type, result.Summary, result.ShouldSuggestJoin);
     }
@@ -68,29 +69,29 @@ public class SignalIngestionService : ISignalIngestionService
             string idemKey = "idem:signal-submit:" + request.IdempotencyKey;
             if (await _repo.IdempotencyKeyExistsAsync(idemKey, ct))
             {
-                throw new InvalidOperationException("SIGNAL_DUPLICATE");
+                throw new ConflictException("signal.duplicate", "Signal already submitted with this idempotency key.");
             }
             if (!(await _repo.IsRateLimitAllowedAsync(request.DeviceHash, ct)))
             {
-                throw new InvalidOperationException("SIGNAL_RATE_LIMITED");
+                throw new RateLimitException("integrity.rate_limited", "Too many signals submitted. Please try again later.");
             }
             if (!AllowedCategories.Contains(request.Category))
             {
-                throw new InvalidOperationException("SIGNAL_INVALID_CATEGORY");
+                throw new ValidationException("Invalid signal category.", code: "validation.invalid_category");
             }
             if (!Enum.TryParse<CivicCategory>(request.Category, ignoreCase: true, out var category))
             {
-                throw new InvalidOperationException("SIGNAL_INVALID_CATEGORY");
+                throw new ValidationException("Invalid signal category.", code: "validation.invalid_category");
             }
             if (!request.Latitude.HasValue || !request.Longitude.HasValue)
             {
-                throw new InvalidOperationException("SIGNAL_MISSING_COORDINATES");
+                throw new ValidationException("latitude and longitude are required.", code: "validation.missing_coordinates");
             }
             double lat = request.Latitude.Value;
             double lng = request.Longitude.Value;
             if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
             {
-                throw new InvalidOperationException("SIGNAL_INVALID_COORDINATES");
+                throw new ValidationException("Latitude must be between -90 and 90, longitude between -180 and 180.", code: "validation.invalid_coordinates");
             }
 
             string spatialCellId;
@@ -101,13 +102,13 @@ public class SignalIngestionService : ISignalIngestionService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalSpatialFailed);
-                throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED", ex);
+                throw new DependencyException("dependency.spatial_derivation_failed", "Unable to derive spatial cell from provided coordinates.", innerException: ex);
             }
 
             if (string.IsNullOrEmpty(spatialCellId))
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalSpatialFailed);
-                throw new InvalidOperationException("SIGNAL_SPATIAL_DERIVATION_FAILED");
+                throw new DependencyException("dependency.spatial_derivation_failed", "Unable to derive spatial cell from provided coordinates.");
             }
 
             _logger?.LogInformation("{EventName} spatialCellId={SpatialCellId}",
@@ -117,7 +118,7 @@ public class SignalIngestionService : ISignalIngestionService
             if (locality is null)
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalLocalityFailed);
-                throw new InvalidOperationException("SIGNAL_LOCALITY_UNRESOLVED");
+                throw new ValidationException("The provided coordinates do not fall within a known locality.", code: "validation.locality_unresolved");
             }
 
             _logger?.LogInformation("{EventName} localityId={LocalityId}",

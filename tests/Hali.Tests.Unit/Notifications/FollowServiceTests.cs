@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Application.Signals;
 using Hali.Domain.Entities.Notifications;
@@ -82,10 +83,10 @@ public class FollowServiceTests
         var accountId = Guid.NewGuid();
         var ids = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid()).ToList();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ValidationException>(
             () => svc.SetFollowedAsync(accountId, ids.Select(i => new FollowEntry(i, null))));
 
-        Assert.Equal("MAX_FOLLOWED_LOCALITIES_EXCEEDED", ex.Message);
+        Assert.Equal("validation.max_followed_localities_exceeded", ex.Code);
     }
 
     [Fact]
@@ -144,9 +145,6 @@ public class FollowServiceTests
     [Fact]
     public async Task GetFollowedWithDetails_ReturnsNullDisplayLabel_WhenNotProvided()
     {
-        // UI is responsible for falling back to wardName when DisplayLabel
-        // is null. The service must surface the null faithfully — not
-        // synthesize a label.
         var svc = NewService();
         var accountId = Guid.NewGuid();
         var localityId = Guid.NewGuid();
@@ -163,9 +161,6 @@ public class FollowServiceTests
     [Fact]
     public async Task GetFollowedWithDetails_DropsFollows_WhenLocalityLookupMissing()
     {
-        // If the Signals DB no longer has a row for a followed locality,
-        // the service must NOT return a DTO with an empty wardName — it
-        // would violate the API contract. The follow is dropped instead.
         var lookup = new FakeLocalityLookup { AutoPopulate = false };
         var repo = new FakeFollowRepo();
         var svc = NewService(repo, lookup);
@@ -187,10 +182,6 @@ public class FollowServiceTests
         Assert.Equal(present, dto.LocalityId);
         Assert.Equal("Makadara Ward", dto.WardName);
     }
-
-    // -----------------------------------------------------------------------
-    // SetFollowedAsync — dedupe behavior preserves non-null DisplayLabel
-    // -----------------------------------------------------------------------
 
     [Fact]
     public async Task SetFollowed_DedupePrefersNonNullDisplayLabel()

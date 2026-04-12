@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Logging;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Application.Signals;
 using Hali.Contracts.Notifications;
@@ -53,10 +54,10 @@ public class LocalitiesController : ControllerBase
     [HttpGet("followed")]
     public async Task<IActionResult> GetFollowed(CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null) return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var followed = await _follows.GetFollowedWithDetailsAsync(accountId.Value, ct);
+        var followed = await _follows.GetFollowedWithDetailsAsync(accountId, ct);
         return Ok(followed);
     }
 
@@ -65,8 +66,8 @@ public class LocalitiesController : ControllerBase
         [FromBody] FollowedLocalitiesRequestDto dto,
         CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null) return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
         // Prefer the items shape (carries displayLabel). Fall back to legacy
         // localityIds shape so existing clients still work.
@@ -74,18 +75,7 @@ public class LocalitiesController : ControllerBase
             ? dto.Items.Select(i => new FollowEntry(i.LocalityId, i.DisplayLabel))
             : dto.LocalityIds.Select(id => new FollowEntry(id, null));
 
-        try
-        {
-            await _follows.SetFollowedAsync(accountId.Value, entries, ct);
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "MAX_FOLLOWED_LOCALITIES_EXCEEDED")
-        {
-            return UnprocessableEntity(new
-            {
-                error = "You may follow at most 5 localities.",
-                code = "max_followed_localities_exceeded"
-            });
-        }
+        await _follows.SetFollowedAsync(accountId, entries, ct);
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
         var count = dto.Items.Count > 0 ? dto.Items.Count : dto.LocalityIds.Count;
@@ -142,7 +132,7 @@ public class LocalitiesController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Locality search geocoding failed for {Query}", query);
+            _logger.LogWarning(ex, "Locality search geocoding failed for query (length={QueryLength})", query.Length);
             return Ok(Array.Empty<LocalitySearchResultDto>());
         }
 
@@ -186,18 +176,26 @@ public class LocalitiesController : ControllerBase
     /// GET /v1/localities/resolve-by-coordinates
     /// Resolves GPS coordinates to the nearest ward.
     /// Only called when the user explicitly opts in to GPS-based locality detection.
-    /// The default first-launch flow uses /v1/localities/search (manual area picker).
     /// </summary>
     [HttpGet("resolve-by-coordinates")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult ResolveByCoordinates(
-        [FromQuery] double latitude,
-        [FromQuery] double longitude)
+    public async Task<IActionResult> ResolveByCoordinates(
+        [FromQuery] double lat,
+        [FromQuery] double lng,
+        CancellationToken ct)
     {
-        // TODO: implement via ILocalityService.ResolveByCoordinatesAsync
-        // Stub returns 404 until implemented — honest contract.
-        return NotFound();
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+            return BadRequest(new { error = "Invalid coordinates.", code = "invalid_coordinates" });
+
+        var locality = await _localities.FindByPointAsync(lat, lng, ct);
+        if (locality is null)
+            return NotFound(new { error = "No locality found for the given coordinates.", code = "locality_not_found" });
+
+        return Ok(new
+        {
+            localityId = locality.Id,
+            wardName = locality.WardName,
+            cityName = locality.CityName,
+        });
     }
 }

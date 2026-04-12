@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Application.Participation;
 using Hali.Contracts.Clusters;
 using Hali.Domain.Entities.Auth;
@@ -51,7 +52,7 @@ public class ClustersController : ControllerBase
         SignalCluster cluster = await _clusters.GetClusterByIdAsync(id, ct);
         if (cluster == null)
         {
-            return NotFound(new { error = "Cluster not found." });
+            throw new NotFoundException("cluster.not_found", "Cluster not found.");
         }
         var officialPosts = await _officialPosts.GetByClusterIdAsync(id, ct);
 
@@ -118,11 +119,21 @@ public class ClustersController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
-            return BadRequest(new { error = "device_hash is required." });
+            throw new ValidationException("device_hash is required.",
+                code: "validation.failed",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["device_hash is required."]
+                });
         }
         if (string.IsNullOrWhiteSpace(dto.Type))
         {
-            return BadRequest(new { error = "type is required." });
+            throw new ValidationException("type is required.",
+                code: "validation.failed",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["type"] = ["type is required."]
+                });
         }
         bool flag = !Enum.TryParse<ParticipationType>(dto.Type, ignoreCase: true, out var type);
         bool flag2 = flag;
@@ -133,16 +144,22 @@ public class ClustersController : ControllerBase
         }
         if (flag2)
         {
-            return UnprocessableEntity(new
-            {
-                error = "Invalid participation type.",
-                code = "invalid_participation_type"
-            });
+            throw new ValidationException("Invalid participation type.",
+                code: "validation.invalid_participation_type",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["type"] = ["Invalid participation type."]
+                });
         }
         Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
         if (device == null)
         {
-            return UnprocessableEntity(new { error = "Device not recognised.", code = "device_not_found" });
+            throw new ValidationException("Device not recognised.",
+                code: "validation.device_not_found",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["Device not recognised."]
+                });
         }
         Guid? accountId = null;
         if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
@@ -159,40 +176,35 @@ public class ClustersController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
-            return BadRequest(new { error = "device_hash is required." });
+            throw new ValidationException("device_hash is required.",
+                code: "validation.failed",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["device_hash is required."]
+                });
         }
         if (string.IsNullOrWhiteSpace(dto.Text))
         {
-            return BadRequest(new { error = "text is required." });
+            throw new ValidationException("text is required.",
+                code: "validation.failed",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["text"] = ["text is required."]
+                });
         }
         Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
         if (device == null)
         {
-            return UnprocessableEntity(new { error = "Device not recognised.", code = "device_not_found" });
+            throw new ValidationException("Device not recognised.",
+                code: "validation.device_not_found",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["Device not recognised."]
+                });
         }
-        try
-        {
-            await _participation.AddContextAsync(id, device.Id, dto.Text, ct);
-            return NoContent();
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "CONTEXT_REQUIRES_AFFECTED")
-        {
-            return UnprocessableEntity(new
-            {
-                error = "Context requires an active affected participation.",
-                code = "policy_blocked",
-                reason = "context_requires_affected_participation"
-            });
-        }
-        catch (InvalidOperationException ex2) when (ex2.Message == "CONTEXT_EDIT_WINDOW_EXPIRED")
-        {
-            return UnprocessableEntity(new
-            {
-                error = "Context edit window has expired.",
-                code = "policy_blocked",
-                reason = "context_edit_window_expired"
-            });
-        }
+
+        await _participation.AddContextAsync(id, device.Id, dto.Text, ct);
+        return NoContent();
     }
 
     [HttpPost("{id:guid}/restoration-response")]
@@ -201,36 +213,39 @@ public class ClustersController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
-            return BadRequest(new { error = "device_hash is required." });
+            throw new ValidationException("device_hash is required.",
+                code: "validation.failed",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["device_hash is required."]
+                });
         }
         HashSet<string> validResponses = new HashSet<string> { "still_affected", "restored", "not_sure" };
         if (string.IsNullOrWhiteSpace(dto.Response) || !validResponses.Contains(dto.Response))
         {
-            return UnprocessableEntity(new { error = "Invalid response value.", code = "invalid_restoration_response" });
+            throw new ValidationException("Invalid response value.",
+                code: "validation.invalid_restoration_response",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["response"] = ["Invalid response value. Must be one of: still_affected, restored, not_sure."]
+                });
         }
         Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
         if (device == null)
         {
-            return UnprocessableEntity(new { error = "Device not recognised.", code = "device_not_found" });
+            throw new ValidationException("Device not recognised.",
+                code: "validation.device_not_found",
+                fieldErrors: new Dictionary<string, string[]>
+                {
+                    ["device_hash"] = ["Device not recognised."]
+                });
         }
         Guid? accountId = null;
         if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
         {
             accountId = parsed;
         }
-        try
-        {
-            await _participation.RecordRestorationResponseAsync(id, device.Id, accountId, dto.Response, ct);
-            return NoContent();
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "RESTORATION_REQUIRES_AFFECTED")
-        {
-            return UnprocessableEntity(new
-            {
-                error = "Restoration response requires an active affected participation.",
-                code = "policy_blocked",
-                reason = "restoration_requires_affected_participation"
-            });
-        }
+        await _participation.RecordRestorationResponseAsync(id, device.Id, accountId, dto.Response, ct);
+        return NoContent();
     }
 }
