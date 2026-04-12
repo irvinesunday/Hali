@@ -27,7 +27,7 @@ into 500s. Flagged repeatedly across multiple PRs.
 When an inline element is replaced with a shared component, accessibility
 attributes silently disappear. Flagged 15+ times across multiple mobile
 PRs. Diff the old element before deleting it.
--> CODING_STANDARDS: React Native / TypeScript checklist
+-> CODING_STANDARDS: Pre-commit checklist > React Native / TypeScript (citizen-mobile)
 
 ## 4. Tests lost during merge conflict resolution
 Merge resolution in test files can silently delete test methods or weaken

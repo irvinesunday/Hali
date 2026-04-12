@@ -189,7 +189,7 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
   `Request.QueryString`, raw header values) into structured log templates.
   Use `context.GetEndpoint()?.DisplayName` for route identification.
   For any user-supplied value that must be logged, use
-  `ObservabilityEvents.SanitizeForLog()`.
+  `ObservabilityEvents.SanitizeForLog(value)`.
 - The existing header-sanitization rule (Security section) covers response
   headers; this rule covers the structured-logging path explicitly.
 
