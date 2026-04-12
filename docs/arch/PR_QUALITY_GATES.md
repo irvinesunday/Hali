@@ -7,7 +7,7 @@
 ---
 
 ## G1 — Build clean
-- [ ] `dotnet build` zero warnings (C# changes)
+- [ ] `dotnet build` no new warnings vs. the current baseline (C# changes)
 - [ ] `dotnet format --verify-no-changes` passes (C# changes)
 - [ ] `npx tsc --noEmit` zero errors (TypeScript changes)
 - [ ] `dotnet test` zero failures
