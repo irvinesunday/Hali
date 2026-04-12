@@ -49,7 +49,7 @@ public class ParticipationService : IParticipationService
 
     public async Task AddContextAsync(Guid clusterId, Guid deviceId, string contextText, CancellationToken ct)
     {
-        Hali.Domain.Entities.Participation.Participation participation = await _participationRepo.GetByDeviceAsync(clusterId, deviceId, ct);
+        Hali.Domain.Entities.Participation.Participation? participation = await _participationRepo.GetByDeviceAsync(clusterId, deviceId, ct);
         if (participation == null || participation.ParticipationType != ParticipationType.Affected)
         {
             throw new ConflictException("participation.context_requires_affected", "Context requires an active affected participation.");

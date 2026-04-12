@@ -59,7 +59,8 @@ public class ExceptionHandlingMiddleware
 
         var mapping = _mapper.Map(exception);
         var correlationId = SanitizeCorrelationId(
-            context.Items["CorrelationId"] as string ?? "");
+            context.Items["CorrelationId"] as string
+            ?? context.TraceIdentifier);
 
         LogException(exception, mapping);
 

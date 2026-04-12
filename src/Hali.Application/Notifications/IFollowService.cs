@@ -23,7 +23,7 @@ public interface IFollowService
 
     /// <summary>
     /// Replaces the account's followed localities. Enforces max 5.
-    /// Throws <see cref="Errors.ValidationException"/> with code
+    /// Throws <see cref="Hali.Application.Errors.ValidationException"/> with code
     /// "validation.max_followed_localities_exceeded" if over limit.
     /// </summary>
     Task SetFollowedAsync(Guid accountId, IEnumerable<FollowEntry> entries, CancellationToken ct = default);
