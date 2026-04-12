@@ -180,5 +180,51 @@ public class FollowServiceTests
 
         var dto = Assert.Single(result);
         Assert.Equal(present, dto.LocalityId);
+        Assert.Equal("Makadara Ward", dto.WardName);
+    }
+
+    [Fact]
+    public async Task SetFollowed_DedupePrefersNonNullDisplayLabel()
+    {
+        // Two entries for the same localityId — the second carries the
+        // label. The dedupe must keep the labelled entry, not silently
+        // drop it because it appears later.
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[]
+        {
+            new FollowEntry(localityId, null),
+            new FollowEntry(localityId, "South B"),
+        });
+
+        var follows = await svc.GetFollowedAsync(accountId);
+        var follow = Assert.Single(follows);
+        Assert.Equal("South B", follow.DisplayLabel);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public async Task SetFollowed_DedupeTreatsBlankDisplayLabelAsMissing(string blank)
+    {
+        // SetFollowedAsync uses IsNullOrWhiteSpace to detect a "missing"
+        // label, so an empty or whitespace-only DisplayLabel must not
+        // clobber a real labelled entry that arrives in the same call.
+        var svc = NewService();
+        var accountId = Guid.NewGuid();
+        var localityId = Guid.NewGuid();
+
+        await svc.SetFollowedAsync(accountId, new[]
+        {
+            new FollowEntry(localityId, blank),
+            new FollowEntry(localityId, "South B"),
+        });
+
+        var follows = await svc.GetFollowedAsync(accountId);
+        var follow = Assert.Single(follows);
+        Assert.Equal("South B", follow.DisplayLabel);
     }
 }

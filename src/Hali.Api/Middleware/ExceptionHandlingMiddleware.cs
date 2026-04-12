@@ -59,7 +59,8 @@ public class ExceptionHandlingMiddleware
         }
 
         var mapping = _mapper.Map(exception);
-        var correlationId = context.Items["CorrelationId"] as string ?? "";
+        var correlationId = SanitizeCorrelationId(
+            context.Items["CorrelationId"] as string ?? "");
 
         LogException(exception, mapping, correlationId, context);
 
@@ -84,12 +85,35 @@ public class ExceptionHandlingMiddleware
         "http.status_code={StatusCode} trace.id={TraceId} " +
         "route={Route} method={Method}";
 
+    /// <summary>
+    /// Strip characters that could enable log injection. The correlation ID
+    /// originates from the X-Correlation-Id request header (user-controlled)
+    /// so it must be sanitized before inclusion in structured log fields.
+    /// </summary>
+    private static string SanitizeCorrelationId(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        // Allow only hex digits, hyphens, and lowercase letters (covers
+        // Guid.ToString("N") and Guid.ToString("D") formats).
+        var span = raw.AsSpan();
+        Span<char> buf = stackalloc char[Math.Min(span.Length, 64)];
+        int pos = 0;
+        foreach (char c in span)
+        {
+            if (pos >= buf.Length) break;
+            if (char.IsLetterOrDigit(c) || c == '-')
+                buf[pos++] = c;
+        }
+        return new string(buf[..pos]);
+    }
+
     private void LogException(Exception exception, ApiErrorMapping mapping, string correlationId, HttpContext context)
     {
         var category = (exception as AppException)?.Category.ToString() ?? "unexpected";
         // Use the matched endpoint route pattern (e.g. "v1/signals/submit")
         // instead of the raw request path to avoid CodeQL log-forging findings.
         var route = context.GetEndpoint()?.DisplayName ?? "unknown";
+        // correlationId is already sanitized at the call site in HandleExceptionAsync.
         var args = new object?[]
         {
             "api.exception_handled", mapping.Code, category,
