@@ -360,7 +360,7 @@ public class HomeController : ControllerBase
         new ClusterResponseDto(
             c.Id,
             JsonNamingPolicy.SnakeCaseLower.ConvertName(c.State.ToString()),
-            c.Category.ToString().ToLowerInvariant(),
+            JsonNamingPolicy.SnakeCaseLower.ConvertName(c.Category.ToString()),
             c.SubcategorySlug,
             c.Title,
             c.Summary,

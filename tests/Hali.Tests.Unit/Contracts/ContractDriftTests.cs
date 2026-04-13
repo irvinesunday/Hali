@@ -9,6 +9,7 @@ using Hali.Api.Controllers;
 using Hali.Api.Serialization;
 using Hali.Application.Home;
 using Hali.Application.Notifications;
+using Hali.Application.Signals;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
 using Hali.Contracts.Home;
@@ -123,16 +124,45 @@ public class ContractDriftTests
     [Fact]
     public void ClusterResponseDto_NullableFields_SerializedAsJsonNull()
     {
-        var dto = MakeClusterResponse();
+        // Build a cluster response with every nullable OpenAPI-required field
+        // set to null, and verify each one appears on the wire as JSON null
+        // (not absent). Covers every nullable field listed in ClusterResponse
+        // required[] — including the four (subcategorySlug, title, summary,
+        // locationLabel) that weren't explicitly asserted in the original
+        // C12 tests.
+        var dto = new ClusterResponseDto(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "active",
+            "water",
+            SubcategorySlug: null,
+            Title: null,
+            Summary: null,
+            AffectedCount: 0,
+            ObservingCount: 0,
+            CreatedAt: DateTime.UtcNow,
+            UpdatedAt: DateTime.UtcNow,
+            ActivatedAt: null,
+            PossibleRestorationAt: null,
+            ResolvedAt: null)
+        {
+            LocationLabel = null,
+            MyParticipation = null
+        };
         var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
         using var doc = JsonDocument.Parse(json);
 
         // Nullable fields are always present on the wire (required in OpenAPI
         // 3.1 means present-on-wire, not non-null). They serialize as JSON null.
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("activatedAt").ValueKind);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("possibleRestorationAt").ValueKind);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("resolvedAt").ValueKind);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("myParticipation").ValueKind);
+        foreach (var field in new[]
+        {
+            "subcategorySlug", "title", "summary", "locationLabel",
+            "activatedAt", "possibleRestorationAt", "resolvedAt", "myParticipation"
+        })
+        {
+            Assert.True(doc.RootElement.TryGetProperty(field, out var value),
+                $"ClusterResponse.{field} must be present on the wire");
+            Assert.Equal(JsonValueKind.Null, value.ValueKind);
+        }
     }
 
     // ── MyParticipationDto ──────────────────────────────────────────────────
@@ -439,6 +469,72 @@ public class ContractDriftTests
             expected.Replace("_", ""), ignoreCase: true);
         string serialized = JsonNamingPolicy.SnakeCaseLower.ConvertName(state.ToString());
         Assert.Equal(expected, serialized);
+    }
+
+    [Theory]
+    [MemberData(nameof(CivicCategoryValues))]
+    public void CivicCategory_WireValue_MatchesSnakeCaseLowerPolicy(CivicCategory category)
+    {
+        // Guard against latent drift on the Category enum: the manual
+        // conversion in HomeController.ToDto and ClustersController.GetCluster
+        // must produce exactly what JsonNamingPolicy.SnakeCaseLower.ConvertName
+        // produces (the same policy the global JsonStringEnumConverter uses).
+        // All current values are single-word, but any multi-word value added
+        // later would silently diverge under the old `.ToLowerInvariant()`
+        // path — this test locks the policy, not the specific current values.
+        string viaPolicy = JsonNamingPolicy.SnakeCaseLower.ConvertName(category.ToString());
+
+        // Round-trip through the OpenAPI-configured enum converter as the
+        // source of truth for "what the wire should say":
+        string wireViaConverter = JsonSerializer.Serialize(category, ApiJsonOptions).Trim('"');
+
+        Assert.Equal(wireViaConverter, viaPolicy);
+    }
+
+    public static IEnumerable<object[]> CivicCategoryValues() =>
+        Enum.GetValues<CivicCategory>().Select(v => new object[] { v });
+
+    // ── LocalityResolveResponse (resolve-by-coordinates) ────────────────────
+
+    [Fact]
+    public async Task LocalitiesController_ResolveByCoordinates_AllRequiredFieldsPresentOnWire()
+    {
+        // Drives LocalitiesController.ResolveByCoordinates and verifies the
+        // response shape matches the OpenAPI `required: [localityId, wardName,
+        // cityName]` claim — in particular that `cityName` is present on the
+        // wire as JSON null when the locality has no city name.
+        var locality = new LocalitySummary(
+            Id: Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            WardName: "South B",
+            CityName: null,
+            CountyName: null);
+
+        var localities = Substitute.For<ILocalityLookupRepository>();
+        localities.FindByPointAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
+            .Returns(locality);
+
+        var controller = new LocalitiesController(
+            Substitute.For<IFollowService>(),
+            Substitute.For<IGeocodingService>(),
+            localities,
+            Substitute.For<IDatabase>(),
+            Substitute.For<Hali.Application.Auth.IRateLimiter>(),
+            NullLogger<LocalitiesController>.Instance);
+
+        var result = await controller.ResolveByCoordinates(-1.3, 36.8, CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        // Serialize through the MVC-configured options — the same path MVC
+        // takes when the controller returns Ok(value).
+        var json = JsonSerializer.Serialize(okResult.Value, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.TryGetProperty("localityId", out _));
+        Assert.True(root.TryGetProperty("wardName", out _));
+        Assert.True(root.TryGetProperty("cityName", out var cityName),
+            "cityName must be present on the wire (OpenAPI required = present-on-wire)");
+        Assert.Equal(JsonValueKind.Null, cityName.ValueKind);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
