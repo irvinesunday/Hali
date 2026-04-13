@@ -279,6 +279,9 @@ public class HomeController : ControllerBase
     private async Task<PagedSection<ClusterResponseDto>> BuildOtherActiveSectionAsync(
         List<Guid> localityIds, DateTime? cursorBefore, CancellationToken ct)
     {
+        if (localityIds.Count == 0)
+            return EmptyClusterSection();
+
         var raw = await _feedQuery.GetAllActivePagedAsync(localityIds, LimitOtherActive + 1, cursorBefore, ct);
         return ToPagedClusterSection(raw, LimitOtherActive);
     }

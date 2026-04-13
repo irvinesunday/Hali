@@ -147,24 +147,17 @@ public class HomeAnonymousBrowseTests
         // Arrange — anonymous user, no localityId
         var controller = CreateController();
 
-        _feedQuery
-            .GetAllActivePagedAsync(
-                Arg.Any<List<Guid>>(),
-                Arg.Any<int>(),
-                Arg.Any<DateTime?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<SignalCluster>().AsReadOnly());
-
         // Act
         var result = await controller.GetHome(
             section: null, cursor: null, localityId: null, ct: CancellationToken.None);
 
-        // Assert — returns OK with empty sections (no followed localities for guest)
+        // Assert — all four sections are empty (no followed localities for guest)
         var ok = Assert.IsType<OkObjectResult>(result);
         var feed = Assert.IsType<HomeResponseDto>(ok.Value);
         Assert.Empty(feed.ActiveNow.Items);
         Assert.Empty(feed.OfficialUpdates.Items);
         Assert.Empty(feed.RecurringAtThisTime.Items);
+        Assert.Empty(feed.OtherActiveSignals.Items);
     }
 
     // ── Anonymous cache behavior ───────────────────────────────────
@@ -203,7 +196,7 @@ public class HomeAnonymousBrowseTests
         await controller.GetHome(
             section: null, cursor: null, localityId: TestLocalityId, ct: CancellationToken.None);
 
-        // Assert — at least one StringSetAsync call was made to Redis.
+        // Assert — exactly one StringSetAsync call was made to Redis.
         // NSubstitute's ReceivedCalls() captures all calls regardless of overload.
         var redisCalls = _redis.ReceivedCalls()
             .Where(c => c.GetMethodInfo().Name == "StringSetAsync")

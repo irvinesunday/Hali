@@ -283,7 +283,9 @@ export default function ClusterDetailScreen(): React.ReactElement {
         {authState.status !== 'authenticated' ? (
           <AuthPrompt
             message="Sign in to report how this affects you and contribute to this signal."
-            onSignIn={() => router.push('/(auth)/phone')}
+            onSignIn={() => {
+              void requireAuth();
+            }}
           />
         ) : (
           <View style={styles.actionsBlock}>
