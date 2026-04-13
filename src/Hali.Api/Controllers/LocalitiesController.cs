@@ -180,14 +180,14 @@ public class LocalitiesController : ControllerBase
     [HttpGet("resolve-by-coordinates")]
     [AllowAnonymous]
     public async Task<IActionResult> ResolveByCoordinates(
-        [FromQuery] double lat,
-        [FromQuery] double lng,
+        [FromQuery] double latitude,
+        [FromQuery] double longitude,
         CancellationToken ct)
     {
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
             return BadRequest(new { error = "Invalid coordinates.", code = "invalid_coordinates" });
 
-        var locality = await _localities.FindByPointAsync(lat, lng, ct);
+        var locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
             return NotFound(new { error = "No locality found for the given coordinates.", code = "locality_not_found" });
 

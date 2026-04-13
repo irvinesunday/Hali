@@ -138,10 +138,15 @@ public class ContractDriftTests
     }
 
     [Fact]
-    public void HomeResponseDto_CacheJsonMatchesMvcJson()
+    public void HomeResponseDto_DefaultOptions_DivergeFromApiOptions_ProvingOptionsMatter()
     {
-        // This test guards against DRIFT-2: the Redis cache path must produce
-        // the same JSON shape as the MVC Ok() path. Both must use CamelCase.
+        // This test guards against DRIFT-2: the Redis cache path must not use
+        // default JsonSerializerOptions, because they diverge from the MVC
+        // serializer configured in Program.cs. HomeController now sources its
+        // cache serializer from IOptions<JsonOptions> (MVC config), but this
+        // test locks in the contract that default options WOULD produce a
+        // different shape — so any accidental revert would be caught here
+        // and by HomeResponseDto_CacheOptions_SerializeCamelCaseAndSnakeEnums.
         var dto = new HomeResponseDto
         {
             ActiveNow = new PagedSection<ClusterResponseDto>
@@ -152,19 +157,55 @@ public class ContractDriftTests
             }
         };
 
-        // Simulate the cache serialization (HomeController.CacheJsonOptions)
-        var cacheJson = JsonSerializer.Serialize(dto, ApiJsonOptions);
-        // Simulate the MVC serialization (same options configured in Program.cs)
-        var mvcJson = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        // Default options: PascalCase properties (drift case)
+        var defaultJson = JsonSerializer.Serialize(dto);
+        // API options: camelCase properties (correct case)
+        var apiJson = JsonSerializer.Serialize(dto, ApiJsonOptions);
 
-        Assert.Equal(mvcJson, cacheJson);
+        Assert.NotEqual(defaultJson, apiJson);
 
-        // Verify camelCase in the serialized output
-        using var doc = JsonDocument.Parse(cacheJson);
-        Assert.True(doc.RootElement.TryGetProperty("activeNow", out var section));
-        Assert.True(section.TryGetProperty("items", out _));
-        Assert.True(section.TryGetProperty("nextCursor", out _));
-        Assert.True(section.TryGetProperty("totalCount", out _));
+        // Default options would leak PascalCase
+        using (var doc = JsonDocument.Parse(defaultJson))
+        {
+            Assert.True(doc.RootElement.TryGetProperty("ActiveNow", out _));
+            Assert.False(doc.RootElement.TryGetProperty("activeNow", out _));
+        }
+
+        // API options produce camelCase as the contract requires
+        using (var doc = JsonDocument.Parse(apiJson))
+        {
+            Assert.True(doc.RootElement.TryGetProperty("activeNow", out var section));
+            Assert.True(section.TryGetProperty("items", out _));
+            Assert.True(section.TryGetProperty("nextCursor", out _));
+            Assert.True(section.TryGetProperty("totalCount", out _));
+        }
+    }
+
+    [Fact]
+    public void HomeResponseDto_CacheOptions_SerializeCamelCaseAndSnakeEnums()
+    {
+        // HomeController.CacheJsonOptions (now sourced from MVC's IOptions<JsonOptions>)
+        // must produce the same shape the OpenAPI spec declares: camelCase
+        // property names and snake_case enum values.
+        var dto = new HomeResponseDto
+        {
+            ActiveNow = new PagedSection<ClusterResponseDto>
+            {
+                Items = new[] { MakeClusterResponse() with { State = "possible_restoration" } },
+                NextCursor = null,
+                TotalCount = 1
+            }
+        };
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        var cluster = doc.RootElement
+            .GetProperty("activeNow")
+            .GetProperty("items")[0];
+        Assert.Equal("possible_restoration", cluster.GetProperty("state").GetString());
+        Assert.True(cluster.TryGetProperty("affectedCount", out _));
+        Assert.True(cluster.TryGetProperty("myParticipation", out _));
     }
 
     // ── PagedSection<T> ─────────────────────────────────────────────────────
@@ -264,11 +305,13 @@ public class ContractDriftTests
     public void SignalState_SnakeCaseValues_MatchOpenApiEnum(string expected)
     {
         // The State field in ClusterResponseDto is manually converted from
-        // SignalState via ToSnakeCase. Verify the exact wire values match
-        // the OpenAPI enum array: [unconfirmed, active, possible_restoration, resolved].
+        // SignalState via JsonNamingPolicy.SnakeCaseLower.ConvertName —
+        // identical to the global JsonStringEnumConverter naming policy.
+        // Verify the exact wire values match the OpenAPI enum array:
+        // [unconfirmed, active, possible_restoration, resolved].
         var state = Enum.Parse<Hali.Domain.Enums.SignalState>(
             expected.Replace("_", ""), ignoreCase: true);
-        string serialized = ToSnakeCase(state.ToString());
+        string serialized = JsonNamingPolicy.SnakeCaseLower.ConvertName(state.ToString());
         Assert.Equal(expected, serialized);
     }
 
@@ -290,20 +333,4 @@ public class ContractDriftTests
             LocationLabel = null,
             MyParticipation = null
         };
-
-    /// <summary>
-    /// Mirror of the ToSnakeCase helper used in HomeController and
-    /// ClustersController. Kept here so the test is self-contained.
-    /// </summary>
-    private static string ToSnakeCase(string pascal)
-    {
-        var sb = new System.Text.StringBuilder(pascal.Length + 4);
-        for (int i = 0; i < pascal.Length; i++)
-        {
-            char c = pascal[i];
-            if (i > 0 && char.IsUpper(c)) sb.Append('_');
-            sb.Append(char.ToLowerInvariant(c));
-        }
-        return sb.ToString();
-    }
 }

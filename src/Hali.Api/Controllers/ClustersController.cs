@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
@@ -66,7 +67,7 @@ public class ClustersController : ControllerBase
             var current = await _participationRepo.GetMostRecentByAccountAsync(id, callerAccountId, ct);
             if (current != null)
             {
-                var typeStr = ToSnakeCase(current.ParticipationType.ToString());
+                var typeStr = JsonNamingPolicy.SnakeCaseLower.ConvertName(current.ParticipationType.ToString());
                 var isAffected = current.ParticipationType == ParticipationType.Affected;
                 var withinWindow = isAffected
                     && DateTime.UtcNow <= current.CreatedAt.AddMinutes(_civisOptions.ContextEditWindowMinutes);
@@ -80,7 +81,7 @@ public class ClustersController : ControllerBase
 
         var dto = new ClusterResponseDto(
             cluster.Id,
-            ToSnakeCase(cluster.State.ToString()),
+            JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.State.ToString()),
             cluster.Category.ToString().ToLowerInvariant(),
             cluster.SubcategorySlug,
             cluster.Title,
@@ -98,20 +99,6 @@ public class ClustersController : ControllerBase
             MyParticipation = myParticipation,
         };
         return Ok(dto);
-    }
-
-    // PascalCase enum name → snake_case_lower, matching the global
-    // JsonStringEnumConverter naming policy used elsewhere in the API.
-    private static string ToSnakeCase(string pascal)
-    {
-        var sb = new System.Text.StringBuilder(pascal.Length + 4);
-        for (int i = 0; i < pascal.Length; i++)
-        {
-            char c = pascal[i];
-            if (i > 0 && char.IsUpper(c)) sb.Append('_');
-            sb.Append(char.ToLowerInvariant(c));
-        }
-        return sb.ToString();
     }
 
     [HttpPost("{id:guid}/participation")]

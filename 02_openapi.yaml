@@ -298,7 +298,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [localityId, wardName]
+                required: [localityId, wardName, cityName]
                 properties:
                   localityId: { type: string, format: uuid }
                   wardName: { type: string }
