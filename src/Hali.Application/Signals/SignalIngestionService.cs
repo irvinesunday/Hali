@@ -29,6 +29,8 @@ public class SignalIngestionService : ISignalIngestionService
 
     private const int H3Resolution = 9;
 
+    private const int MaxLocationLabelLength = 400;
+
     private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "roads", "transport", "electricity", "water", "environment", "safety", "governance", "infrastructure" };
 
     private static readonly HashSet<string> AllowedTemporalTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "temporary", "continuous", "recurring", "scheduled", "episodic_unknown" };
@@ -123,6 +125,13 @@ public class SignalIngestionService : ISignalIngestionService
 
             _logger?.LogInformation("{EventName} localityId={LocalityId}",
                 ObservabilityEvents.SignalLocalityResolved, locality.Id);
+
+            if (request.LocationLabel is not null && request.LocationLabel.Length > MaxLocationLabelLength)
+            {
+                throw new ValidationException(
+                    $"Location label must not exceed {MaxLocationLabelLength} characters.",
+                    code: "validation.location_label_too_long");
+            }
 
             string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");
             SignalEvent signal = new SignalEvent

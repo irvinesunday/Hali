@@ -262,15 +262,16 @@ export default function ClusterDetailScreen(): React.ReactElement {
         )}
 
         {/* ── Location label ──────────────────────────────────── */}
-        {cluster.locationLabel !== null && cluster.locationLabel !== '' && (
-          <Text
-            style={styles.locationLabel}
-            numberOfLines={2}
-            accessibilityLabel={`Location: ${cluster.locationLabel}`}
-          >
-            {cluster.locationLabel}
-          </Text>
-        )}
+        {typeof cluster.locationLabel === 'string' &&
+          cluster.locationLabel.trim() !== '' && (
+            <Text
+              style={styles.locationLabel}
+              numberOfLines={2}
+              accessibilityLabel={`Location: ${cluster.locationLabel}`}
+            >
+              {cluster.locationLabel}
+            </Text>
+          )}
 
         {/* ── Institution attribution ───────────────────────────── */}
         <Text style={styles.institution}>

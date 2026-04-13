@@ -43,7 +43,8 @@ export const ClusterCard = React.memo(
           </Text>
         ) : null}
 
-        {cluster.locationLabel ? (
+        {typeof cluster.locationLabel === 'string' &&
+        cluster.locationLabel.trim() !== '' ? (
           <Text
             style={styles.locationLabel}
             numberOfLines={1}
