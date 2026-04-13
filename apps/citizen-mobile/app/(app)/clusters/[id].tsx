@@ -38,6 +38,7 @@ import { ParticipationBar } from '../../../src/components/cluster/ParticipationB
 import { Loading } from '../../../src/components/common/Loading';
 import { Button } from '../../../src/components/common/Button';
 import {
+  AuthPrompt,
   CategoryIconCircle,
   SectionHeader,
   OfficialUpdateRow,
@@ -279,55 +280,62 @@ export default function ClusterDetailScreen(): React.ReactElement {
         )}
 
         {/* ── Participation actions ─────────────────────────────── */}
-        <View style={styles.actionsBlock}>
-          <Text style={styles.actionsLabel}>How does this affect you?</Text>
-          <View style={styles.actionRow}>
-            <Button
-              label="I'm Affected"
-              variant={localParticipation === 'affected' ? 'primary' : 'secondary'}
-              size="sm"
-              loading={
-                participationMutation.isPending &&
-                participationMutation.variables?.type === 'affected'
-              }
-              disabled={participationMutation.isPending}
-              onPress={() => void handleParticipate('affected')}
-              style={styles.actionBtn}
-            />
-            {!isExperiential && (
+        {authState.status !== 'authenticated' ? (
+          <AuthPrompt
+            message="Sign in to report how this affects you and contribute to this signal."
+            onSignIn={() => router.push('/(auth)/phone')}
+          />
+        ) : (
+          <View style={styles.actionsBlock}>
+            <Text style={styles.actionsLabel}>How does this affect you?</Text>
+            <View style={styles.actionRow}>
               <Button
-                label="I'm Observing"
-                variant={localParticipation === 'observing' ? 'primary' : 'secondary'}
+                label="I'm Affected"
+                variant={localParticipation === 'affected' ? 'primary' : 'secondary'}
                 size="sm"
                 loading={
                   participationMutation.isPending &&
-                  participationMutation.variables?.type === 'observing'
+                  participationMutation.variables?.type === 'affected'
                 }
                 disabled={participationMutation.isPending}
-                onPress={() => void handleParticipate('observing')}
+                onPress={() => void handleParticipate('affected')}
                 style={styles.actionBtn}
               />
+              {!isExperiential && (
+                <Button
+                  label="I'm Observing"
+                  variant={localParticipation === 'observing' ? 'primary' : 'secondary'}
+                  size="sm"
+                  loading={
+                    participationMutation.isPending &&
+                    participationMutation.variables?.type === 'observing'
+                  }
+                  disabled={participationMutation.isPending}
+                  onPress={() => void handleParticipate('observing')}
+                  style={styles.actionBtn}
+                />
+              )}
+            </View>
+
+            {localParticipation !== null && (
+              <TouchableOpacity
+                onPress={() => void handleParticipate('no_longer_affected')}
+                disabled={participationMutation.isPending}
+                style={styles.ghostCta}
+                accessibilityRole="button"
+                accessibilityLabel="No longer affected"
+              >
+                <Text style={styles.ghostCtaText}>No longer affected</Text>
+              </TouchableOpacity>
+            )}
+
+            {participationError !== null && (
+              <Text style={styles.errorText} accessibilityRole="alert">
+                {participationError}
+              </Text>
             )}
           </View>
-
-          {localParticipation !== null && (
-            <TouchableOpacity
-              onPress={() => void handleParticipate('no_longer_affected')}
-              disabled={participationMutation.isPending}
-              style={styles.ghostCta}
-              accessibilityRole="button"
-              accessibilityLabel="No longer affected"
-            >
-              <Text style={styles.ghostCtaText}>No longer affected</Text>
-            </TouchableOpacity>
-          )}
-
-          {participationError !== null && (
-            <Text style={styles.errorText} accessibilityRole="alert">
-              {participationError}
-            </Text>
-          )}
-        </View>
+        )}
 
         {/* ── Add Further Context ───────────────────────────────── */}
         {showContextBlock && (

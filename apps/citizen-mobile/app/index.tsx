@@ -14,7 +14,9 @@ export default function SplashScreen() {
     if (state.status === 'authenticated') {
       router.replace('/(app)/home');
     } else if (state.status === 'unauthenticated') {
-      router.replace('/(auth)/phone');
+      // Anonymous browse: guests land on the home feed and can browse
+      // read-only. Contribution actions gate to auth when tapped.
+      router.replace('/(app)/home');
     }
     // While status === 'unknown' (bootstrapping) we stay on this screen
   }, [state.status, router]);

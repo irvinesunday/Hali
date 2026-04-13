@@ -62,24 +62,26 @@ public class HomeController : ControllerBase
 
         try
         {
-            // Only authenticated users may scope the feed to an explicit locality.
-            // Anonymous callers fall back to the followed-localities path, which
-            // returns empty sections for guests.
+            // Both authenticated and anonymous callers may scope the feed to
+            // an explicit locality via ?localityId.  When omitted,
+            // authenticated users fall back to their followed-localities set;
+            // anonymous callers receive empty sections (no followed wards).
             bool isAuthenticated = User.Identity?.IsAuthenticated == true;
-            var localityIds = localityId.HasValue && isAuthenticated
+            var localityIds = localityId.HasValue
                 ? new List<Guid> { localityId.Value }
                 : await GetFollowedLocalityIdsAsync(ct);
             var cursorDt = DecodeCursor(cursor);
 
-            // Log locality scoping mode
-            if (localityId.HasValue && isAuthenticated)
-                _logger?.LogInformation("{EventName} localityId={LocalityId}",
-                    ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value);
+            // Log locality scoping mode and auth posture
+            if (localityId.HasValue)
+                _logger?.LogInformation("{EventName} localityId={LocalityId} isAuthenticated={IsAuthenticated}",
+                    ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value, isAuthenticated);
             else if (localityIds.Count > 0)
                 _logger?.LogInformation("{EventName} localityCount={LocalityCount}",
                     ObservabilityEvents.HomeLocalityScopeFallback, localityIds.Count);
             else
-                _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeLocalityScopeGuestEmpty);
+                _logger?.LogInformation("{EventName} isAuthenticated={IsAuthenticated}",
+                    ObservabilityEvents.HomeLocalityScopeGuestEmpty, isAuthenticated);
 
             // Section-specific paginated request — skip cache, return single section
             if (section is not null)

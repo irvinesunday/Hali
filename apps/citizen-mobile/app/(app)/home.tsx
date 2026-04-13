@@ -77,6 +77,7 @@ export default function HomeScreen(): React.ReactElement {
     activeLocality,
     followedLocalities,
     setActiveLocalityId,
+    setActiveLocality,
     setFollowedLocalities,
   } = useLocalityContext();
 
@@ -207,6 +208,7 @@ export default function HomeScreen(): React.ReactElement {
         >
           {hasNoFollows ? (
             <NoFollowsState
+              isAuthenticated={isAuthenticated}
               onOpenPicker={() => setLocalitySelectorOpen(true)}
             />
           ) : isCalmState ? (
@@ -246,7 +248,13 @@ export default function HomeScreen(): React.ReactElement {
       )}
 
       {/* ── Persistent FAB ──────────────────────────────────────────── */}
-      <FAB onPress={() => router.push('/(app)/compose/text')} />
+      <FAB onPress={() => {
+        if (!isAuthenticated) {
+          router.push('/(auth)/phone');
+          return;
+        }
+        router.push('/(app)/compose/text');
+      }} />
 
       {/* ── Feedback button ─────────────────────────────────────────── */}
       <FeedbackButton screen="home" />
@@ -257,8 +265,18 @@ export default function HomeScreen(): React.ReactElement {
           onClose={() => setLocalitySelectorOpen(false)}
           followedLocalities={followedLocalities}
           activeLocalityId={activeLocality?.localityId ?? null}
+          isAuthenticated={isAuthenticated}
           onSelectLocality={(id) => {
             setActiveLocalityId(id);
+            setLocalitySelectorOpen(false);
+          }}
+          onSelectSearchResult={(result) => {
+            setActiveLocality({
+              localityId: result.localityId,
+              wardName: result.wardName,
+              displayLabel: result.placeLabel,
+              cityName: result.cityName,
+            });
             setLocalitySelectorOpen(false);
           }}
         />
@@ -314,16 +332,22 @@ function OfficialUpdatesSection({
 // ─── Empty / error states ───────────────────────────────────────────────────
 
 function NoFollowsState({
+  isAuthenticated,
   onOpenPicker,
 }: {
+  isAuthenticated: boolean;
   onOpenPicker: () => void;
 }): React.ReactElement {
   return (
     <View style={styles.emptyContainer}>
       <MapPin size={32} color={Colors.mutedForeground} strokeWidth={1.5} />
-      <Text style={styles.emptyTitle}>Follow a ward to see activity</Text>
+      <Text style={styles.emptyTitle}>
+        {isAuthenticated ? 'Follow a ward to see activity' : 'Choose an area to explore'}
+      </Text>
       <Text style={styles.emptyBody}>
-        Hali shows you civic signals in the wards you follow. Pick up to 5.
+        {isAuthenticated
+          ? 'Hali shows you civic signals in the wards you follow. Pick up to 5.'
+          : 'Search for a ward to browse civic signals in that area.'}
       </Text>
       <TouchableOpacity
         style={styles.primaryCta}
@@ -364,14 +388,19 @@ interface LocalitySelectorSheetProps {
   onClose: () => void;
   followedLocalities: Array<{ localityId: string; wardName: string; displayLabel: string | null }>;
   activeLocalityId: string | null;
+  isAuthenticated: boolean;
   onSelectLocality: (id: string) => void;
+  /** Select a search result directly — used by anonymous browse. */
+  onSelectSearchResult: (result: LocalitySearchResult) => void;
 }
 
 function LocalitySelectorSheet({
   onClose,
   followedLocalities,
   activeLocalityId,
+  isAuthenticated,
   onSelectLocality,
+  onSelectSearchResult,
 }: LocalitySelectorSheetProps): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<LocalitySearchResult[]>([]);
@@ -468,7 +497,7 @@ function LocalitySelectorSheet({
       <View style={styles.sheet}>
         {/* Sheet header */}
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Your areas</Text>
+          <Text style={styles.sheetTitle}>{isAuthenticated ? 'Your areas' : 'Browse an area'}</Text>
           <TouchableOpacity
             onPress={onClose}
             accessibilityLabel="Close"
@@ -515,33 +544,41 @@ function LocalitySelectorSheet({
         <FlatList
           data={listData}
           keyExtractor={(item) => item.localityId}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const id = item.localityId;
             const label = item.label;
             const isActive = id === activeLocalityId;
-            // setActiveLocalityId only accepts ids that exist in
-            // followedLocalities. Search results that aren't already
-            // followed are non-selectable until follow/unfollow is wired
-            // (Phase G — wards settings).
             const isFollowed = followedLocalities.some(
               (l) => l.localityId === id,
             );
+            // Anonymous users may select any search result for browse-mode;
+            // authenticated users can only select their followed localities
+            // (unfollowed results are disabled until ward follow is wired).
+            const canSelect = isFollowed || (!isAuthenticated && !showFollowed);
 
             return (
               <TouchableOpacity
                 style={[
                   styles.localityRow,
                   isActive && styles.localityRowActive,
-                  !isFollowed && styles.localityRowDisabled,
+                  !canSelect && styles.localityRowDisabled,
                 ]}
-                disabled={!isFollowed}
+                disabled={!canSelect}
                 onPress={() => {
                   Keyboard.dismiss();
-                  if (!isFollowed) return;
-                  onSelectLocality(id);
+                  if (!canSelect) return;
+                  if (isFollowed) {
+                    onSelectLocality(id);
+                  } else {
+                    // Guest browse — select from search results
+                    const sr = searchResults[index];
+                    if (sr) {
+                      onSelectSearchResult(sr);
+                    }
+                  }
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isActive, disabled: !isFollowed }}
+                accessibilityState={{ selected: isActive, disabled: !canSelect }}
               >
                 <Text
                   style={[
