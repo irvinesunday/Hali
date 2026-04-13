@@ -1,11 +1,28 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Claims;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+using Hali.Api.Controllers;
+using Hali.Api.Serialization;
+using Hali.Application.Home;
+using Hali.Application.Notifications;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
 using Hali.Contracts.Home;
 using Hali.Contracts.Signals;
+using Hali.Domain.Entities.Clusters;
+using Hali.Domain.Entities.Notifications;
+using Hali.Domain.Enums;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using NSubstitute;
+using StackExchange.Redis;
 using Xunit;
 
 namespace Hali.Tests.Unit.Contracts;
@@ -13,10 +30,12 @@ namespace Hali.Tests.Unit.Contracts;
 /// <summary>
 /// Contract drift prevention tests.
 ///
-/// These tests verify that the serialized JSON shapes of key DTOs match the
-/// OpenAPI spec (02_openapi.yaml). They use the same JsonSerializerOptions
-/// configured in Program.cs so that property naming and enum serialization
-/// are tested end-to-end.
+/// The serializer options used by these tests are resolved from an
+/// <see cref="IServiceCollection"/> configured with
+/// <see cref="ApiJsonConfiguration.Configure"/> — the exact same delegate
+/// <c>Program.cs</c> passes to <c>AddJsonOptions</c>. Any future change to
+/// Program.cs's JSON config propagates here automatically; there is no
+/// locally-maintained copy that could silently drift.
 ///
 /// If any of these tests fail after a code change, the OpenAPI spec or DTO
 /// must be updated to keep contract and implementation in sync.
@@ -24,15 +43,30 @@ namespace Hali.Tests.Unit.Contracts;
 public class ContractDriftTests
 {
     /// <summary>
-    /// Matches the serializer configured in Program.cs:
-    ///   PropertyNamingPolicy = CamelCase
-    ///   JsonStringEnumConverter with SnakeCaseLower
+    /// The MVC-configured JSON serializer options, built from the shared
+    /// <see cref="ApiJsonConfiguration.Configure"/> delegate. This is the
+    /// same options instance HomeController's cache-write path consumes
+    /// via <c>IOptions&lt;JsonOptions&gt;</c> in production.
     /// </summary>
-    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    private static readonly JsonSerializerOptions ApiJsonOptions = BuildApiJsonOptions();
+
+    private static JsonSerializerOptions BuildApiJsonOptions()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) }
-    };
+        var services = new ServiceCollection();
+        services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(ApiJsonConfiguration.Configure);
+        using var provider = services.BuildServiceProvider();
+        return provider
+            .GetRequiredService<IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>>()
+            .Value.JsonSerializerOptions;
+    }
+
+    private static IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> BuildMvcJsonOptions()
+    {
+        var services = new ServiceCollection();
+        services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(ApiJsonConfiguration.Configure);
+        return services.BuildServiceProvider()
+            .GetRequiredService<IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>>();
+    }
 
     // ── ClusterResponseDto ──────────────────────────────────────────────────
 
@@ -146,7 +180,7 @@ public class ContractDriftTests
         // cache serializer from IOptions<JsonOptions> (MVC config), but this
         // test locks in the contract that default options WOULD produce a
         // different shape — so any accidental revert would be caught here
-        // and by HomeResponseDto_CacheOptions_SerializeCamelCaseAndSnakeEnums.
+        // and by HomeController_WritesCacheJson_UsingMvcConfiguredSerializer.
         var dto = new HomeResponseDto
         {
             ActiveNow = new PagedSection<ClusterResponseDto>
@@ -182,30 +216,122 @@ public class ContractDriftTests
     }
 
     [Fact]
-    public void HomeResponseDto_CacheOptions_SerializeCamelCaseAndSnakeEnums()
+    public async Task HomeController_WritesCacheJson_UsingMvcConfiguredSerializer()
     {
-        // HomeController.CacheJsonOptions (now sourced from MVC's IOptions<JsonOptions>)
-        // must produce the same shape the OpenAPI spec declares: camelCase
-        // property names and snake_case enum values.
-        var dto = new HomeResponseDto
+        // Drives HomeController through its real cache-write branch and
+        // asserts the JSON written to Redis uses the MVC-configured
+        // camelCase property naming and snake_case enum serialization.
+        //
+        // Guards against C12 DRIFT-2 regressing: if the cache serializer
+        // ever used default JsonSerializerOptions again (PascalCase + raw
+        // enum names), the same endpoint would return different shapes on
+        // cache hits vs misses.
+
+        var feedQuery = Substitute.For<IHomeFeedQueryService>();
+        var follows = Substitute.For<IFollowService>();
+        var redis = Substitute.For<IDatabase>();
+
+        var localityId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+
+        follows.GetFollowedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Follow> { new() { LocalityId = localityId } });
+
+        // One active cluster with the multi-word PossibleRestoration state
+        // so the test exercises both camelCase property naming and the
+        // snake_case enum contract (possible_restoration).
+        var cluster = new SignalCluster
         {
-            ActiveNow = new PagedSection<ClusterResponseDto>
-            {
-                Items = new[] { MakeClusterResponse() with { State = "possible_restoration" } },
-                NextCursor = null,
-                TotalCount = 1
-            }
+            Id = Guid.NewGuid(),
+            LocalityId = localityId,
+            Category = CivicCategory.Water,
+            SubcategorySlug = "water_outage",
+            State = SignalState.PossibleRestoration,
+            Title = "Water outage",
+            Summary = "No water since 6am",
+            AffectedCount = 5,
+            ObservingCount = 2,
+            CreatedAt = DateTime.UtcNow.AddHours(-2),
+            UpdatedAt = DateTime.UtcNow,
+            ActivatedAt = DateTime.UtcNow.AddHours(-1),
         };
 
-        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
-        using var doc = JsonDocument.Parse(json);
+        feedQuery.GetActiveByLocalitiesPagedAsync(
+                Arg.Any<IEnumerable<Guid>>(), Arg.Any<bool?>(), Arg.Any<int>(),
+                Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                // Return the cluster for non-recurring; empty for recurring.
+                var recurringOnly = ci.ArgAt<bool?>(1);
+                return (IReadOnlyList<SignalCluster>)(recurringOnly == true
+                    ? Array.Empty<SignalCluster>()
+                    : new[] { cluster });
+            });
+        feedQuery.GetAllActivePagedAsync(
+                Arg.Any<IEnumerable<Guid>>(), Arg.Any<int>(),
+                Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        feedQuery.GetOfficialPostsByLocalityAsync(
+                Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<OfficialPostResponseDto>)Array.Empty<OfficialPostResponseDto>());
 
-        var cluster = doc.RootElement
-            .GetProperty("activeNow")
-            .GetProperty("items")[0];
-        Assert.Equal("possible_restoration", cluster.GetProperty("state").GetString());
-        Assert.True(cluster.TryGetProperty("affectedCount", out _));
-        Assert.True(cluster.TryGetProperty("myParticipation", out _));
+        // Cache miss on read, capture the JSON on write. The controller's
+        // 3-arg StringSetAsync(key, value, TimeSpan?) call is dispatched by
+        // the C# compiler to the newer StackExchange.Redis overload that
+        // takes (RedisKey, RedisValue, Expiration, ValueCondition, CommandFlags),
+        // so the mock must match that signature.
+        redis.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        string? capturedJson = null;
+        redis.StringSetAsync(
+                Arg.Any<RedisKey>(),
+                Arg.Do<RedisValue>(v => capturedJson = (string?)v),
+                Arg.Any<Expiration>(),
+                Arg.Any<ValueCondition>(),
+                Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        var controller = new HomeController(
+            feedQuery,
+            follows,
+            redis,
+            BuildMvcJsonOptions(),
+            NullLogger<HomeController>.Instance);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = AuthenticatedHttpContext(accountId)
+        };
+
+        await controller.GetHome(section: null, cursor: null, localityId: null, CancellationToken.None);
+
+        Assert.NotNull(capturedJson);
+        using var doc = JsonDocument.Parse(capturedJson!);
+        var root = doc.RootElement;
+
+        // camelCase section naming
+        Assert.True(root.TryGetProperty("activeNow", out var activeNow));
+        Assert.False(root.TryGetProperty("ActiveNow", out _));
+
+        // snake_case enum value on the cluster state
+        var firstItem = activeNow.GetProperty("items")[0];
+        Assert.Equal("possible_restoration", firstItem.GetProperty("state").GetString());
+
+        // camelCase field on the cluster
+        Assert.True(firstItem.TryGetProperty("affectedCount", out _));
+        Assert.False(firstItem.TryGetProperty("AffectedCount", out _));
+    }
+
+    private static HttpContext AuthenticatedHttpContext(Guid accountId)
+    {
+        var ctx = new DefaultHttpContext();
+        var claims = new[]
+        {
+            new Claim(
+                "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+                accountId.ToString())
+        };
+        ctx.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
+        return ctx;
     }
 
     // ── PagedSection<T> ─────────────────────────────────────────────────────
