@@ -82,6 +82,16 @@ export default function HomeScreen(): React.ReactElement {
   } = useLocalityContext();
 
   const [localitySelectorOpen, setLocalitySelectorOpen] = useState(false);
+
+  // Guard against stacking multiple auth screens if the FAB is tapped
+  // repeatedly while unauthenticated. Mirrors the navigatingToAuthRef
+  // pattern in cluster detail.
+  const navigatingToAuthRef = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigatingToAuthRef.current = false;
+    }
+  }, [isAuthenticated]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   // ── Load followed localities ──────────────────────────────────────────────
@@ -250,6 +260,8 @@ export default function HomeScreen(): React.ReactElement {
       {/* ── Persistent FAB ──────────────────────────────────────────── */}
       <FAB onPress={() => {
         if (!isAuthenticated) {
+          if (navigatingToAuthRef.current) return;
+          navigatingToAuthRef.current = true;
           router.push('/(auth)/phone');
           return;
         }
