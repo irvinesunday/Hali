@@ -147,7 +147,11 @@ public class SignalIngestionService : ISignalIngestionService
                 SourceChannel = "app",
                 SpatialCellId = spatialCellId,
                 LocalityId = locality.Id,
-                CivisPrecheck = "{}"
+                CivisPrecheck = "{}",
+                // Transient — not persisted to signal_events but carried
+                // in-memory to the clustering service so the cluster can
+                // store a denormalized copy of the display label.
+                LocationLabelText = request.LocationLabel
             };
             SignalEvent saved = await _repo.PersistSignalAsync(signal, ct);
             await _repo.SetIdempotencyKeyAsync(idemKey, TimeSpan.FromHours(24), ct);

@@ -43,6 +43,16 @@ export const ClusterCard = React.memo(
           </Text>
         ) : null}
 
+        {cluster.locationLabel ? (
+          <Text
+            style={styles.locationLabel}
+            numberOfLines={1}
+            accessibilityLabel={`Location: ${cluster.locationLabel}`}
+          >
+            {cluster.locationLabel}
+          </Text>
+        ) : null}
+
         <View style={styles.footer}>
           <Text style={styles.meta}>
             {cluster.affectedCount} affected · {cluster.observingCount} observing
@@ -60,6 +70,7 @@ export const ClusterCard = React.memo(
     prev.cluster.observingCount === next.cluster.observingCount &&
     prev.cluster.title === next.cluster.title &&
     prev.cluster.summary === next.cluster.summary &&
+    prev.cluster.locationLabel === next.cluster.locationLabel &&
     prev.cluster.category === next.cluster.category,
 );
 
@@ -90,6 +101,11 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.regular,
     color: Colors.mutedForeground,
     lineHeight: FontSize.body * 1.5,
+  },
+  locationLabel: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.faintForeground,
   },
   footer: {
     flexDirection: 'row',

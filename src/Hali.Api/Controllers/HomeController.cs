@@ -357,7 +357,10 @@ public class HomeController : ControllerBase
             c.UpdatedAt,
             c.ActivatedAt,
             c.PossibleRestorationAt,
-            c.ResolvedAt);
+            c.ResolvedAt)
+        {
+            LocationLabel = c.LocationLabelText
+        };
 
     private static PagedSection<ClusterResponseDto> EmptyClusterSection() =>
         new() { Items = [], NextCursor = null, TotalCount = 0 };

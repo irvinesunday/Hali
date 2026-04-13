@@ -48,4 +48,11 @@ public class SignalEvent
     public string? SpatialCellId { get; set; }
 
     public string? CivisPrecheck { get; set; }
+
+    /// <summary>
+    /// Transient (not persisted) — carries the human-readable location label
+    /// from the submit request through to the clustering service so the
+    /// cluster can store it as a denormalized display field.
+    /// </summary>
+    public string? LocationLabelText { get; set; }
 }
