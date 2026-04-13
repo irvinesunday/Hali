@@ -1,16 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Security.Claims;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Controllers;
 using Hali.Application.Home;
 using Hali.Application.Notifications;
-using Hali.Contracts.Clusters;
 using Hali.Contracts.Home;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Notifications;
@@ -63,6 +59,26 @@ public class HomeAnonymousBrowseTests
             new Claim(ClaimTypes.NameIdentifier, accountId.ToString()),
         };
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
+    }
+
+    private void SetupEmptyFeed()
+    {
+        _feedQuery
+            .GetActiveByLocalitiesPagedAsync(
+                Arg.Any<List<Guid>>(), Arg.Any<bool>(), Arg.Any<int>(),
+                Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster>().AsReadOnly());
+
+        _feedQuery
+            .GetAllActivePagedAsync(
+                Arg.Any<List<Guid>>(), Arg.Any<int>(),
+                Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster>().AsReadOnly());
+
+        _feedQuery
+            .GetOfficialPostsByLocalityAsync(
+                Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Hali.Contracts.Advisories.OfficialPostResponseDto>());
     }
 
     private static SignalCluster MakeCluster(Guid id, Guid localityId) =>
@@ -149,6 +165,50 @@ public class HomeAnonymousBrowseTests
         Assert.Empty(feed.ActiveNow.Items);
         Assert.Empty(feed.OfficialUpdates.Items);
         Assert.Empty(feed.RecurringAtThisTime.Items);
+    }
+
+    // ── Anonymous cache behavior ───────────────────────────────────
+
+    [Fact]
+    public async Task GetHome_AnonymousWithLocalityId_DoesNotWriteToCache()
+    {
+        // Arrange — anonymous user, cache miss
+        var controller = CreateController();
+
+        SetupEmptyFeed();
+
+        // Act
+        await controller.GetHome(
+            section: null, cursor: null, localityId: TestLocalityId, ct: CancellationToken.None);
+
+        // Assert — no StringSetAsync call was made to Redis.
+        // Uses ReceivedCalls() to avoid NSubstitute overload resolution issues
+        // with StackExchange.Redis 2.12's multiple StringSetAsync overloads.
+        var redisCalls = _redis.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == "StringSetAsync")
+            .ToList();
+        Assert.Empty(redisCalls);
+    }
+
+    [Fact]
+    public async Task GetHome_AuthenticatedWithLocalityId_WritesToCache()
+    {
+        // Arrange — authenticated user, cache miss
+        var accountId = Guid.NewGuid();
+        var controller = CreateController(AuthenticatedUser(accountId));
+
+        SetupEmptyFeed();
+
+        // Act
+        await controller.GetHome(
+            section: null, cursor: null, localityId: TestLocalityId, ct: CancellationToken.None);
+
+        // Assert — at least one StringSetAsync call was made to Redis.
+        // NSubstitute's ReceivedCalls() captures all calls regardless of overload.
+        var redisCalls = _redis.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == "StringSetAsync")
+            .ToList();
+        Assert.Single(redisCalls);
     }
 
     // ── Authenticated still works ────────────────────────────────────

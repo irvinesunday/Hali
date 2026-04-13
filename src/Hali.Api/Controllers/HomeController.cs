@@ -125,8 +125,17 @@ public class HomeController : ControllerBase
                 _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheMiss);
 
                 var response = await BuildFullResponseAsync(localityIds, ct);
-                var json = JsonSerializer.Serialize(response);
-                await _redis.StringSetAsync(cacheKey, json, CacheTtl);
+
+                // Only authenticated callers write to cache.  Anonymous
+                // callers can supply arbitrary localityId GUIDs; letting
+                // them populate cache entries would allow unbounded key
+                // creation.  They still benefit from cache hits written
+                // by authenticated users for the same locality.
+                if (isAuthenticated)
+                {
+                    var json = JsonSerializer.Serialize(response);
+                    await _redis.StringSetAsync(cacheKey, json, CacheTtl);
+                }
 
                 sw.Stop();
                 _logger?.LogInformation(

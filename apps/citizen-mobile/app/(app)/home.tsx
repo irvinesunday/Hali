@@ -544,7 +544,7 @@ function LocalitySelectorSheet({
         <FlatList
           data={listData}
           keyExtractor={(item) => item.localityId}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const id = item.localityId;
             const label = item.label;
             const isActive = id === activeLocalityId;
@@ -570,8 +570,12 @@ function LocalitySelectorSheet({
                   if (isFollowed) {
                     onSelectLocality(id);
                   } else {
-                    // Guest browse — select from search results
-                    const sr = searchResults[index];
+                    // Guest browse — look up by stable localityId key so
+                    // selection is correct even if searchResults changed
+                    // between render and tap.
+                    const sr = searchResults.find(
+                      (result) => result.localityId === id,
+                    );
                     if (sr) {
                       onSelectSearchResult(sr);
                     }
