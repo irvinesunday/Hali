@@ -298,13 +298,11 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [localityId, wardName, cityName]
                 properties:
                   localityId: { type: string, format: uuid }
                   wardName: { type: string }
                   cityName: { type: string, nullable: true }
-                  countryCode: { type: string }
-                  activeSignalCount: { type: integer }
-                  distanceMeters: { type: number }
         '404':
           description: No locality found for coordinates
           content:
@@ -897,7 +895,9 @@ components:
         (civis_score, wrab, sds, macf, raw_confirmation_count, account_id,
         device_id) are intentionally NOT present.
       required:
-        [id, state, category, affectedCount, observingCount, createdAt, updatedAt, officialPosts]
+        [id, state, category, subcategorySlug, title, summary, locationLabel,
+         affectedCount, observingCount, createdAt, updatedAt,
+         activatedAt, possibleRestorationAt, resolvedAt, officialPosts, myParticipation]
       properties:
         id: { type: string, format: uuid }
         state:

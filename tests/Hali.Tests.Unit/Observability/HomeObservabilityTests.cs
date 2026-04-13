@@ -32,7 +32,12 @@ public class HomeObservabilityTests
 
     private HomeController CreateController(bool authenticated = true, Guid? accountId = null)
     {
-        var controller = new HomeController(_feedQuery, _follows, _redis, _logger);
+        var controller = new HomeController(
+            _feedQuery,
+            _follows,
+            _redis,
+            Microsoft.Extensions.Options.Options.Create(new Microsoft.AspNetCore.Mvc.JsonOptions()),
+            _logger);
         var context = new DefaultHttpContext();
         if (authenticated)
         {

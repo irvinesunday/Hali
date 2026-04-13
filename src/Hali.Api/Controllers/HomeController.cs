@@ -18,6 +18,7 @@ using Hali.Domain.Entities.Clusters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace Hali.Api.Controllers;
@@ -37,15 +38,27 @@ public class HomeController : ControllerBase
     private readonly IDatabase _redis;
     private readonly ILogger<HomeController>? _logger;
 
+    /// <summary>
+    /// JSON options sourced from the MVC-configured serializer so that the
+    /// cached response path uses the same camelCase property naming and
+    /// snake_case enum serialization as the non-cached Ok() path. Reusing
+    /// <see cref="Microsoft.AspNetCore.Mvc.JsonOptions"/> from DI (instead
+    /// of a controller-local copy) prevents silent drift if the global JSON
+    /// configuration changes — the cache will automatically track it.
+    /// </summary>
+    private readonly JsonSerializerOptions _cacheJsonOptions;
+
     public HomeController(
         IHomeFeedQueryService feedQuery,
         IFollowService follows,
         IDatabase redis,
+        IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJsonOptions,
         ILogger<HomeController>? logger = null)
     {
         _feedQuery = feedQuery;
         _follows = follows;
         _redis = redis;
+        _cacheJsonOptions = mvcJsonOptions.Value.JsonSerializerOptions;
         _logger = logger;
     }
 
@@ -133,7 +146,7 @@ public class HomeController : ControllerBase
                 // by authenticated users for the same locality.
                 if (isAuthenticated)
                 {
-                    var json = JsonSerializer.Serialize(response);
+                    var json = JsonSerializer.Serialize(response, _cacheJsonOptions);
                     await _redis.StringSetAsync(cacheKey, json, CacheTtl);
                 }
 
@@ -346,7 +359,7 @@ public class HomeController : ControllerBase
     private static ClusterResponseDto ToDto(SignalCluster c) =>
         new ClusterResponseDto(
             c.Id,
-            c.State.ToString().ToLowerInvariant(),
+            JsonNamingPolicy.SnakeCaseLower.ConvertName(c.State.ToString()),
             c.Category.ToString().ToLowerInvariant(),
             c.SubcategorySlug,
             c.Title,

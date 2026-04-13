@@ -18,7 +18,6 @@ describe('resolveByCoordinates', () => {
       ok: true,
       value: {
         localityId: 'abc-123',
-        placeLabel: 'South B, Nairobi',
         wardName: 'South B',
         cityName: 'Nairobi',
       },
@@ -29,7 +28,7 @@ describe('resolveByCoordinates', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.localityId).toBe('abc-123');
-      expect(result.value.placeLabel).toBe('South B, Nairobi');
+      expect(result.value.wardName).toBe('South B');
     }
     expect(mockApiRequest).toHaveBeenCalledWith(
       expect.stringContaining('/v1/localities/resolve-by-coordinates'),

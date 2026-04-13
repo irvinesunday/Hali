@@ -12,7 +12,6 @@ const STATE_LABELS: Record<ClusterState, string> = {
   active:               'Active Now',
   possible_restoration: 'Possible Restoration',
   resolved:             'Resolved',
-  recurring_context:    'Recurring',
 };
 
 const STATE_COLORS: Record<ClusterState, { bg: string; text: string }> = {
@@ -20,7 +19,6 @@ const STATE_COLORS: Record<ClusterState, { bg: string; text: string }> = {
   active:               { bg: Colors.primarySubtle,              text: Colors.primary },
   possible_restoration: { bg: Colors.emeraldSubtle,              text: Colors.emerald },
   resolved:             { bg: Colors.muted,                      text: Colors.mutedForeground },
-  recurring_context:    { bg: Colors.conditionBadge.violet.bg,  text: Colors.conditionBadge.violet.text },
 };
 
 export function ClusterStateBadge({ state }: ClusterStateBadgeProps) {

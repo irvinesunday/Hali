@@ -39,6 +39,7 @@ public class HomeAnonymousBrowseTests
             _feedQuery,
             _follows,
             _redis,
+            Microsoft.Extensions.Options.Options.Create(new Microsoft.AspNetCore.Mvc.JsonOptions()),
             NullLogger<HomeController>.Instance);
 
         controller.ControllerContext = new ControllerContext
