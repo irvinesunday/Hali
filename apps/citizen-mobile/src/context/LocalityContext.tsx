@@ -28,6 +28,11 @@ export interface LocalityContextValue {
   followsLoaded: boolean;
   setActiveLocalityId: (id: string | null) => void;
   setFollowedLocalities: (items: FollowedLocality[]) => void;
+  /**
+   * Set the active locality directly — used by anonymous browse to select a
+   * locality from search results without requiring it to be in the followed set.
+   */
+  setActiveLocality: (locality: FollowedLocality | null) => void;
 }
 
 const LocalityContext = createContext<LocalityContextValue | null>(null);
@@ -70,6 +75,13 @@ export function LocalityProvider({
     });
   }, []);
 
+  const setActiveLocality = useCallback(
+    (locality: FollowedLocality | null) => {
+      setActiveLocalityRaw(locality);
+    },
+    [],
+  );
+
   const value = useMemo<LocalityContextValue>(
     () => ({
       activeLocality,
@@ -77,6 +89,7 @@ export function LocalityProvider({
       followsLoaded,
       setActiveLocalityId,
       setFollowedLocalities,
+      setActiveLocality,
     }),
     [
       activeLocality,
@@ -84,6 +97,7 @@ export function LocalityProvider({
       followsLoaded,
       setActiveLocalityId,
       setFollowedLocalities,
+      setActiveLocality,
     ],
   );
 

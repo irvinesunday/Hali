@@ -1,3 +1,4 @@
+export * from './AuthPrompt';
 export * from './ConditionBadge';
 export * from './SectionHeader';
 export * from './CalmState';
