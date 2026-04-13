@@ -261,6 +261,18 @@ export default function ClusterDetailScreen(): React.ReactElement {
           <Text style={styles.summary}>{cluster.summary}</Text>
         )}
 
+        {/* ── Location label ──────────────────────────────────── */}
+        {typeof cluster.locationLabel === 'string' &&
+          cluster.locationLabel.trim() !== '' && (
+            <Text
+              style={styles.locationLabel}
+              numberOfLines={2}
+              accessibilityLabel={`Location: ${cluster.locationLabel}`}
+            >
+              {cluster.locationLabel}
+            </Text>
+          )}
+
         {/* ── Institution attribution ───────────────────────────── */}
         <Text style={styles.institution}>
           {institutionName} · {formatRelativeTime(cluster.updatedAt)}
@@ -550,6 +562,11 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.regular,
     color: Colors.mutedForeground,
     lineHeight: FontSize.body * 1.5,
+  },
+  locationLabel: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.medium,
+    color: Colors.faintForeground,
   },
   institution: {
     fontSize: FontSize.bodySmall,

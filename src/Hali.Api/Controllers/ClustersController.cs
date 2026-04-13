@@ -93,6 +93,7 @@ public class ClustersController : ControllerBase
             cluster.PossibleRestorationAt,
             cluster.ResolvedAt)
         {
+            LocationLabel = cluster.LocationLabelText,
             OfficialPosts = officialPosts,
             MyParticipation = myParticipation,
         };

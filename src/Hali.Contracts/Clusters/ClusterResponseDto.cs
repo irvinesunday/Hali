@@ -19,6 +19,13 @@ public record ClusterResponseDto(
     DateTime? PossibleRestorationAt,
     DateTime? ResolvedAt)
 {
+    /// <summary>
+    /// Canonical human-readable location label for this cluster, e.g.
+    /// "Ngong Road near Adams Arcade, Kilimani". Null when the originating
+    /// signal did not include a resolved location label.
+    /// </summary>
+    public string? LocationLabel { get; init; }
+
     public List<OfficialPostResponseDto> OfficialPosts { get; init; } = new();
 
     /// <summary>

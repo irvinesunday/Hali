@@ -907,6 +907,13 @@ components:
         subcategorySlug: { type: string, nullable: true }
         title: { type: string, nullable: true }
         summary: { type: string, nullable: true }
+        locationLabel:
+          type: string
+          nullable: true
+          description: >
+            Canonical human-readable location label for the cluster, e.g.
+            "Ngong Road near Adams Arcade, Kilimani". Null when the
+            originating signal did not include a resolved location label.
         affectedCount: { type: integer }
         observingCount: { type: integer }
         createdAt: { type: string, format: date-time }

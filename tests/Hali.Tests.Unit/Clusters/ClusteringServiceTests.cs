@@ -408,4 +408,67 @@ public class ClusteringServiceTests
 
         Assert.Equal("possible_restoration", result.ClusterState);
     }
+
+    // -----------------------------------------------------------------------
+    // B9: Location label propagation
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task RouteSignal_WhenNewCluster_CopiesLocationLabelFromSignal()
+    {
+        var (svc, repo, h3, civis) = Build();
+        var signal = MakeSignal();
+        signal.LocationLabelText = "Ngong Road near Adams Arcade, Kilimani";
+
+        h3.GetKRingCells(signal.SpatialCellId!, 1).Returns(new[] { signal.SpatialCellId! });
+        repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster>());
+        SignalCluster? created = null;
+        repo.CreateClusterAsync(Arg.Do<SignalCluster>(c => created = c), signal.Id, signal.DeviceId, Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(callInfo.Arg<SignalCluster>()));
+
+        await svc.RouteSignalAsync(signal);
+
+        Assert.NotNull(created);
+        Assert.Equal("Ngong Road near Adams Arcade, Kilimani", created!.LocationLabelText);
+    }
+
+    [Fact]
+    public async Task RouteSignal_WhenJoinClusterWithoutLabel_BackfillsLocationLabel()
+    {
+        var (svc, repo, h3, civis) = Build();
+        var signal = MakeSignal();
+        signal.LocationLabelText = "Waiyaki Way, Westlands";
+
+        var existingCluster = MakeCluster(lastSeenAgoHours: 0.1);
+        existingCluster.LocationLabelText = null; // pre-B9 cluster without label
+
+        h3.GetKRingCells(signal.SpatialCellId!, 1).Returns(new[] { signal.SpatialCellId! });
+        repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster> { existingCluster });
+
+        await svc.RouteSignalAsync(signal);
+
+        Assert.Equal("Waiyaki Way, Westlands", existingCluster.LocationLabelText);
+    }
+
+    [Fact]
+    public async Task RouteSignal_WhenJoinClusterWithExistingLabel_DoesNotOverwrite()
+    {
+        var (svc, repo, h3, civis) = Build();
+        var signal = MakeSignal();
+        signal.LocationLabelText = "Some other road";
+
+        var existingCluster = MakeCluster(lastSeenAgoHours: 0.1);
+        existingCluster.LocationLabelText = "Original label";
+
+        h3.GetKRingCells(signal.SpatialCellId!, 1).Returns(new[] { signal.SpatialCellId! });
+        repo.FindCandidateClustersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CivicCategory>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SignalCluster> { existingCluster });
+
+        await svc.RouteSignalAsync(signal);
+
+        // Must preserve the original label, not overwrite
+        Assert.Equal("Original label", existingCluster.LocationLabelText);
+    }
 }

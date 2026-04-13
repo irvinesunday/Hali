@@ -389,4 +389,51 @@ public class SignalIngestionServiceTests
 		Assert.NotEqual(Guid.Empty, result.ClusterId);
 		Assert.NotEqual(default, result.CreatedAt);
 	}
+
+	// --- B9: Location label length validation ---
+
+	[Fact]
+	public async Task SubmitAsync_LocationLabelExceedsMaxLength_ThrowsValidation()
+	{
+		_repo.IdempotencyKeyExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+		_repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		string oversized = new string('x', 401);
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { LocationLabel = oversized };
+		SignalIngestionService svc = CreateService();
+
+		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.SubmitAsync(request, null, null));
+		Assert.Equal("validation.location_label_too_long", ex.Code);
+		await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
+	}
+
+	[Fact]
+	public async Task SubmitAsync_LocationLabelAtMaxLength_Succeeds()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		string atLimit = new string('x', 400);
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { LocationLabel = atLimit };
+		SignalIngestionService svc = CreateService();
+
+		var result = await svc.SubmitAsync(request, null, null);
+
+		Assert.NotEqual(Guid.Empty, result.SignalEventId);
+	}
+
+	[Fact]
+	public async Task SubmitAsync_NullLocationLabel_Succeeds()
+	{
+		SetupDefaultRepo();
+		SetupDefaultH3();
+		SetupDefaultLocality();
+		SignalSubmitRequestDto request = MakeSubmitRequest() with { LocationLabel = null };
+		SignalIngestionService svc = CreateService();
+
+		var result = await svc.SubmitAsync(request, null, null);
+
+		Assert.NotEqual(Guid.Empty, result.SignalEventId);
+	}
 }

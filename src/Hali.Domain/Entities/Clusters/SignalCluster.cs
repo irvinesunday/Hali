@@ -54,4 +54,11 @@ public class SignalCluster
     public int AffectedCount { get; set; }
 
     public int ObservingCount { get; set; }
+
+    /// <summary>
+    /// Denormalized human-readable location label copied from the seed signal
+    /// at cluster creation time. Used as the canonical location display text
+    /// in feed cards and detail screens.
+    /// </summary>
+    public string? LocationLabelText { get; set; }
 }

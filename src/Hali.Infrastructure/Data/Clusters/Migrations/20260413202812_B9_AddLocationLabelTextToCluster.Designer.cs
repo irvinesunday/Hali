@@ -3,6 +3,7 @@ using System;
 using Hali.Infrastructure.Data.Clusters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hali.Infrastructure.Data.Clusters.Migrations
 {
     [DbContext(typeof(ClustersDbContext))]
-    partial class ClustersDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260413202812_B9_AddLocationLabelTextToCluster")]
+    partial class B9_AddLocationLabelTextToCluster
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

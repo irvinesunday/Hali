@@ -157,6 +157,7 @@ export interface ClusterResponse {
   subcategorySlug: string | null;
   title: string | null;
   summary: string | null;
+  locationLabel?: string | null;
   affectedCount: number;
   observingCount: number;
   createdAt: string;

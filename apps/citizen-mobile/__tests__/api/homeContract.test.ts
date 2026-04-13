@@ -24,6 +24,7 @@ function wireCluster(): ClusterResponse {
     subcategorySlug: 'water_outage',
     title: 'Water outage on Ngong Road',
     summary: 'No water since 6am',
+    locationLabel: null,
     affectedCount: 12,
     observingCount: 3,
     createdAt: '2026-04-11T06:00:00Z',
