@@ -143,6 +143,12 @@ files=$(git diff --name-only --cached -- '*.ts' '*.tsx')
 - [ ] Down() must never drop shared tables (e.g., `outbox_events`) used by other modules
 - [ ] If a spec or arch doc references a DB table/column that does not exist in the
       current schema, mark it explicitly as a planned schema change before implementation
+- [ ] When adding, removing, or renaming a persisted column, table, index, constraint,
+      or enum in any `*DbContext` model builder or EF migration, also update the raw SQL
+      integration test schema bootstrap in
+      `tests/Hali.Tests.Integration/Infrastructure/HaliWebApplicationFactory.EnsureSchemaAsync()`
+      — both the `CREATE TABLE` definition and an idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS`
+      for existing test databases
 
 ### Outbox pattern
 - [ ] Every cluster state mutation writes an outbox event in the same DB transaction

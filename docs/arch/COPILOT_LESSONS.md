@@ -50,3 +50,10 @@ treated as a blocking issue.
 When a service changes which exception it throws, the interface XML docs
 stay stale. Copilot catches the mismatch. Update docs in the same commit.
 -> CODING_STANDARDS: C# Conventions > XML documentation
+
+## 8. Integration test schema bootstrap drifts from EF model
+Adding a persisted column via EF model/migration without updating the raw
+SQL in `HaliWebApplicationFactory.EnsureSchemaAsync()` causes integration
+tests to fail with 500 errors — the test DB lacks the column EF expects.
+This is invisible in unit tests and only surfaces in integration CI.
+-> CODING_STANDARDS: Pre-commit checklist > Migrations
