@@ -369,7 +369,8 @@ CREATE TABLE IF NOT EXISTS signal_clusters (
     raw_confirmation_count integer NOT NULL DEFAULT 0,
     temporal_type varchar(40),
     affected_count integer NOT NULL DEFAULT 0,
-    observing_count integer NOT NULL DEFAULT 0
+    observing_count integer NOT NULL DEFAULT 0,
+    location_label_text varchar(400)
 )");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS cluster_event_links (
@@ -389,6 +390,8 @@ CREATE TABLE IF NOT EXISTS civis_decisions (
     metrics jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 )");
+        // B9: location label text (idempotent — adds only if missing from pre-B9 test DBs)
+        await ExecAsync(conn, "ALTER TABLE signal_clusters ADD COLUMN IF NOT EXISTS location_label_text varchar(400)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_state_locality_category ON signal_clusters(state, locality_id, category)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_last_seen ON signal_clusters(last_seen_at DESC)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_spatial_cell_category ON signal_clusters(spatial_cell_id, category)");
