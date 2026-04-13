@@ -185,7 +185,9 @@ export default function WardsSettingsScreen(): React.ReactElement {
 
       const asSearchResult: LocalitySearchResult = {
         localityId: result.value.localityId,
-        placeLabel: result.value.placeLabel,
+        placeLabel: result.value.cityName
+          ? `${result.value.wardName}, ${result.value.cityName}`
+          : result.value.wardName,
         wardName: result.value.wardName,
         cityName: result.value.cityName,
       };

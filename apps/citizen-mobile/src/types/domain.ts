@@ -8,10 +8,6 @@ export interface ComposerState {
   freeText: string;
   locationHint?: string;
   preview: SignalPreviewResponse | null;
-  // NOTE(API-MISMATCH): The OpenAPI spec includes existingClusterCandidates in
-  // the preview response, but the backend SignalPreviewResponseDto only has
-  // shouldSuggestJoin: bool. The composer UI uses shouldSuggestJoin to
-  // determine whether to offer a "join" option in Step 3.
   idempotencyKey: string | null;
 }
 

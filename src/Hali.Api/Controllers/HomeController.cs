@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Errors;
@@ -31,6 +32,19 @@ public class HomeController : ControllerBase
     private const int LimitRecurring = 10;
     private const int LimitOtherActive = 10;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// JSON options matching the MVC-configured serializer so that cached
+    /// responses use the same camelCase property naming and snake_case enum
+    /// serialization as non-cached Ok() responses.  Without this, the Redis
+    /// cache path returned PascalCase JSON while the live path returned
+    /// camelCase — a contract-visible mismatch (C12 DRIFT-2 fix).
+    /// </summary>
+    private static readonly JsonSerializerOptions CacheJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) }
+    };
 
     private readonly IHomeFeedQueryService _feedQuery;
     private readonly IFollowService _follows;
@@ -133,7 +147,7 @@ public class HomeController : ControllerBase
                 // by authenticated users for the same locality.
                 if (isAuthenticated)
                 {
-                    var json = JsonSerializer.Serialize(response);
+                    var json = JsonSerializer.Serialize(response, CacheJsonOptions);
                     await _redis.StringSetAsync(cacheKey, json, CacheTtl);
                 }
 
@@ -346,7 +360,7 @@ public class HomeController : ControllerBase
     private static ClusterResponseDto ToDto(SignalCluster c) =>
         new ClusterResponseDto(
             c.Id,
-            c.State.ToString().ToLowerInvariant(),
+            ToSnakeCase(c.State.ToString()),
             c.Category.ToString().ToLowerInvariant(),
             c.SubcategorySlug,
             c.Title,
@@ -361,6 +375,20 @@ public class HomeController : ControllerBase
         {
             LocationLabel = c.LocationLabelText
         };
+
+    // PascalCase enum name → snake_case_lower, matching the global
+    // JsonStringEnumConverter naming policy used elsewhere in the API.
+    private static string ToSnakeCase(string pascal)
+    {
+        var sb = new System.Text.StringBuilder(pascal.Length + 4);
+        for (int i = 0; i < pascal.Length; i++)
+        {
+            char c = pascal[i];
+            if (i > 0 && char.IsUpper(c)) sb.Append('_');
+            sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
+    }
 
     private static PagedSection<ClusterResponseDto> EmptyClusterSection() =>
         new() { Items = [], NextCursor = null, TotalCount = 0 };

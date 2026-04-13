@@ -104,10 +104,13 @@ export interface LocalitySearchResult {
 
 export type LocalitySearchResponse = LocalitySearchResult[];
 
-// Same shape as LocalitySearchResult — kept as a type alias so the two
-// cannot drift. The endpoint differs only by returning a single value
-// instead of an array.
-export type LocalityResolveResponse = LocalitySearchResult;
+// Response from GET /v1/localities/resolve-by-coordinates.
+// Shape differs from LocalitySearchResult — no placeLabel field.
+export interface LocalityResolveResponse {
+  localityId: string;
+  wardName: string;
+  cityName: string | null;
+}
 
 // ─── Official Posts ───────────────────────────────────────────────────────────
 
@@ -132,8 +135,7 @@ export type ClusterState =
   | 'unconfirmed'
   | 'active'
   | 'possible_restoration'
-  | 'resolved'
-  | 'recurring_context';
+  | 'resolved';
 
 /**
  * Per-caller participation snapshot returned by GET /v1/clusters/{id}.
@@ -157,7 +159,7 @@ export interface ClusterResponse {
   subcategorySlug: string | null;
   title: string | null;
   summary: string | null;
-  locationLabel?: string | null;
+  locationLabel: string | null;
   affectedCount: number;
   observingCount: number;
   createdAt: string;

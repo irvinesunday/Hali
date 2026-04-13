@@ -80,7 +80,7 @@ public class ClustersController : ControllerBase
 
         var dto = new ClusterResponseDto(
             cluster.Id,
-            cluster.State.ToString().ToLowerInvariant(),
+            ToSnakeCase(cluster.State.ToString()),
             cluster.Category.ToString().ToLowerInvariant(),
             cluster.SubcategorySlug,
             cluster.Title,
