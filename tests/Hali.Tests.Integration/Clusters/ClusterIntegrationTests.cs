@@ -111,16 +111,26 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task GetCluster_PossibleRestoration_ExposesRestorationProgressFields()
     {
-        // Seed a cluster directly in possible_restoration, plus a known mix
-        // of restoration votes. Using direct DB seeding mirrors the pattern
-        // in ParticipationIntegrationTests.SeedClusterAsync — driving the
-        // state transition through the HTTP pipeline would require multiple
-        // affected votes from distinct devices and is not necessary to prove
-        // the read-side contract.
+        // Seed a cluster in possible_restoration with a participation mix
+        // that mirrors what the HTTP write path actually produces today:
+        //   "restored"       -> ParticipationType.RestorationYes
+        //   "still_affected" -> ParticipationType.Affected  (NOT counted in
+        //                       restoration totals — see issue #142)
+        //   "not_sure"       -> ParticipationType.RestorationUnsure
+        //
+        // Expected counts:
+        //   yesVotes   = 2 (two RestorationYes rows)
+        //   totalVotes = 3 (two yes + one unsure; the Affected row is excluded
+        //                   by CountRestorationResponsesAsync, which only
+        //                   counts types restoration_yes/no/unsure)
+        //   ratio      = 2 / 3
+        //
+        // This simultaneously verifies the happy path and the "still_affected
+        // is not counted" contract documented on RestorationTotalVotes.
         var clusterId = await SeedClusterInStateAsync("possible_restoration");
         await SeedParticipationAsync(clusterId, "restoration_yes");
         await SeedParticipationAsync(clusterId, "restoration_yes");
-        await SeedParticipationAsync(clusterId, "restoration_no");
+        await SeedParticipationAsync(clusterId, "affected");        // still_affected
         await SeedParticipationAsync(clusterId, "restoration_unsure");
 
         var resp = await Client.GetAsync($"/v1/clusters/{clusterId}");
@@ -129,8 +139,8 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("possible_restoration", body.GetProperty("state").GetString());
         Assert.Equal(2, body.GetProperty("restorationYesVotes").GetInt32());
-        Assert.Equal(4, body.GetProperty("restorationTotalVotes").GetInt32());
-        Assert.Equal(0.5, body.GetProperty("restorationRatio").GetDouble(), 6);
+        Assert.Equal(3, body.GetProperty("restorationTotalVotes").GetInt32());
+        Assert.Equal(2.0 / 3.0, body.GetProperty("restorationRatio").GetDouble(), 6);
     }
 
     [Fact]

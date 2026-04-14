@@ -91,6 +91,14 @@ public class ClustersController : ControllerBase
         {
             int yesVotes = await _participationRepo.CountByTypeAsync(id, ParticipationType.RestorationYes, ct);
             int totalResponses = await _participationRepo.CountRestorationResponsesAsync(id, ct);
+            // Defensive clamp. Participations are not strictly append-only —
+            // RecordParticipationAsync deletes a device's prior row before
+            // inserting a new one. If a RestorationYes row is deleted between
+            // these two sequential reads, yesVotes (read first) can exceed
+            // totalResponses (read second), and the ratio can exceed 1. Clamp
+            // so the wire contract (yes <= total, ratio in [0, 1]) always
+            // holds. The proper atomic-read fix is tracked in issue #143.
+            if (yesVotes > totalResponses) yesVotes = totalResponses;
             restorationYesVotes = yesVotes;
             restorationTotalVotes = totalResponses;
             restorationRatio = totalResponses > 0
