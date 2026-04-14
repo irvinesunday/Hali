@@ -10,6 +10,7 @@
 
 import {
   canProceedFromLocationGate,
+  isMeaningfulLabelEdit,
   type LocationProceedInput,
 } from '../../src/utils/composerGates';
 
@@ -161,6 +162,15 @@ describe('canProceedFromLocationGate', () => {
     });
   });
 
+  // Shared rule — the 'confirm' tier here and the submit-source flip
+  // in confirm.tsx's handleNext both read isMeaningfulLabelEdit. This
+  // suite pins the behavior so the two paths cannot drift.
+  //
+  // Kept alongside canProceed tests because the helper lives in the
+  // same file and the semantics are coupled: if the gate says "this
+  // is an edit" for 'confirm', the submit path MUST submit the label
+  // as user_edit, and vice-versa.
+
   describe("required tier (not emitted by location gate today)", () => {
     // Defensive coverage: classifyLocationGate never returns 'required'
     // for location, but the union still contains it because the
@@ -187,5 +197,79 @@ describe('canProceedFromLocationGate', () => {
         }),
       ).toBe(false);
     });
+  });
+});
+
+describe('isMeaningfulLabelEdit', () => {
+  // This rule is read by two places:
+  //   - canProceedFromLocationGate's 'confirm' tier, and
+  //   - confirm.tsx's handleNext (C11 follow-up #131) to decide
+  //     whether to flip the submit wire source from 'nlp' to 'user_edit'.
+  // A drift between those two paths would silently submit user-authored
+  // text under source='nlp' (or vice-versa). These cases pin the
+  // semantics.
+
+  it('is false when the label matches the original verbatim', () => {
+    expect(
+      isMeaningfulLabelEdit({ label: 'Ngong Road', originalLabel: 'Ngong Road' }),
+    ).toBe(false);
+  });
+
+  it('is false when the label matches the original modulo whitespace', () => {
+    expect(
+      isMeaningfulLabelEdit({
+        label: '  Ngong Road  ',
+        originalLabel: 'Ngong Road',
+      }),
+    ).toBe(false);
+    expect(
+      isMeaningfulLabelEdit({
+        label: 'Ngong Road',
+        originalLabel: '  Ngong Road\n',
+      }),
+    ).toBe(false);
+  });
+
+  it('is false when the label has been blanked', () => {
+    // Blanking yields no new user-authored content — backend would
+    // reject anyway via the fallback gate / label-required guards,
+    // but we must not flip the source to 'user_edit' on the way out.
+    expect(
+      isMeaningfulLabelEdit({ label: '', originalLabel: 'Ngong Road' }),
+    ).toBe(false);
+    expect(
+      isMeaningfulLabelEdit({ label: '   ', originalLabel: 'Ngong Road' }),
+    ).toBe(false);
+  });
+
+  it('is true when trimmed edited text differs from trimmed original', () => {
+    expect(
+      isMeaningfulLabelEdit({
+        label: 'Lusaka Road',
+        originalLabel: 'Ngong Road',
+      }),
+    ).toBe(true);
+    // Minor textual tightening (adding neighborhood context) counts.
+    expect(
+      isMeaningfulLabelEdit({
+        label: 'Ngong Road, near Adams Arcade',
+        originalLabel: 'Ngong Road',
+      }),
+    ).toBe(true);
+  });
+
+  it('is true when originalLabel is null/undefined and the user typed something', () => {
+    expect(
+      isMeaningfulLabelEdit({ label: 'Ngong Road', originalLabel: null }),
+    ).toBe(true);
+    expect(
+      isMeaningfulLabelEdit({ label: 'Ngong Road', originalLabel: undefined }),
+    ).toBe(true);
+  });
+
+  it('is false when both sides are blank regardless of representation', () => {
+    expect(isMeaningfulLabelEdit({ label: '', originalLabel: null })).toBe(false);
+    expect(isMeaningfulLabelEdit({ label: '   ', originalLabel: '' })).toBe(false);
+    expect(isMeaningfulLabelEdit({ label: '', originalLabel: '   ' })).toBe(false);
   });
 });
