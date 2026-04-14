@@ -14,6 +14,7 @@ namespace Hali.Tests.Integration.Localities;
 [Trait("Category", "Integration")]
 public sealed class LocalitiesIntegrationTests : IntegrationTestBase
 {
+    private const string WardListCacheKey = "locality_list:wards";
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     public LocalitiesIntegrationTests(HaliWebApplicationFactory factory) : base(factory) { }
@@ -34,18 +35,33 @@ public sealed class LocalitiesIntegrationTests : IntegrationTestBase
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(JsonValueKind.Array, body.ValueKind);
-        Assert.True(body.GetArrayLength() >= 1, "Expected at least the seeded test ward.");
+        Assert.True(
+            body.GetArrayLength() >= 2,
+            "Expected at least two seeded test wards so sort order is exercised.");
 
-        var first = body[0];
-        Assert.True(first.TryGetProperty("localityId", out _));
-        Assert.True(first.TryGetProperty("wardName", out var wardName));
-        Assert.False(string.IsNullOrWhiteSpace(wardName.GetString()));
-        // cityName must be present on the wire (nullable but always serialized).
-        Assert.True(first.TryGetProperty("cityName", out _));
+        string? previousWardName = null;
+        foreach (var ward in body.EnumerateArray())
+        {
+            Assert.True(ward.TryGetProperty("localityId", out _));
+            Assert.True(ward.TryGetProperty("wardName", out var wardNameProp));
+            var wardName = wardNameProp.GetString();
+            Assert.False(string.IsNullOrWhiteSpace(wardName));
 
-        // No leaked fields from the domain record / geocoding-search DTO.
-        Assert.False(first.TryGetProperty("countyName", out _));
-        Assert.False(first.TryGetProperty("placeLabel", out _));
+            // cityName must be present on the wire (nullable but always serialized).
+            Assert.True(ward.TryGetProperty("cityName", out _));
+
+            // No leaked fields from the domain record / geocoding-search DTO.
+            Assert.False(ward.TryGetProperty("countyName", out _));
+            Assert.False(ward.TryGetProperty("placeLabel", out _));
+
+            if (previousWardName is not null)
+            {
+                Assert.True(
+                    string.Compare(previousWardName, wardName, StringComparison.Ordinal) <= 0,
+                    $"Expected wards sorted by wardName ascending, but '{previousWardName}' preceded '{wardName}'.");
+            }
+            previousWardName = wardName;
+        }
     }
 
     [Fact]
@@ -56,20 +72,40 @@ public sealed class LocalitiesIntegrationTests : IntegrationTestBase
         // Cold — populates cache
         var cold = await Client.GetAsync("/v1/localities/wards");
         Assert.Equal(HttpStatusCode.OK, cold.StatusCode);
-        var coldBody = await cold.Content.ReadAsStringAsync();
 
-        // Warm — same payload should be served from cache
+        // The cache entry must exist after the cold call.
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var redis = scope.ServiceProvider.GetRequiredService<IDatabase>();
+        var cached = await redis.StringGetAsync(WardListCacheKey);
+        Assert.True(cached.HasValue, "Expected ward list to be cached in Redis after first request.");
+
+        // Overwrite the cache entry with a sentinel payload that cannot be
+        // produced by the repository. If the second response returns this
+        // sentinel, we've proven the controller served from cache rather
+        // than recomputing from the repository.
+        //
+        // The controller caches via default-options JsonSerializer (PascalCase)
+        // and the ASP.NET Core output pipeline writes the wire response in
+        // camelCase — so we write the sentinel in PascalCase to match the
+        // deserialize side, and assert on the camelCase wire shape.
+        const string sentinelBody =
+            "[{\"LocalityId\":\"00000000-0000-0000-0000-000000000001\",\"WardName\":\"__cache_sentinel__\",\"CityName\":null}]";
+        await redis.StringSetAsync(WardListCacheKey, sentinelBody);
+
         var warm = await Client.GetAsync("/v1/localities/wards");
         Assert.Equal(HttpStatusCode.OK, warm.StatusCode);
         var warmBody = await warm.Content.ReadAsStringAsync();
 
-        Assert.Equal(coldBody, warmBody);
-
-        // Cache entry must exist after the cold call.
-        await using var scope = Factory.Services.CreateAsyncScope();
-        var redis = scope.ServiceProvider.GetRequiredService<IDatabase>();
-        var cached = await redis.StringGetAsync("locality_list:wards");
-        Assert.True(cached.HasValue, "Expected ward list to be cached in Redis after first request.");
+        // JSON equivalence: the controller round-trips cache payload through
+        // List<LocalitySummaryDto> then back through the framework's JSON
+        // writer, so exact byte equality is not guaranteed. Compare on the
+        // sentinel ward-name marker instead.
+        using var doc = JsonDocument.Parse(warmBody);
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+        Assert.Equal(1, doc.RootElement.GetArrayLength());
+        Assert.Equal(
+            "__cache_sentinel__",
+            doc.RootElement[0].GetProperty("wardName").GetString());
     }
 
     // ----------------------------------------------------------------------
@@ -80,6 +116,6 @@ public sealed class LocalitiesIntegrationTests : IntegrationTestBase
     {
         await using var scope = Factory.Services.CreateAsyncScope();
         var redis = scope.ServiceProvider.GetRequiredService<IDatabase>();
-        await redis.KeyDeleteAsync("locality_list:wards");
+        await redis.KeyDeleteAsync(WardListCacheKey);
     }
 }

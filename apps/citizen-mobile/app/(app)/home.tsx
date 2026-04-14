@@ -406,10 +406,10 @@ function ErrorState({
 // ─── Locality selector sheet ────────────────────────────────────────────────
 //
 // Searchable ward picker. Fetches the canonical ward list once
-// (GET /v1/localities/wards, cached 24h server-side and staleTime:Infinity
-// client-side) and filters it locally so typing is instant. Shows the
-// user's followed wards at the top for fast switching, then the full
-// "Browse all wards" list below.
+// (GET /v1/localities/wards, cached 24h server-side and with a 24h
+// staleTime client-side) and filters it locally so typing is instant.
+// Shows the user's followed wards at the top for fast switching, then
+// the full "Browse all wards" list below.
 
 interface LocalitySelectorSheetProps {
   onClose: () => void;
@@ -619,7 +619,7 @@ function LocalitySelectorSheet({
           ListEmptyComponent={
             showLoadError ? (
               <Text style={styles.searchEmpty}>
-                Couldn't load wards. Pull down to retry.
+                Couldn't load wards. Please try again later.
               </Text>
             ) : showEmptyState ? (
               <Text style={styles.searchEmpty}>No wards match "{searchQuery.trim()}"</Text>

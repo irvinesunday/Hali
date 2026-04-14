@@ -56,6 +56,7 @@ public class LocalityLookupRepository : ILocalityLookupRepository
     public async Task<IReadOnlyList<LocalitySummary>> ListAllAsync(CancellationToken ct = default)
     {
         var rows = await _db.Localities
+            .AsNoTracking()
             .OrderBy(l => l.WardName)
             .Select(l => new { l.Id, l.WardName, l.CityName, l.CountyName })
             .ToListAsync(ct);

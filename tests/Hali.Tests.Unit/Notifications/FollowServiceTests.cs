@@ -60,7 +60,8 @@ public class FollowServiceTests
             => Task.FromResult<LocalitySummary?>(null);
 
         public Task<IReadOnlyList<LocalitySummary>> ListAllAsync(CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<LocalitySummary>>(Store.Values.ToList());
+            => Task.FromResult<IReadOnlyList<LocalitySummary>>(
+                Store.Values.OrderBy(l => l.WardName, StringComparer.Ordinal).ToList());
     }
 
     private static FollowService NewService(IFollowRepository? repo = null, FakeLocalityLookup? lookup = null)
