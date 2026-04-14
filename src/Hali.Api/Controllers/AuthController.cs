@@ -1,4 +1,3 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
@@ -27,53 +26,22 @@ public class AuthController : ControllerBase
     [HttpPost("otp")]
     public async Task<IActionResult> RequestOtp([FromBody] OtpRequestDto dto, CancellationToken ct)
     {
-        try
-        {
-            await _otpService.RequestOtpAsync(dto.Destination, dto.AuthMethod, ct);
-            return Ok(new
-            {
-                message = "OTP sent"
-            });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "OTP_RATE_LIMITED")
-        {
-            return StatusCode(429, new
-            {
-                error = "Too many OTP requests. Please try again later."
-            });
-        }
+        await _otpService.RequestOtpAsync(dto.Destination, dto.AuthMethod, ct);
+        // Success payload is still an anonymous {message} shape at this commit;
+        // Commit 5 replaces it with the typed OtpRequestedResponseDto.
+        return Ok(new { message = "OTP sent" });
     }
 
     [HttpPost("verify")]
     public async Task<IActionResult> Verify([FromBody] VerifyOtpRequestDto dto, CancellationToken ct)
     {
-        try
-        {
-            return Ok(await _authService.AuthenticateAsync(dto, ct));
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "OTP_INVALID")
-        {
-            return BadRequest(new
-            {
-                error = "Invalid or expired OTP."
-            });
-        }
+        return Ok(await _authService.AuthenticateAsync(dto, ct));
     }
 
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequestDto dto, CancellationToken ct)
     {
-        try
-        {
-            return Ok(await _authService.RefreshAsync(dto.RefreshToken, ct));
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "REFRESH_TOKEN_INVALID")
-        {
-            return Unauthorized(new
-            {
-                error = "Invalid or expired refresh token."
-            });
-        }
+        return Ok(await _authService.RefreshAsync(dto.RefreshToken, ct));
     }
 
     [HttpPost("logout")]
@@ -86,26 +54,7 @@ public class AuthController : ControllerBase
     [HttpPost("institution/setup")]
     public async Task<IActionResult> InstitutionSetup([FromBody] InstitutionSetupRequestDto dto, CancellationToken ct)
     {
-        try
-        {
-            await _institutionService.SetupInstitutionAccountAsync(dto, ct);
-            return Accepted();
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "INVITE_INVALID")
-        {
-            return BadRequest(new { error = "Invalid invite token." });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "INVITE_EXPIRED")
-        {
-            return BadRequest(new { error = "Invite token has expired." });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "INVITE_ALREADY_ACCEPTED")
-        {
-            return BadRequest(new { error = "Invite has already been accepted." });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "OTP_RATE_LIMITED")
-        {
-            return StatusCode(429, new { error = "Too many OTP requests. Please try again later." });
-        }
+        await _institutionService.SetupInstitutionAccountAsync(dto, ct);
+        return Accepted();
     }
 }
