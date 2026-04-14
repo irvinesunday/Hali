@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +29,12 @@ public class AdminController : ControllerBase
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))
-            return BadRequest(new { error = "name is required." });
+        {
+            throw new ValidationException(
+                "name is required.",
+                code: "institution.missing_fields",
+                fieldErrors: new Dictionary<string, string[]> { ["name"] = new[] { "name is required" } });
+        }
 
         Guid adminAccountId = Guid.Empty;
         if (Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed))
