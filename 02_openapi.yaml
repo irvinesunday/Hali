@@ -191,7 +191,10 @@ paths:
                       type: string
                       nullable: true
         '401':
-          description: Unauthenticated
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     put:
       tags: [Localities]
       summary: Set followed wards (max 5)
@@ -227,6 +230,11 @@ paths:
                   maxItems: 5
       responses:
         '204': { description: Updated }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '422':
           description: max_followed_localities_exceeded
           content:
@@ -506,6 +514,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
           description: Signal already submitted with this idempotency key
           content:
@@ -569,6 +582,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '422':
           description: invalid_participation_type or device_not_found
           content:
@@ -595,6 +613,11 @@ paths:
         '204': { description: Recorded }
         '400':
           description: device_hash or text missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -628,6 +651,11 @@ paths:
         '204': { description: Recorded }
         '400':
           description: device_hash missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -666,6 +694,11 @@ paths:
             Missing fields (official_post.missing_fields),
             invalid post type (official_post.invalid_type), or
             invalid category (official_post.invalid_category).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -748,7 +781,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserMeResponse'
         '401':
-          description: Unauthenticated
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Account not found (account.not_found)
           content:
@@ -769,7 +805,10 @@ paths:
       responses:
         '204': { description: Updated }
         '401':
-          description: Unauthenticated
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Account not found (account.not_found)
           content:
@@ -797,6 +836,11 @@ paths:
         '204': { description: Updated }
         '400':
           description: device_hash or expo_push_token missing (device.missing_fields)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -846,6 +890,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/admin/institutions/{id}/access:
     delete:
       tags: [Admin]
@@ -865,6 +914,11 @@ paths:
               schema:
                 type: object
                 description: Empty object on success.
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
 components:
   securitySchemes:
