@@ -901,8 +901,10 @@ components:
       type: object
       description: |
         Canonical error envelope emitted by the API's centralized exception
-        middleware (H1) and used by every documented application-level error
-        response in this spec.
+        middleware (H1) and referenced by most documented application-level
+        error responses in this spec. A small number of legacy endpoints
+        still document body-less 4xx responses; those are tracked for
+        migration but are intentionally not referenced to this schema.
 
         Framework-generated authentication/authorization failures (e.g. 401
         from the JwtBearer challenge or 403 from policy denial) short-circuit
