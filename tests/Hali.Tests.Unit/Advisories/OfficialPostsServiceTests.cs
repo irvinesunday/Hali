@@ -40,6 +40,11 @@ public class OfficialPostsServiceTests
         public Task<List<OfficialPost>> GetActiveByLocalityAsync(Guid localityId, CancellationToken ct)
             => Task.FromResult(new List<OfficialPost>());
 
+        public List<OfficialPost> ActiveByLocalitiesResult { get; set; } = new();
+
+        public Task<List<OfficialPost>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+            => Task.FromResult(ActiveByLocalitiesResult);
+
         public Task<int> ExpirePostsAsync(CancellationToken ct) => Task.FromResult(0);
     }
 
@@ -202,5 +207,82 @@ public class OfficialPostsServiceTests
 
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Empty(clusterRepo.Decisions);
+    }
+
+    // ── GetActiveByLocalitiesAsync — batched read path (#101/#100) ─────────
+
+    [Fact]
+    public async Task GetActiveByLocalitiesAsync_MapsEntitiesToDtosAndPreservesOrder()
+    {
+        // Seed two entities with deliberately distinct Type and Category values
+        // so we can verify both snake_case enum conversions land in the DTO,
+        // and keep them in a specific input order so we can assert the service
+        // preserves ordering from the repo (it does not re-sort).
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var inst = Guid.NewGuid();
+        var cluster = Guid.NewGuid();
+        var firstAt = new DateTime(2026, 04, 14, 10, 00, 00, DateTimeKind.Utc);
+        var secondAt = new DateTime(2026, 04, 14, 09, 00, 00, DateTimeKind.Utc);
+
+        var repo = new FakeOfficialPostRepo
+        {
+            ActiveByLocalitiesResult = new List<OfficialPost>
+            {
+                new OfficialPost
+                {
+                    Id                 = firstId,
+                    InstitutionId      = inst,
+                    Type               = OfficialPostType.ScheduledDisruption,
+                    Category           = CivicCategory.Water,
+                    Title              = "First",
+                    Body               = "First body",
+                    StartsAt           = firstAt,
+                    EndsAt             = null,
+                    Status             = "published",
+                    RelatedClusterId   = cluster,
+                    IsRestorationClaim = false,
+                    CreatedAt          = firstAt,
+                },
+                new OfficialPost
+                {
+                    Id                 = secondId,
+                    InstitutionId      = inst,
+                    Type               = OfficialPostType.AdvisoryPublicNotice,
+                    Category           = CivicCategory.Electricity,
+                    Title              = "Second",
+                    Body               = "Second body",
+                    StartsAt           = secondAt,
+                    EndsAt             = null,
+                    Status             = "published",
+                    RelatedClusterId   = null,
+                    IsRestorationClaim = true,
+                    CreatedAt          = secondAt,
+                },
+            },
+        };
+        var svc = new OfficialPostsService(repo, new FakeClusterRepo());
+
+        var dtos = await svc.GetActiveByLocalitiesAsync(
+            new List<Guid> { Guid.NewGuid(), Guid.NewGuid() },
+            CancellationToken.None);
+
+        // Count + order preserved from the repo (service does not re-sort).
+        Assert.Equal(2, dtos.Count);
+        Assert.Equal(firstId, dtos[0].Id);
+        Assert.Equal(secondId, dtos[1].Id);
+
+        // Snake_case Type + Category conversion.
+        Assert.Equal("scheduled_disruption", dtos[0].Type);
+        Assert.Equal("water", dtos[0].Category);
+        Assert.Equal("advisory_public_notice", dtos[1].Type);
+        Assert.Equal("electricity", dtos[1].Category);
+
+        // Straight-through fields.
+        Assert.Equal("First", dtos[0].Title);
+        Assert.Equal(cluster, dtos[0].RelatedClusterId);
+        Assert.False(dtos[0].IsRestorationClaim);
+        Assert.True(dtos[1].IsRestorationClaim);
+        Assert.Null(dtos[1].RelatedClusterId);
     }
 }
