@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace Hali.Api.Controllers;
@@ -29,6 +30,25 @@ public class LocalitiesController : ControllerBase
     private readonly IDatabase _redis;
     private readonly IRateLimiter _rateLimiter;
     private readonly ILogger<LocalitiesController> _logger;
+
+    /// <summary>
+    /// JSON options sourced from the MVC-configured serializer so that
+    /// cached payloads written to / read from Redis use the same
+    /// camelCase property naming and snake_case enum serialization as
+    /// the non-cached Ok() response path. Reusing
+    /// <see cref="Microsoft.AspNetCore.Mvc.JsonOptions"/> from DI
+    /// (instead of a controller-local copy or the default
+    /// <see cref="JsonSerializer"/> options) prevents silent drift
+    /// between the cache and wire contracts if global JSON
+    /// configuration changes — the cache automatically tracks it.
+    ///
+    /// MVC's JsonOptions default to <c>PropertyNameCaseInsensitive = true</c>
+    /// (the <see cref="JsonSerializerDefaults.Web"/> preset), so any
+    /// legacy PascalCase cache entries written before this change are
+    /// still deserialized cleanly during rollout. New writes are
+    /// camelCase and the reserialized wire response is always camelCase.
+    /// </summary>
+    private readonly JsonSerializerOptions _cacheJsonOptions;
 
     private static readonly TimeSpan SearchCacheTtl = TimeSpan.FromHours(1);
     private const int MaxSearchQueryLength = 80;
@@ -47,6 +67,7 @@ public class LocalitiesController : ControllerBase
         ILocalityLookupRepository localities,
         IDatabase redis,
         IRateLimiter rateLimiter,
+        IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJsonOptions,
         ILogger<LocalitiesController> logger)
     {
         _follows = follows;
@@ -54,6 +75,7 @@ public class LocalitiesController : ControllerBase
         _localities = localities;
         _redis = redis;
         _rateLimiter = rateLimiter;
+        _cacheJsonOptions = mvcJsonOptions.Value.JsonSerializerOptions;
         _logger = logger;
     }
 
@@ -112,7 +134,7 @@ public class LocalitiesController : ControllerBase
         {
             try
             {
-                var hit = JsonSerializer.Deserialize<List<LocalitySummaryDto>>((string)cached!);
+                var hit = JsonSerializer.Deserialize<List<LocalitySummaryDto>>((string)cached!, _cacheJsonOptions);
                 if (hit is not null) return Ok(hit);
             }
             catch
@@ -132,7 +154,7 @@ public class LocalitiesController : ControllerBase
             })
             .ToList();
 
-        await _redis.StringSetAsync(WardListCacheKey, JsonSerializer.Serialize(results), WardListCacheTtl);
+        await _redis.StringSetAsync(WardListCacheKey, JsonSerializer.Serialize(results, _cacheJsonOptions), WardListCacheTtl);
         return Ok(results);
     }
 
@@ -164,7 +186,7 @@ public class LocalitiesController : ControllerBase
         {
             try
             {
-                var hit = JsonSerializer.Deserialize<List<LocalitySearchResultDto>>((string)cached!);
+                var hit = JsonSerializer.Deserialize<List<LocalitySearchResultDto>>((string)cached!, _cacheJsonOptions);
                 if (hit is not null) return Ok(hit);
             }
             catch
@@ -201,7 +223,7 @@ public class LocalitiesController : ControllerBase
             if (results.Count >= 5) break;
         }
 
-        await _redis.StringSetAsync(cacheKey, JsonSerializer.Serialize(results), SearchCacheTtl);
+        await _redis.StringSetAsync(cacheKey, JsonSerializer.Serialize(results, _cacheJsonOptions), SearchCacheTtl);
         return Ok(results);
     }
 
