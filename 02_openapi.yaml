@@ -748,8 +748,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserMeResponse'
-        '401': { description: Unauthenticated }
-        '404': { description: Account not found }
+        '401':
+          description: Unauthenticated (auth.unauthorized)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Account not found (account.not_found)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/users/me/notification-settings:
     put:
       tags: [Users]
@@ -764,7 +772,16 @@ paths:
               $ref: '#/components/schemas/NotificationSettings'
       responses:
         '204': { description: Updated }
-        '401': { description: Unauthenticated }
+        '401':
+          description: Unauthenticated (auth.unauthorized)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Account not found (account.not_found)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Devices ─────────────────────────────────────────────────────────
   /v1/devices/push-token:

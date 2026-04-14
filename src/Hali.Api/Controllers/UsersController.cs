@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Logging;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
@@ -29,13 +30,14 @@ public class UsersController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> GetMe(CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null)
-            return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var account = await _auth.FindAccountByIdAsync(accountId.Value, ct);
+        var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
-            return NotFound();
+            throw new NotFoundException(
+                code: "account.not_found",
+                message: "Account not found.");
 
         var settings = ParseNotificationSettings(account.NotificationSettings);
 
@@ -56,13 +58,14 @@ public class UsersController : ControllerBase
         [FromBody] NotificationSettingsDto dto,
         CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null)
-            return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var account = await _auth.FindAccountByIdAsync(accountId.Value, ct);
+        var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
-            return NotFound();
+            throw new NotFoundException(
+                code: "account.not_found",
+                message: "Account not found.");
 
         account.NotificationSettings = JsonSerializer.Serialize(dto);
         account.UpdatedAt = DateTime.UtcNow;
