@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Security.Claims;
@@ -404,8 +403,11 @@ public sealed class HomeIntegrationTests : IntegrationTestBase
 
     private IDatabase GetRedis()
     {
-        var scope = Factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<IDatabase>();
+        // IDatabase is registered as a singleton, so resolve it directly
+        // from the root container. Creating (and not disposing) a scope per
+        // call would keep any incidentally-resolved scoped services alive
+        // across tests.
+        return Factory.Services.GetRequiredService<IDatabase>();
     }
 
     /// <summary>
