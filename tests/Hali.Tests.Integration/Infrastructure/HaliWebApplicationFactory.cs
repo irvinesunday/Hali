@@ -464,6 +464,10 @@ CREATE TABLE IF NOT EXISTS follows (
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_follow UNIQUE (account_id, locality_id)
 )");
+        // Follows.display_label (EF migration 20260407112450_AddDisplayLabelToFollows)
+        // — mirrored here so the test schema matches the EF model and SELECTs of
+        // the Follow entity via FollowRepository do not fail with 42703.
+        await ExecAsync(conn, "ALTER TABLE follows ADD COLUMN IF NOT EXISTS display_label varchar(160)");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS notifications (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
