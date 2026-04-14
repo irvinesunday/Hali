@@ -340,6 +340,88 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ── Places (C11 low-confidence location fallback) ──────────────────
+  /v1/places/search:
+    get:
+      tags: [Places]
+      summary: Search for a place (road / landmark / area) by free text — composer fallback
+      description: |
+        Forward-geocodes the query via Nominatim (biased to Kenya), then resolves
+        each candidate to a Hali locality via PostGIS point-in-polygon. Returns
+        up to 5 matches, each with coordinates and resolved ward context.
+        Candidates outside any covered locality are filtered out — every
+        returned candidate is a valid submit target. Anonymous, rate-limited
+        per client IP, Redis-cached (1h).
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        '200':
+          description: Candidate places (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PlaceCandidate' }
+        '400':
+          description: Query too short or too long
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/places/reverse:
+    get:
+      tags: [Places]
+      summary: Reverse geocode coordinates to a single place candidate — composer fallback
+      description: |
+        Reverse-geocodes the coordinate via Nominatim and resolves it to a
+        Hali locality. Used by the composer's "Use my current location"
+        action in the low-confidence fallback flow. Returns 404 when the
+        coordinates are outside any known locality. Anonymous, rate-limited,
+        Redis-cached (1d).
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, format: double, minimum: -90, maximum: 90 }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, format: double, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Resolved place candidate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceCandidate' }
+        '400':
+          description: Invalid coordinates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: No locality found for the given coordinates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/feedback:
     post:
       tags: [Feedback]
@@ -849,6 +931,25 @@ components:
         locale: { type: string, nullable: true, example: en }
         knownCity: { type: string, nullable: true }
         countryCode: { type: string, nullable: true, example: KE }
+    LocationSource:
+      type: string
+      description: |
+        Canonical wire values for `SignalLocation.locationSource` and
+        `SignalSubmitRequest.locationSource`. Mirrors
+        `Hali.Contracts.Signals.LocationSource`.
+
+          * `nlp` — derived from CSI-NLP extraction, unchanged by the user.
+          * `user_edit` — user accepted or edited the human-readable label;
+            coordinates remain device-GPS or NLP-suggested.
+          * `place_search` — user picked a Nominatim-backed place from the
+            C11 low-confidence fallback picker (search results OR
+            `Use my current location`). Both label and coordinates are
+            authoritative from the picker.
+
+        The draggable map-pin fallback (`map_pin`) is intentionally deferred
+        to a follow-up and is NOT in this enum. Do not add it here until
+        that surface ships.
+      enum: [nlp, user_edit, place_search]
     SignalLocation:
       type: object
       description: |
@@ -866,16 +967,21 @@ components:
         locationLabel: { type: string, nullable: true }
         locationPrecisionType: { type: string, nullable: true }
         locationConfidence: { type: number, minimum: 0, maximum: 1 }
-        locationSource: { type: string }
+        locationSource: { $ref: '#/components/schemas/LocationSource' }
     SignalPreviewResponse:
       type: object
       description: |
         Single extraction result. Mirrors `SignalPreviewResponseDto`. The
         previously-documented `candidates[]` and `existingClusterCandidates[]`
         arrays do NOT exist in the backend.
+
+        `requiresLocationFallback` (C11) is the server-authoritative flag
+        indicating the NLP-extracted location is too weak to submit as-is;
+        the composer routes the user into the place-search / current-location
+        picker when it is true. See `LocationFallbackPolicy` in the backend.
       required:
         [category, subcategorySlug, conditionSlug, conditionConfidence, location,
-         temporalType, neutralSummary, shouldSuggestJoin]
+         temporalType, neutralSummary, shouldSuggestJoin, requiresLocationFallback]
       properties:
         category: { $ref: '#/components/schemas/CivicCategory' }
         subcategorySlug: { type: string }
@@ -885,11 +991,22 @@ components:
         temporalType: { type: string, nullable: true }
         neutralSummary: { type: string, nullable: true }
         shouldSuggestJoin: { type: boolean }
+        requiresLocationFallback:
+          type: boolean
+          description: |
+            True when the composer MUST route the user into the low-confidence
+            location fallback picker before allowing submit. Triggered when
+            `location.locationConfidence < 0.5` OR `location.locationLabel`
+            is blank.
     SignalSubmitRequest:
       type: object
       description: |
         Flat shape — no nested `candidate` wrapper. `spatialCellId` is derived
         server-side from lat/lng and must NOT be sent by the client.
+
+        When `locationSource` is `place_search`, `locationLabel` is required
+        (non-blank). The server rejects unknown `locationSource` values with
+        `validation.invalid_location_source`.
       required:
         [idempotencyKey, deviceHash, freeText, category, subcategorySlug,
          conditionConfidence, latitude, longitude, locationConfidence, locationSource]
@@ -906,10 +1023,27 @@ components:
         locationLabel: { type: string, nullable: true }
         locationPrecisionType: { type: string, nullable: true }
         locationConfidence: { type: number, minimum: 0, maximum: 1 }
-        locationSource: { type: string }
+        locationSource: { $ref: '#/components/schemas/LocationSource' }
         temporalType: { type: string, nullable: true }
         neutralSummary: { type: string, nullable: true }
         sourceLanguage: { type: string, nullable: true }
+    PlaceCandidate:
+      type: object
+      description: |
+        A single geocoding candidate returned by the C11 places endpoints.
+        Mirrors `Hali.Contracts.Signals.PlaceCandidateDto`. Every candidate
+        is resolved to a Hali locality (otherwise filtered out by the
+        backend); the composer uses this to supply authoritative submit
+        coordinates and label.
+      required:
+        [displayName, latitude, longitude, localityId, wardName, cityName]
+      properties:
+        displayName: { type: string }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        localityId: { type: string, format: uuid, nullable: true }
+        wardName: { type: string, nullable: true }
+        cityName: { type: string, nullable: true }
     SignalSubmitResponse:
       type: object
       required: [signalEventId, clusterId, isNewCluster, clusterState, localityId, createdAt]

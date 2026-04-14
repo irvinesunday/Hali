@@ -57,7 +57,26 @@ public class SignalIngestionService : ISignalIngestionService
         {
             throw new ValidationException("NLP returned an unrecognised category.", code: "validation.invalid_category");
         }
-        return new SignalPreviewResponseDto(result.Category, result.Subcategory, result.ConditionLevel, result.ConditionConfidence, new SignalLocationDto(result.Location.AreaName, result.Location.RoadName, result.Location.JunctionName, result.Location.LandmarkName, result.Location.FacilityName, result.Location.LocationLabel, result.Location.LocationPrecisionType, result.Location.LocationConfidence, result.Location.LocationSource), result.TemporalHint?.Type, result.Summary, result.ShouldSuggestJoin);
+        bool requiresLocationFallback = LocationFallbackPolicy.RequiresFallback(result.Location);
+        return new SignalPreviewResponseDto(
+            result.Category,
+            result.Subcategory,
+            result.ConditionLevel,
+            result.ConditionConfidence,
+            new SignalLocationDto(
+                result.Location.AreaName,
+                result.Location.RoadName,
+                result.Location.JunctionName,
+                result.Location.LandmarkName,
+                result.Location.FacilityName,
+                result.Location.LocationLabel,
+                result.Location.LocationPrecisionType,
+                result.Location.LocationConfidence,
+                result.Location.LocationSource),
+            result.TemporalHint?.Type,
+            result.Summary,
+            result.ShouldSuggestJoin,
+            requiresLocationFallback);
     }
 
     public async Task<SignalSubmitResponseDto> SubmitAsync(SignalSubmitRequestDto request, Guid? accountId, Guid? deviceId, CancellationToken ct = default(CancellationToken))
@@ -131,6 +150,29 @@ public class SignalIngestionService : ISignalIngestionService
                 throw new ValidationException(
                     $"Location label must not exceed {MaxLocationLabelLength} characters.",
                     code: "validation.location_label_too_long");
+            }
+
+            // C11: canonical LocationSource allowlist. Unknown values would
+            // otherwise land in the DB's varchar(20) column unvalidated and
+            // quietly degrade downstream analytics/source-attribution.
+            if (!LocationSource.IsValid(request.LocationSource))
+            {
+                throw new ValidationException(
+                    "locationSource must be one of: nlp, user_edit, place_search.",
+                    code: "validation.invalid_location_source");
+            }
+
+            // C11: when the user selected a place from the fallback picker,
+            // the label from the picker is authoritative and must be present.
+            // We deliberately do not require a label for the NLP / user_edit
+            // paths (the existing flow tolerates a null label; the cluster
+            // falls back to structural fields for its display).
+            if (string.Equals(request.LocationSource, LocationSource.PlaceSearch, StringComparison.Ordinal)
+                && string.IsNullOrWhiteSpace(request.LocationLabel))
+            {
+                throw new ValidationException(
+                    "locationLabel is required when locationSource is place_search.",
+                    code: "validation.location_label_required");
             }
 
             string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");

@@ -18,16 +18,76 @@ import {
 } from '../config/constants';
 
 /**
- * Three-tier confidence gate:
- *   'required' — confidence below WARN: user MUST take action
- *   'confirm'  — confidence between WARN and AMBER: user confirms or edits
- *   'accept'   — confidence at or above AMBER: no action required
+ * Four-tier location confidence gate.
+ *
+ * For location, 'fallback' replaces the old 'required' tier whenever the
+ * backend flags the preview as needing correction OR when a client-side
+ * derivation of the same rule fires (low numeric confidence OR blank label).
+ * Rendering 'fallback' should route the user into the place-search /
+ * current-location picker UX, not just display a plain text-input warning.
+ *
+ *   'fallback'  — correction required; render LocationFallbackPicker
+ *   'confirm'   — amber: user confirms or edits the pre-filled label
+ *   'accept'    — high-confidence; no action required
+ *
+ * 'required' is preserved in the type union for non-location gates (the
+ * condition gate below still uses it) and for backwards compatibility with
+ * tests that predate C11. classifyLocationGate never returns 'required' —
+ * what was previously 'required' is now 'fallback'.
  */
-export type ConfidenceGate = 'required' | 'confirm' | 'accept';
+export type ConfidenceGate = 'required' | 'confirm' | 'accept' | 'fallback';
 
-export function classifyLocationGate(confidence: number): ConfidenceGate {
-  if (confidence < LOCATION_CONFIDENCE_WARN_THRESHOLD) return 'required';
-  if (confidence < LOCATION_CONFIDENCE_AMBER_THRESHOLD) return 'confirm';
+export interface LocationGateInput {
+  confidence: number;
+  /** Server-authoritative flag from SignalPreviewResponse. When present it wins. */
+  requiresFallback?: boolean;
+  /** The NLP-extracted label (or current edited value). Blank/whitespace-only labels are treated as low-trust even at high numeric confidence. */
+  label?: string | null;
+}
+
+/**
+ * Classify a location-confidence score into a UI gate tier.
+ *
+ * The legacy single-number signature is preserved for existing tests:
+ *   classifyLocationGate(0.9)
+ *
+ * The C11 signature threads through the server flag and the current label:
+ *   classifyLocationGate({ confidence, requiresFallback, label })
+ *
+ * Rule (mirrors server-side LocationFallbackPolicy):
+ *   - If the server flag is true → 'fallback'
+ *   - Else if confidence < WARN → 'fallback'
+ *   - Else if label is blank/whitespace → 'fallback'
+ *   - Else if confidence < AMBER → 'confirm'
+ *   - Else → 'accept'
+ */
+export function classifyLocationGate(
+  input: number | LocationGateInput,
+): ConfidenceGate {
+  const normalized: LocationGateInput =
+    typeof input === 'number' ? { confidence: input } : input;
+
+  // Server wins when it has spoken.
+  if (normalized.requiresFallback === true) return 'fallback';
+
+  if (normalized.confidence < LOCATION_CONFIDENCE_WARN_THRESHOLD) {
+    return 'fallback';
+  }
+
+  // Only enforce the label check when the caller supplied a label argument
+  // at all — legacy callers that pass a bare number keep their existing
+  // behaviour (confidence-only tier selection).
+  if (
+    normalized.label !== undefined &&
+    (normalized.label === null || normalized.label.trim().length === 0)
+  ) {
+    return 'fallback';
+  }
+
+  if (normalized.confidence < LOCATION_CONFIDENCE_AMBER_THRESHOLD) {
+    return 'confirm';
+  }
+
   return 'accept';
 }
 
