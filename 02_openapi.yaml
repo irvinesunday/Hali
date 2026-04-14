@@ -749,10 +749,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserMeResponse'
         '401':
-          description: Unauthenticated (auth.unauthorized)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+          description: Unauthenticated
         '404':
           description: Account not found (account.not_found)
           content:
@@ -773,10 +770,7 @@ paths:
       responses:
         '204': { description: Updated }
         '401':
-          description: Unauthenticated (auth.unauthorized)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+          description: Unauthenticated
         '404':
           description: Account not found (account.not_found)
           content:

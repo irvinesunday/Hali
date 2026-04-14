@@ -98,7 +98,7 @@ public sealed class StandardizedErrorEnvelopeTests : IntegrationTestBase
         // through the controller and into its typed-exception branch.
         var jwt = MintJwt(Guid.NewGuid());
 
-        var authedClient = CreateAuthenticatedClient(jwt);
+        using var authedClient = CreateAuthenticatedClient(jwt);
         var response = await authedClient.GetAsync("/v1/users/me");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
