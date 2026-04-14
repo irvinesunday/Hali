@@ -48,6 +48,14 @@ public class HomeFeedQueryService : IHomeFeedQueryService
     public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalitiesAsync(
         IEnumerable<Guid> localityIds, CancellationToken ct)
     {
+        // Pre-scope short-circuit: preserves the #102 optimisation that avoids
+        // creating an AsyncServiceScope and resolving a scoped service for the
+        // common empty-follows case. Covers the materialised inputs HomeController
+        // passes (always a List<Guid>); non-materialised enumerables fall through
+        // to the scope path, where the downstream repo short-circuits again.
+        if (localityIds is ICollection<Guid> c && c.Count == 0)
+            return Array.Empty<OfficialPostResponseDto>();
+
         await using var scope = _scopeFactory.CreateAsyncScope();
         var officialPosts = scope.ServiceProvider.GetRequiredService<IOfficialPostsService>();
         return await officialPosts.GetActiveByLocalitiesAsync(localityIds, ct);
