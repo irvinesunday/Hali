@@ -321,11 +321,20 @@ public class PlacesControllerTests
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => controller.Reverse(-1.30004, 36.80004, CancellationToken.None));
-        // The key integrity assertions: FindByPointAsync ran for the
-        // caller's coords, and the upstream geocoder was never touched
-        // (we short-circuit at the locality guard).
+        // Integrity assertions: FindByPointAsync ran for the caller's
+        // coords, and BOTH downstream dependencies (cache + upstream
+        // geocoder) were never touched — we short-circuit at the locality
+        // guard. The Redis seeding above is a trap: if the controller
+        // ever consulted the cache for an outside-locality request, it
+        // would receive the seeded payload and behave incorrectly. The
+        // `DidNotReceive` assertion on `StringGetAsync` is what closes
+        // the trap; without it this test would still pass even if the
+        // controller were silently reading the cache before the locality
+        // check.
         await _localities.Received(1)
             .FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>());
+        await _redis.DidNotReceive()
+            .StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
         await _geocoding.DidNotReceive()
             .ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>());
     }
