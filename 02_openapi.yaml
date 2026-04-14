@@ -901,8 +901,15 @@ components:
       type: object
       description: |
         Canonical error envelope emitted by the API's centralized exception
-        middleware (H1). Every non-2xx response from every endpoint returns
-        this shape.
+        middleware (H1) and used by every documented application-level error
+        response in this spec.
+
+        Framework-generated authentication/authorization failures (e.g. 401
+        from the JwtBearer challenge or 403 from policy denial) short-circuit
+        before the exception middleware runs and therefore may return an
+        empty body instead of this envelope. Documented `401`/`403` entries
+        that reference this schema describe failures surfaced as typed
+        `UnauthorizedException`/`ForbiddenException` from application code.
 
           * `error.code` — stable, snake_case_with_dot-namespacing identifier
             for programmatic handling (e.g. `auth.otp_invalid`,

@@ -90,7 +90,7 @@ public class InstitutionServiceTests
     }
 
     [Fact]
-    public async Task InstitutionSetup_ExpiredInvite_Throws400WithCode()
+    public async Task InstitutionSetup_ExpiredInvite_ThrowsValidationExceptionWithCode()
     {
         string rawToken = "expired-token";
         string tokenHash = AuthService.HashToken(rawToken);
@@ -113,7 +113,7 @@ public class InstitutionServiceTests
     }
 
     [Fact]
-    public async Task InstitutionSetup_AlreadyAcceptedInvite_Throws409WithCode()
+    public async Task InstitutionSetup_AlreadyAcceptedInvite_ThrowsConflictExceptionWithCode()
     {
         string rawToken = "accepted-token";
         string tokenHash = AuthService.HashToken(rawToken);
@@ -136,7 +136,7 @@ public class InstitutionServiceTests
     }
 
     [Fact]
-    public async Task InstitutionSetup_InvalidToken_Throws400WithCode()
+    public async Task InstitutionSetup_InvalidToken_ThrowsValidationExceptionWithCode()
     {
         _repo.FindInviteByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((InstitutionInvite?)null);
