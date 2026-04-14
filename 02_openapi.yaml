@@ -177,7 +177,7 @@ paths:
                 type: array
                 items:
                   type: object
-                  required: [localityId, wardName]
+                  required: [localityId, displayLabel, wardName, cityName]
                   properties:
                     localityId: { type: string, format: uuid }
                     displayLabel:
@@ -257,7 +257,7 @@ paths:
                 type: array
                 items:
                   type: object
-                  required: [localityId, placeLabel, wardName]
+                  required: [localityId, placeLabel, wardName, cityName]
                   properties:
                     localityId: { type: string, format: uuid }
                     placeLabel:
@@ -881,7 +881,7 @@ components:
         sourceLanguage: { type: string, nullable: true }
     SignalSubmitResponse:
       type: object
-      required: [signalEventId, clusterId, isNewCluster, clusterState, createdAt]
+      required: [signalEventId, clusterId, isNewCluster, clusterState, localityId, createdAt]
       properties:
         signalEventId: { type: string, format: uuid }
         clusterId: { type: string, format: uuid }
