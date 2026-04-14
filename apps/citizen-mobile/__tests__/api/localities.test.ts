@@ -2,7 +2,7 @@
 //
 // Unit tests for the localities API service layer.
 
-import { resolveByCoordinates } from '../../src/api/localities';
+import { getAllLocalities, resolveByCoordinates } from '../../src/api/localities';
 
 const mockApiRequest = jest.fn();
 
@@ -67,5 +67,45 @@ describe('resolveByCoordinates', () => {
     const result = await resolveByCoordinates(-1.3032, 36.8219);
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('getAllLocalities', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('calls GET /v1/localities/wards with no query params', async () => {
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      value: [
+        { localityId: 'a', wardName: 'South B', cityName: 'Nairobi' },
+        { localityId: 'b', wardName: 'Umoja I', cityName: 'Nairobi' },
+      ],
+    });
+
+    const result = await getAllLocalities();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.length).toBe(2);
+      expect(result.value[0].wardName).toBe('South B');
+    }
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      '/v1/localities/wards',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('surfaces API errors as err results', async () => {
+    mockApiRequest.mockResolvedValueOnce({
+      ok: false,
+      error: { status: 503, code: 'service_unavailable', message: 'Retry later' },
+    });
+
+    const result = await getAllLocalities();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.status).toBe(503);
+    }
   });
 });

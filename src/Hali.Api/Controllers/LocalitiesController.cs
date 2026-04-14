@@ -35,6 +35,12 @@ public class LocalitiesController : ControllerBase
     private const int SearchRateLimitMaxRequests = 30;
     private static readonly TimeSpan SearchRateLimitWindow = TimeSpan.FromMinutes(1);
 
+    // Ward list changes rarely (only when new wards are imported). Cache
+    // aggressively under a single shared Redis key to keep the anonymous
+    // endpoint cheap even under cold-start bursts.
+    private const string WardListCacheKey = "locality_list:wards";
+    private static readonly TimeSpan WardListCacheTtl = TimeSpan.FromHours(24);
+
     public LocalitiesController(
         IFollowService follows,
         IGeocodingService geocoding,
@@ -86,6 +92,48 @@ public class LocalitiesController : ControllerBase
             "locality.follows_updated", correlationId, AccountLogIdentifier.Hash(accountId), count);
 
         return NoContent();
+    }
+
+    /// <summary>
+    /// GET /v1/localities/wards
+    /// Returns the canonical list of all wards/localities in the system,
+    /// ordered alphabetically by ward name. The mobile client caches this
+    /// list and performs client-side search/filter over it — far faster than
+    /// per-keystroke round-trips to the geocoding-backed /search endpoint
+    /// and also enables a "browse all wards" UX.
+    /// </summary>
+    [HttpGet("wards")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(IEnumerable<LocalitySummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListWards(CancellationToken ct)
+    {
+        var cached = await _redis.StringGetAsync(WardListCacheKey);
+        if (cached.HasValue)
+        {
+            try
+            {
+                var hit = JsonSerializer.Deserialize<List<LocalitySummaryDto>>((string)cached!);
+                if (hit is not null) return Ok(hit);
+            }
+            catch
+            {
+                // fall through to live fetch
+            }
+        }
+
+        var rows = await _localities.ListAllAsync(ct);
+
+        var results = rows
+            .Select(r => new LocalitySummaryDto
+            {
+                LocalityId = r.Id,
+                WardName = r.WardName,
+                CityName = r.CityName,
+            })
+            .ToList();
+
+        await _redis.StringSetAsync(WardListCacheKey, JsonSerializer.Serialize(results), WardListCacheTtl);
+        return Ok(results);
     }
 
     [HttpGet("search")]

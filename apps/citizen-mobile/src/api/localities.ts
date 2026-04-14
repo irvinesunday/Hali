@@ -7,6 +7,7 @@ import { apiRequest } from './client';
 import type {
   ApiError,
   FollowedLocalitiesResponse,
+  LocalitiesListResponse,
   LocalityResolveResponse,
   LocalitySearchResponse,
   Result,
@@ -39,6 +40,23 @@ export async function setFollowedLocalities(
   return apiRequest<void>('/v1/localities/followed', {
     method: 'PUT',
     body: body as unknown as Record<string, unknown>,
+  });
+}
+
+/**
+ * GET /v1/localities/wards
+ * Returns the canonical list of every ward/locality in the system,
+ * alphabetically sorted by ward name. Anonymous endpoint.
+ *
+ * The response is small (~all Nairobi wards today) and ward data is
+ * effectively static, so the caller should cache the list aggressively
+ * and run client-side search/filter over it via {@link filterLocalities}.
+ */
+export async function getAllLocalities(): Promise<
+  Result<LocalitiesListResponse, ApiError>
+> {
+  return apiRequest<LocalitiesListResponse>('/v1/localities/wards', {
+    method: 'GET',
   });
 }
 
