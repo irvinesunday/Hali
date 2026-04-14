@@ -16,7 +16,11 @@ import { Button } from '../../../src/components/common/Button';
 import { ConditionBadge } from '../../../src/components/shared';
 import { LocationFallbackPicker } from '../../../src/components/compose/LocationFallbackPicker';
 import { formatCategoryLabel } from '../../../src/utils/formatters';
-import { classifyLocationGate, type ConfidenceGate } from '../../../src/utils/composerGates';
+import {
+  canProceedFromLocationGate,
+  classifyLocationGate,
+  type ConfidenceGate,
+} from '../../../src/utils/composerGates';
 import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
 import type { SignalPreviewResponse } from '../../../src/types/api';
 
@@ -86,22 +90,27 @@ function ConfirmScreenContent({
   const renderFallbackPicker =
     locationOverride !== null || locationGate === 'fallback';
 
-  const canProceed = useMemo<boolean>(() => {
-    // Override path: the picker's selection stands on its own.
-    if (locationOverride !== null) return true;
-    const trimmed = locationLabel.trim();
-    const original = (preview.location.locationLabel ?? '').trim();
-    const userEdited = trimmed !== original && trimmed.length > 0;
-    switch (locationGate) {
-      case 'accept':   return true;
-      case 'confirm':  return locationConfirmed || userEdited;
-      // 'fallback' / 'required' both gate on the user supplying a label
-      // (via the text input) OR picking from the fallback picker (handled
-      // by the locationOverride early-return above).
-      case 'fallback': return trimmed.length > 0;
-      case 'required': return trimmed.length > 0;
-    }
-  }, [locationGate, locationLabel, locationConfirmed, preview.location.locationLabel, locationOverride]);
+  // Pure helper; see composerGates.canProceedFromLocationGate for the full
+  // rules. The 'fallback' tier is override-only — the text input is not
+  // rendered in that tier, and the stale NLP label in `locationLabel`
+  // state must not be allowed to silently bypass the fallback gate.
+  const canProceed = useMemo<boolean>(
+    () =>
+      canProceedFromLocationGate({
+        gate: locationGate,
+        hasOverride: locationOverride !== null,
+        label: locationLabel,
+        originalLabel: preview.location.locationLabel,
+        confirmed: locationConfirmed,
+      }),
+    [
+      locationGate,
+      locationOverride,
+      locationLabel,
+      locationConfirmed,
+      preview.location.locationLabel,
+    ],
+  );
 
   function handleNext(): void {
     // If the user picked an override, the override is authoritative and

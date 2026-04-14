@@ -208,15 +208,19 @@ function SubmitScreenContent({
 /**
  * Narrow an arbitrary wire string (typically `preview.location.locationSource`
  * from the backend NLP extraction) to the SignalLocationSource allowlist.
- * Unknown values fall back to 'user_edit' so the server's allowlist guard
- * doesn't reject the submit; the happy path is always 'nlp' from the
- * backend today.
+ *
+ * The server now normalizes any unknown NLP-emitted value to `'nlp'` in
+ * SignalIngestionService.PreviewAsync, so in practice this shim is only
+ * exercised when a stale cached preview from an older client version
+ * survives. In that case the honest default is `'nlp'` — the preview is
+ * NLP-origin data by construction. Defaulting to `'user_edit'` (the
+ * prior behaviour) misattributed authorship to the user.
  */
 function narrowLocationSource(raw: string): SignalLocationSource {
   if (raw === 'nlp' || raw === 'user_edit' || raw === 'place_search') {
     return raw;
   }
-  return 'user_edit';
+  return 'nlp';
 }
 
 function Field({ label, value }: { label: string; value: string }): React.ReactElement {
