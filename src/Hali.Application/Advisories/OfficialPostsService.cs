@@ -116,6 +116,13 @@ public class OfficialPostsService : IOfficialPostsService
         return posts.Select(MapToDto).ToList();
     }
 
+    public async Task<List<OfficialPostResponseDto>> GetActiveByLocalitiesAsync(
+        IEnumerable<Guid> localityIds, CancellationToken ct)
+    {
+        var posts = await _repo.GetActiveByLocalitiesAsync(localityIds, ct);
+        return posts.Select(MapToDto).ToList();
+    }
+
     private static string EnumToSnakeCase(string name) =>
         System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z])([A-Z])", "_$1").ToLowerInvariant();
 

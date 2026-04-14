@@ -17,5 +17,14 @@ public interface IOfficialPostRepository
     Task<bool> JurisdictionIntersectsScopeAsync(Guid institutionId, Guid postId, CancellationToken ct);
     Task<List<OfficialPost>> GetByClusterIdAsync(Guid clusterId, CancellationToken ct);
     Task<List<OfficialPost>> GetActiveByLocalityAsync(Guid localityId, CancellationToken ct);
+
+    /// <summary>
+    /// Returns published OfficialPost entities scoped to any of the given
+    /// localities, de-duplicated by post id (a post scoped to multiple
+    /// localities returns once) and ordered by CreatedAt descending.
+    /// Uses AsNoTracking — intended for read paths like the home feed.
+    /// </summary>
+    Task<List<OfficialPost>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct);
+
     Task<int> ExpirePostsAsync(CancellationToken ct);
 }

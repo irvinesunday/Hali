@@ -40,6 +40,9 @@ public class OfficialPostsServiceTests
         public Task<List<OfficialPost>> GetActiveByLocalityAsync(Guid localityId, CancellationToken ct)
             => Task.FromResult(new List<OfficialPost>());
 
+        public Task<List<OfficialPost>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+            => Task.FromResult(new List<OfficialPost>());
+
         public Task<int> ExpirePostsAsync(CancellationToken ct) => Task.FromResult(0);
     }
 
