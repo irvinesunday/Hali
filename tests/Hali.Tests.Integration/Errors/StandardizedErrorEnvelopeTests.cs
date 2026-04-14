@@ -114,7 +114,7 @@ public sealed class StandardizedErrorEnvelopeTests : IntegrationTestBase
             audience: TestConstants.JwtAudience,
             claims: new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, accountId.ToString()),
+                new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
             },
             notBefore: DateTime.UtcNow,
             expires: DateTime.UtcNow.AddMinutes(10),
