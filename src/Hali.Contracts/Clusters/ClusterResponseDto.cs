@@ -35,6 +35,31 @@ public record ClusterResponseDto(
     /// participation record on this cluster.
     /// </summary>
     public MyParticipationDto? MyParticipation { get; init; }
+
+    /// <summary>
+    /// Fraction of restoration responses that voted 'yes'. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c> (null otherwise, and
+    /// null when no restoration responses have been recorded yet). Equal to
+    /// <see cref="RestorationYesVotes"/> divided by
+    /// <see cref="RestorationTotalVotes"/>. Exposed as a pre-computed server
+    /// value — mobile must not derive it from other fields.
+    /// </summary>
+    public double? RestorationRatio { get; init; }
+
+    /// <summary>
+    /// Count of 'restoration_yes' votes on this cluster. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c>. Aggregate count
+    /// only — no individual vote attribution.
+    /// </summary>
+    public int? RestorationYesVotes { get; init; }
+
+    /// <summary>
+    /// Total count of restoration responses on this cluster
+    /// (restoration_yes + restoration_no + restoration_unsure). Populated only
+    /// when <see cref="State"/> is <c>possible_restoration</c>. Aggregate
+    /// count only.
+    /// </summary>
+    public int? RestorationTotalVotes { get; init; }
 }
 
 /// <summary>

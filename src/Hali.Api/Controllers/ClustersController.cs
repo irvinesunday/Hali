@@ -79,6 +79,25 @@ public class ClustersController : ControllerBase
             }
         }
 
+        // Restoration progress snapshot — aggregate counts only, populated
+        // exclusively when the cluster is in possible_restoration. This is a
+        // pure read: we derive the ratio from two repo counts directly rather
+        // than invoking EvaluateRestorationAsync (which mutates state and
+        // emits outbox events — unsafe on a GET path).
+        int? restorationYesVotes = null;
+        int? restorationTotalVotes = null;
+        double? restorationRatio = null;
+        if (cluster.State == SignalState.PossibleRestoration)
+        {
+            int yesVotes = await _participationRepo.CountByTypeAsync(id, ParticipationType.RestorationYes, ct);
+            int totalResponses = await _participationRepo.CountRestorationResponsesAsync(id, ct);
+            restorationYesVotes = yesVotes;
+            restorationTotalVotes = totalResponses;
+            restorationRatio = totalResponses > 0
+                ? (double)yesVotes / totalResponses
+                : (double?)null;
+        }
+
         var dto = new ClusterResponseDto(
             cluster.Id,
             JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.State.ToString()),
@@ -97,6 +116,9 @@ public class ClustersController : ControllerBase
             LocationLabel = cluster.LocationLabelText,
             OfficialPosts = officialPosts,
             MyParticipation = myParticipation,
+            RestorationRatio = restorationRatio,
+            RestorationYesVotes = restorationYesVotes,
+            RestorationTotalVotes = restorationTotalVotes,
         };
         return Ok(dto);
     }
