@@ -168,6 +168,7 @@ function ConfirmScreenContent({
                 pickedVia={locationOverridePickedVia}
                 onPick={(o, pickedVia) => setLocationOverride(o, pickedVia)}
                 onClear={() => setLocationOverride(null)}
+                onOpenMapPin={() => router.push('/(app)/compose/pin')}
               />
             ) : (
               <>

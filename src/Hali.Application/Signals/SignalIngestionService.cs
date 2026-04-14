@@ -167,20 +167,23 @@ public class SignalIngestionService : ISignalIngestionService
             if (!LocationSource.IsValid(request.LocationSource))
             {
                 throw new ValidationException(
-                    "locationSource must be one of: nlp, user_edit, place_search.",
+                    "locationSource must be one of: nlp, user_edit, place_search, map_pin.",
                     code: "validation.invalid_location_source");
             }
 
-            // C11: when the user selected a place from the fallback picker,
-            // the label from the picker is authoritative and must be present.
+            // C11 + C11.1: when the user selected a place from the fallback
+            // picker OR dropped a pin on the map, the label produced by the
+            // picker / reverse-geocode is authoritative and must be present.
             // We deliberately do not require a label for the NLP / user_edit
             // paths (the existing flow tolerates a null label; the cluster
             // falls back to structural fields for its display).
-            if (string.Equals(request.LocationSource, LocationSource.PlaceSearch, StringComparison.Ordinal)
-                && string.IsNullOrWhiteSpace(request.LocationLabel))
+            bool authoritativeLabelSource =
+                string.Equals(request.LocationSource, LocationSource.PlaceSearch, StringComparison.Ordinal)
+                || string.Equals(request.LocationSource, LocationSource.MapPin, StringComparison.Ordinal);
+            if (authoritativeLabelSource && string.IsNullOrWhiteSpace(request.LocationLabel))
             {
                 throw new ValidationException(
-                    "locationLabel is required when locationSource is place_search.",
+                    $"locationLabel is required when locationSource is {request.LocationSource}.",
                     code: "validation.location_label_required");
             }
 

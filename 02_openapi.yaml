@@ -945,11 +945,11 @@ components:
             C11 low-confidence fallback picker (search results OR
             `Use my current location`). Both label and coordinates are
             authoritative from the picker.
-
-        The draggable map-pin fallback (`map_pin`) is intentionally deferred
-        to a follow-up and is NOT in this enum. Do not add it here until
-        that surface ships.
-      enum: [nlp, user_edit, place_search]
+          * `map_pin` — user refined location by dropping / dragging a
+            marker on the map fallback surface (C11.1). Coordinates come
+            from the marker position; the label is reverse-geocoded on
+            marker release via `/v1/places/reverse`.
+      enum: [nlp, user_edit, place_search, map_pin]
     SignalLocation:
       type: object
       description: |

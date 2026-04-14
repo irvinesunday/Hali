@@ -219,14 +219,25 @@ export type HomeSectionName =
 // ─── Signals ──────────────────────────────────────────────────────────────────
 
 /**
- * Canonical LocationSource wire values (C11). Must stay in sync with
+ * Canonical LocationSource wire values. Must stay in sync with
  * Hali.Contracts.Signals.LocationSource (C#) and the LocationSource enum
  * in 02_openapi.yaml.
  *
- * The draggable map-pin fallback ('map_pin') is intentionally deferred to
- * a follow-up — do not add it to this union until that surface ships.
+ *   - 'nlp'         — CSI-NLP extraction, unchanged by the user.
+ *   - 'user_edit'   — user accepted or edited the label; coords stay
+ *                     device-GPS / NLP-suggested.
+ *   - 'place_search'— user picked a candidate from the fallback picker
+ *                     (search OR "Use my current location"); coords +
+ *                     label are authoritative from the picker.
+ *   - 'map_pin'     — user refined location on the C11.1 map fallback;
+ *                     coords come from the marker, label from the
+ *                     /v1/places/reverse response on marker release.
  */
-export type SignalLocationSource = 'nlp' | 'user_edit' | 'place_search';
+export type SignalLocationSource =
+  | 'nlp'
+  | 'user_edit'
+  | 'place_search'
+  | 'map_pin';
 
 export interface SignalLocation {
   areaName: string | null;

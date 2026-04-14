@@ -27,12 +27,12 @@ export interface ComposerLocationOverride {
 /**
  * UI-only record of which fallback-picker path produced the current
  * `locationOverride`. Kept here (and not on the override itself) so the
- * wire `locationSource` stays a single value ('place_search') for both
- * paths — `pickedVia` only drives the composer's selected-state subtitle
- * copy ("Current location" vs "Selected from place search") and never
- * leaves the client.
+ * wire `locationSource` stays tight ('place_search' for search/current,
+ * 'map_pin' for the map path) — `pickedVia` only drives the composer's
+ * selected-state subtitle copy ("Current location" / "Selected from
+ * place search" / "Dropped pin on map") and never leaves the client.
  */
-export type LocationOverridePickedVia = 'search' | 'current';
+export type LocationOverridePickedVia = 'search' | 'current' | 'map';
 
 interface ComposerContextValue {
   freeText: string;

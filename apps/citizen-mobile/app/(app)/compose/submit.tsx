@@ -217,7 +217,12 @@ function SubmitScreenContent({
  * prior behaviour) misattributed authorship to the user.
  */
 function narrowLocationSource(raw: string): SignalLocationSource {
-  if (raw === 'nlp' || raw === 'user_edit' || raw === 'place_search') {
+  if (
+    raw === 'nlp' ||
+    raw === 'user_edit' ||
+    raw === 'place_search' ||
+    raw === 'map_pin'
+  ) {
     return raw;
   }
   return 'nlp';

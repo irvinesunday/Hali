@@ -24,7 +24,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { MapPin, Navigation2, Search, X } from 'lucide-react-native';
+import { Map as MapIcon, MapPin, Navigation2, Search, X } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { searchPlaces, reverseGeocodePoint } from '../../api/places';
 import type {
@@ -41,13 +41,16 @@ import {
 
 /**
  * UI-only record of which picker path produced the selected override.
- * This is kept separate from {@link ComposerLocationOverride} because the
- * wire `locationSource` enum is `'place_search'` for both paths (the label
- * comes from the same backend geocoding service either way); `pickedVia`
- * is purely for the selected-state subtitle copy and must not leak onto
- * the wire.
+ *
+ * For 'search' and 'current' the wire `locationSource` is `'place_search'`
+ * (the label comes from the same backend geocoding service either way).
+ * For 'map' the wire `locationSource` is `'map_pin'` (C11.1) because the
+ * coordinates came from a user marker, not a Nominatim lookup.
+ *
+ * pickedVia drives only the selected-state subtitle copy and must not
+ * leak back onto the wire.
  */
-export type PickerPath = 'search' | 'current';
+export type PickerPath = 'search' | 'current' | 'map';
 
 export interface LocationFallbackPickerProps {
   /**
@@ -62,6 +65,13 @@ export interface LocationFallbackPickerProps {
   pickedVia: PickerPath | null;
   onPick: (override: ComposerLocationOverride, pickedVia: PickerPath) => void;
   onClear: () => void;
+  /**
+   * Navigate to the C11.1 draggable map-pin sub-screen. The picker itself
+   * stays unaware of routing — the parent composer screen owns navigation
+   * and feeds the resulting override back via onPick when the user
+   * confirms the pin.
+   */
+  onOpenMapPin: () => void;
 }
 
 const SEARCH_DEBOUNCE_MS = 400;
@@ -72,6 +82,7 @@ export function LocationFallbackPicker({
   pickedVia,
   onPick,
   onClear,
+  onOpenMapPin,
 }: LocationFallbackPickerProps): React.ReactElement {
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<PlaceCandidate[]>([]);
@@ -200,13 +211,16 @@ export function LocationFallbackPicker({
   }, [onPick, resolvingGps]);
 
   if (selected !== null) {
-    // Subtitle copy is driven by the UI-only pickedVia flag, not the
-    // wire `source` (which is 'place_search' for both paths). pickedVia
+    // Subtitle copy is driven by the UI-only pickedVia flag. pickedVia
     // can be null when the parent restored a selection without an
-    // explicit path (e.g. after a remount) — fall back to the neutral
-    // "place search" copy in that case.
+    // explicit path (e.g. after a remount) — in that case we fall back
+    // to the neutral "place search" copy for wire source='place_search'
+    // and to "Dropped pin" for wire source='map_pin' (the map path is
+    // the only way to produce source='map_pin' today).
     const subtitle =
-      pickedVia === 'current'
+      pickedVia === 'map' || selected.source === 'map_pin'
+        ? 'Dropped pin on map'
+        : pickedVia === 'current'
         ? 'Current location'
         : 'Selected from place search';
     return (
@@ -310,6 +324,27 @@ export function LocationFallbackPicker({
           {gpsError}
         </Text>
       )}
+
+      {/*
+        C11.1: draggable map-pin fallback.
+        Rendered as a tertiary affordance beneath search + current location
+        so the composer continues to read label-first: search is primary,
+        current location is secondary, the map is a deliberate escape
+        hatch when neither produced what the user needs. Do not promote
+        this above the text input / GPS button — that would tilt the
+        composer toward a map-first reporting surface, which Hali's
+        doctrine explicitly disallows.
+      */}
+      <TouchableOpacity
+        style={styles.mapLink}
+        onPress={onOpenMapPin}
+        accessibilityRole="button"
+        accessibilityLabel="Drop a pin on the map"
+        accessibilityHint="Open a map where you can drag a marker to your location"
+      >
+        <MapIcon size={14} color={Colors.mutedForeground} strokeWidth={2} />
+        <Text style={styles.mapLinkText}>Drop a pin on the map instead</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -379,6 +414,21 @@ const styles = StyleSheet.create({
     fontSize: FontSize.bodySmall,
     fontFamily: FontFamily.medium,
     color: Colors.primary,
+  },
+  mapLink: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    // Intentionally unstyled / text-link shaped — tertiary affordance,
+    // not a third peer button. Keeps the map feel like an escape hatch.
+  },
+  mapLinkText: {
+    fontSize: FontSize.bodySmall,
+    fontFamily: FontFamily.regular,
+    color: Colors.mutedForeground,
+    textDecorationLine: 'underline',
   },
   errorText: {
     fontSize: FontSize.bodySmall,
