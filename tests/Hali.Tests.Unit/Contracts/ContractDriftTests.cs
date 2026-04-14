@@ -669,6 +669,7 @@ public class ContractDriftTests
             localities,
             Substitute.For<IDatabase>(),
             Substitute.For<Hali.Application.Auth.IRateLimiter>(),
+            BuildMvcJsonOptions(),
             NullLogger<LocalitiesController>.Instance);
 
         var result = await controller.ResolveByCoordinates(-1.3, 36.8, CancellationToken.None);
