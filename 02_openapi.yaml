@@ -423,7 +423,7 @@ paths:
   /v1/feedback:
     post:
       tags: [Feedback]
-      summary: Submit anonymous in-app feedback (public, rate-limited)
+      summary: Submit anonymous in-app feedback (public)
       description: |
         No auth required. Returns 202 immediately — fire and forget from client.
         account_id captured server-side if request is authenticated, otherwise null.
