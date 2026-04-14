@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Controllers;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Application.Signals;
 using Hali.Contracts.Signals;
 using Microsoft.AspNetCore.Http;
@@ -69,24 +70,24 @@ public class PlacesControllerTests
     [InlineData("")]
     [InlineData(" ")]
     [InlineData("a")]
-    public async Task Search_QueryTooShort_ReturnsBadRequest(string? q)
+    public async Task Search_QueryTooShort_ThrowsValidationException(string? q)
     {
         PlacesController controller = CreateController();
 
-        IActionResult result = await controller.Search(q!, CancellationToken.None);
-
-        Assert.IsType<BadRequestObjectResult>(result);
+        var ex = await Assert.ThrowsAsync<ValidationException>(
+            () => controller.Search(q!, CancellationToken.None));
+        Assert.Equal("places.query_too_short", ex.Code);
     }
 
     [Fact]
-    public async Task Search_OversizedQuery_ReturnsBadRequest()
+    public async Task Search_OversizedQuery_ThrowsValidationException()
     {
         PlacesController controller = CreateController();
         string overlong = new string('x', 81);
 
-        IActionResult result = await controller.Search(overlong, CancellationToken.None);
-
-        Assert.IsType<BadRequestObjectResult>(result);
+        var ex = await Assert.ThrowsAsync<ValidationException>(
+            () => controller.Search(overlong, CancellationToken.None));
+        Assert.Equal("places.query_too_long", ex.Code);
     }
 
     [Fact]
@@ -155,7 +156,7 @@ public class PlacesControllerTests
     }
 
     [Fact]
-    public async Task Search_RateLimited_Returns429()
+    public async Task Search_RateLimited_ThrowsRateLimitException()
     {
         PlacesController controller = CreateController();
         // Override the default (allowed=true) *after* controller construction
@@ -163,10 +164,9 @@ public class PlacesControllerTests
         _rateLimiter.IsAllowedAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
             .Returns(false);
 
-        IActionResult result = await controller.Search("Ngong Road", CancellationToken.None);
-
-        ObjectResult obj = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status429TooManyRequests, obj.StatusCode);
+        var ex = await Assert.ThrowsAsync<RateLimitException>(
+            () => controller.Search("Ngong Road", CancellationToken.None));
+        Assert.Equal("places.search_rate_limited", ex.Code);
         // Must not fan out to the upstream geocoder once we've decided to throttle.
         await _geocoding.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
@@ -178,25 +178,25 @@ public class PlacesControllerTests
     [InlineData(91.0, 36.8)]
     [InlineData(-1.3, -181.0)]
     [InlineData(-1.3, 181.0)]
-    public async Task Reverse_InvalidCoordinates_ReturnsBadRequest(double lat, double lng)
+    public async Task Reverse_InvalidCoordinates_ThrowsValidationException(double lat, double lng)
     {
         PlacesController controller = CreateController();
 
-        IActionResult result = await controller.Reverse(lat, lng, CancellationToken.None);
-
-        Assert.IsType<BadRequestObjectResult>(result);
+        var ex = await Assert.ThrowsAsync<ValidationException>(
+            () => controller.Reverse(lat, lng, CancellationToken.None));
+        Assert.Equal("places.invalid_coordinates", ex.Code);
     }
 
     [Fact]
-    public async Task Reverse_PointOutsideKnownLocality_Returns404()
+    public async Task Reverse_PointOutsideKnownLocality_ThrowsNotFoundException()
     {
         _localities.FindByPointAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
             .Returns((LocalitySummary?)null);
 
         PlacesController controller = CreateController();
-        IActionResult result = await controller.Reverse(-1.3, 36.8, CancellationToken.None);
-
-        Assert.IsType<NotFoundObjectResult>(result);
+        var ex = await Assert.ThrowsAsync<NotFoundException>(
+            () => controller.Reverse(-1.3, 36.8, CancellationToken.None));
+        Assert.Equal("places.locality_not_found", ex.Code);
         await _geocoding.DidNotReceive().ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>());
     }
 
@@ -254,16 +254,15 @@ public class PlacesControllerTests
     }
 
     [Fact]
-    public async Task Reverse_RateLimited_Returns429()
+    public async Task Reverse_RateLimited_ThrowsRateLimitException()
     {
         PlacesController controller = CreateController();
         _rateLimiter.IsAllowedAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
             .Returns(false);
 
-        IActionResult result = await controller.Reverse(-1.3, 36.8, CancellationToken.None);
-
-        ObjectResult obj = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status429TooManyRequests, obj.StatusCode);
+        var ex = await Assert.ThrowsAsync<RateLimitException>(
+            () => controller.Reverse(-1.3, 36.8, CancellationToken.None));
+        Assert.Equal("places.reverse_rate_limited", ex.Code);
     }
 
     // ---- reverse cache integrity (B-2 / Copilot #1) ----
@@ -289,7 +288,7 @@ public class PlacesControllerTests
     // it and re-resolves the caller's locality + rebuilds the response.
 
     [Fact]
-    public async Task Reverse_OutsideLocality_IsNotServedFromCachedNeighborPayload()
+    public async Task Reverse_OutsideLocality_DoesNotConsultCacheOrUpstream()
     {
         // Simulate: a prior same-bucket call populated the cache with a
         // valid candidate in LocalityA. Now a caller whose point is
@@ -320,14 +319,22 @@ public class PlacesControllerTests
         _redis.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(seededJson);
 
-        IActionResult result = await controller.Reverse(-1.30004, 36.80004, CancellationToken.None);
-
-        Assert.IsType<NotFoundObjectResult>(result);
-        // The key integrity assertions: FindByPointAsync ran for the
-        // caller's coords, and the upstream geocoder was never touched
-        // (we short-circuit at the locality guard).
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => controller.Reverse(-1.30004, 36.80004, CancellationToken.None));
+        // Integrity assertions: FindByPointAsync ran for the caller's
+        // coords, and BOTH downstream dependencies (cache + upstream
+        // geocoder) were never touched — we short-circuit at the locality
+        // guard. The Redis seeding above is a trap: if the controller
+        // ever consulted the cache for an outside-locality request, it
+        // would receive the seeded payload and behave incorrectly. The
+        // `DidNotReceive` assertion on `StringGetAsync` is what closes
+        // the trap; without it this test would still pass even if the
+        // controller were silently reading the cache before the locality
+        // check.
         await _localities.Received(1)
             .FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>());
+        await _redis.DidNotReceive()
+            .StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
         await _geocoding.DidNotReceive()
             .ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>());
     }

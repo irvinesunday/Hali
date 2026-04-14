@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Contracts.Advisories;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Clusters;
@@ -126,15 +127,15 @@ public class OfficialPostsServiceTests
     }
 
     [Fact]
-    public async Task CreatePost_WhenOutsideJurisdiction_ThrowsOutsideJurisdiction()
+    public async Task CreatePost_WhenOutsideJurisdiction_ThrowsForbiddenWithCode()
     {
         var repo = new FakeOfficialPostRepo { IntersectsResult = false };
         var svc = new OfficialPostsService(repo, new FakeClusterRepo());
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ForbiddenException>(
             () => svc.CreatePostAsync(Guid.NewGuid(), null, ValidDto(), CancellationToken.None));
 
-        Assert.Equal("OUTSIDE_JURISDICTION", ex.Message);
+        Assert.Equal("official_post.outside_jurisdiction", ex.Code);
     }
 
     // B-4: Jurisdiction check must run BEFORE the DB insert.
@@ -145,7 +146,7 @@ public class OfficialPostsServiceTests
         var repo = new FakeOfficialPostRepo { IntersectsResult = false };
         var svc = new OfficialPostsService(repo, new FakeClusterRepo());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<ForbiddenException>(
             () => svc.CreatePostAsync(Guid.NewGuid(), null, ValidDto(), CancellationToken.None));
 
         Assert.Null(repo.Created); // CreateAsync was never called — no row in DB

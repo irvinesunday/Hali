@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Domain.Entities.Auth;
 using Microsoft.Extensions.Options;
@@ -40,7 +41,8 @@ public class AuthServiceTests
 	{
 		_otpService.ConsumeOtpAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
 		AuthService svc = CreateService();
-		Assert.Equal("OTP_INVALID", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.AuthenticateAsync(MakeVerifyRequest()))).Message);
+		var ex = await Assert.ThrowsAsync<ValidationException>(() => svc.AuthenticateAsync(MakeVerifyRequest()));
+		Assert.Equal("auth.otp_invalid", ex.Code);
 	}
 
 	[Fact]
@@ -124,7 +126,8 @@ public class AuthServiceTests
 	{
 		_repo.FindActiveRefreshTokenAsync(Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>()).Returns(null, Array.Empty<RefreshToken>());
 		AuthService svc = CreateService();
-		Assert.Equal("REFRESH_TOKEN_INVALID", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RefreshAsync("bad-token"))).Message);
+		var ex = await Assert.ThrowsAsync<UnauthorizedException>(() => svc.RefreshAsync("bad-token"));
+		Assert.Equal("auth.refresh_token_invalid", ex.Code);
 	}
 
 	[Fact]

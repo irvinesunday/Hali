@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,15 +31,27 @@ public class DevicesController : ControllerBase
         [FromBody] RegisterPushTokenRequestDto dto,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.ExpoPushToken))
-            return BadRequest(new { error = "expo_push_token is required." });
-
-        if (string.IsNullOrWhiteSpace(dto.DeviceHash))
-            return BadRequest(new { error = "device_hash is required." });
+        var missing = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(dto.ExpoPushToken)) missing["expoPushToken"] = new[] { "expo_push_token is required" };
+        if (string.IsNullOrWhiteSpace(dto.DeviceHash)) missing["deviceHash"] = new[] { "device_hash is required" };
+        if (missing.Count > 0)
+        {
+            throw new ValidationException(
+                "expo_push_token and device_hash are required.",
+                code: "device.missing_fields",
+                fieldErrors: missing);
+        }
 
         var device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
         if (device == null)
-            return UnprocessableEntity(new { error = "Device not recognised.", code = "device_not_found" });
+        {
+            // Previously returned 422. Re-typed to NotFound (404) because
+            // "no matching device" is semantically a missing resource. The
+            // client is expected to re-register the device before retrying.
+            throw new NotFoundException(
+                code: "device.not_found",
+                message: "Device not recognised.");
+        }
 
         var start = DateTime.UtcNow;
         await _auth.UpdateExpoPushTokenAsync(device.Id, dto.ExpoPushToken, ct);

@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Domain.Entities.Auth;
 using Hali.Domain.Enums;
@@ -33,7 +34,7 @@ public class AuthService : IAuthService
     {
         if (!(await _otpService.ConsumeOtpAsync(request.Destination, request.Otp, ct)))
         {
-            throw new InvalidOperationException("OTP_INVALID");
+            throw new ValidationException("Invalid or expired OTP.", code: "auth.otp_invalid");
         }
         DateTime now = DateTime.UtcNow;
         Account account = await _repo.FindAccountByPhoneAsync(request.Destination, ct);
@@ -59,7 +60,9 @@ public class AuthService : IAuthService
         RefreshToken stored = await _repo.FindActiveRefreshTokenAsync(tokenHash, now, ct);
         if (stored == null)
         {
-            throw new InvalidOperationException("REFRESH_TOKEN_INVALID");
+            throw new UnauthorizedException(
+                code: "auth.refresh_token_invalid",
+                message: "Invalid or expired refresh token.");
         }
         await _repo.RevokeRefreshTokenAsync(stored, now, ct);
         return await IssueTokenPairAsync(stored.AccountId, stored.DeviceId ?? Guid.Empty, now, ct);

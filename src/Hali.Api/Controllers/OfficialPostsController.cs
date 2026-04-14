@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
+using Hali.Application.Errors;
 using Hali.Contracts.Advisories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,43 +26,36 @@ public class OfficialPostsController : ControllerBase
     [Authorize(Roles = "institution")]
     public async Task<IActionResult> CreatePost([FromBody] CreateOfficialPostRequestDto dto, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.Type) || string.IsNullOrWhiteSpace(dto.Category)
-            || string.IsNullOrWhiteSpace(dto.Title) || string.IsNullOrWhiteSpace(dto.Body))
+        var missing = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(dto.Type)) missing["type"] = new[] { "type is required" };
+        if (string.IsNullOrWhiteSpace(dto.Category)) missing["category"] = new[] { "category is required" };
+        if (string.IsNullOrWhiteSpace(dto.Title)) missing["title"] = new[] { "title is required" };
+        if (string.IsNullOrWhiteSpace(dto.Body)) missing["body"] = new[] { "body is required" };
+        if (missing.Count > 0)
         {
-            return BadRequest(new { error = "type, category, title, and body are required." });
+            throw new ValidationException(
+                "type, category, title, and body are required.",
+                code: "official_post.missing_fields",
+                fieldErrors: missing);
         }
 
-        // In MVP, institution_id is carried via a custom claim or query param.
-        // Parse from "institution_id" claim, fallback to X-Institution-Id header.
-        Guid institutionId;
+        // institution_id must come from the JWT — no header fallback. A missing
+        // or malformed claim means the caller is not authorized to act on any
+        // institution's behalf, so surface as Forbidden (403) rather than a
+        // bare MVC Forbid() response (which can also trigger a re-auth challenge).
         var institutionClaim = User.FindFirstValue("institution_id");
-        if (string.IsNullOrEmpty(institutionClaim))
-            return Forbid(); // institution_id must come from JWT — no header fallback
-        if (!Guid.TryParse(institutionClaim, out institutionId))
+        if (string.IsNullOrEmpty(institutionClaim) || !Guid.TryParse(institutionClaim, out var institutionId))
         {
-            return UnprocessableEntity(new { error = "Institution identity required.", code = "institution_required" });
+            throw new ForbiddenException(
+                code: "auth.institution_id_missing",
+                message: "Institution identity required.");
         }
 
         Guid? authorAccountId = null;
         if (Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsed))
             authorAccountId = parsed;
 
-        try
-        {
-            var result = await _service.CreatePostAsync(institutionId, authorAccountId, dto, ct);
-            return Created($"/v1/official-posts/{result.Id}", result);
-        }
-        catch (ArgumentException ex) when (ex.Message == "INVALID_POST_TYPE")
-        {
-            return UnprocessableEntity(new { error = "Invalid post type.", code = "invalid_post_type" });
-        }
-        catch (ArgumentException ex) when (ex.Message == "INVALID_CATEGORY")
-        {
-            return UnprocessableEntity(new { error = "Invalid category.", code = "invalid_category" });
-        }
-        catch (InvalidOperationException ex) when (ex.Message == "OUTSIDE_JURISDICTION")
-        {
-            return StatusCode(403, new { error = "Post scope is outside institution jurisdiction.", code = "outside_jurisdiction" });
-        }
+        var result = await _service.CreatePostAsync(institutionId, authorAccountId, dto, ct);
+        return Created($"/v1/official-posts/{result.Id}", result);
     }
 }

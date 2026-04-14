@@ -163,11 +163,11 @@ public class LocalitiesController : ControllerBase
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
-            return BadRequest(new { error = "Query must be at least 2 characters.", code = "query_too_short" });
+            throw new ValidationException("Query must be at least 2 characters.", code: "locality.query_too_short");
 
         var query = q.Trim();
         if (query.Length > MaxSearchQueryLength)
-            return BadRequest(new { error = $"Query must be at most {MaxSearchQueryLength} characters.", code = "query_too_long" });
+            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: "locality.query_too_long");
 
         // Anonymous endpoint — rate limit per client IP to bound DoS surface
         // (each call may trigger an upstream Nominatim request + PostGIS lookup).
@@ -176,7 +176,9 @@ public class LocalitiesController : ControllerBase
         var allowed = await _rateLimiter.IsAllowedAsync(rateKey, SearchRateLimitMaxRequests, SearchRateLimitWindow, ct);
         if (!allowed)
         {
-            return StatusCode(429, new { error = "Too many requests.", code = "rate_limited" });
+            throw new RateLimitException(
+                code: "locality.search_rate_limited",
+                message: "Too many requests.");
         }
 
         var cacheKey = $"locality_search:{query.ToLowerInvariant()}";
@@ -255,17 +257,17 @@ public class LocalitiesController : ControllerBase
         CancellationToken ct)
     {
         if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
-            return BadRequest(new { error = "Invalid coordinates.", code = "invalid_coordinates" });
+            throw new ValidationException("Invalid coordinates.", code: "locality.invalid_coordinates");
 
         var locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
-            return NotFound(new { error = "No locality found for the given coordinates.", code = "locality_not_found" });
+            throw new NotFoundException(code: "locality.not_found", message: "No locality found for the given coordinates.");
 
-        return Ok(new
+        return Ok(new LocalitySummaryDto
         {
-            localityId = locality.Id,
-            wardName = locality.WardName,
-            cityName = locality.CityName,
+            LocalityId = locality.Id,
+            WardName = locality.WardName,
+            CityName = locality.CityName,
         });
     }
 }

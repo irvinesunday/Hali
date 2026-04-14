@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Application.Signals;
 using Hali.Contracts.Signals;
 using Microsoft.AspNetCore.Authorization;
@@ -81,13 +82,13 @@ public class PlacesController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
         {
-            return BadRequest(new { error = "Query must be at least 2 characters.", code = "query_too_short" });
+            throw new ValidationException("Query must be at least 2 characters.", code: "places.query_too_short");
         }
 
         string query = q.Trim();
         if (query.Length > MaxSearchQueryLength)
         {
-            return BadRequest(new { error = $"Query must be at most {MaxSearchQueryLength} characters.", code = "query_too_long" });
+            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: "places.query_too_long");
         }
 
         string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -95,7 +96,9 @@ public class PlacesController : ControllerBase
         bool allowed = await _rateLimiter.IsAllowedAsync(rateKey, RateLimitMaxRequests, RateLimitWindow, ct);
         if (!allowed)
         {
-            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many requests.", code = "rate_limited" });
+            throw new RateLimitException(
+                code: "places.search_rate_limited",
+                message: "Too many requests.");
         }
 
         string cacheKey = $"places_search:{query.ToLowerInvariant()}";
@@ -180,7 +183,7 @@ public class PlacesController : ControllerBase
     {
         if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
         {
-            return BadRequest(new { error = "Invalid coordinates.", code = "invalid_coordinates" });
+            throw new ValidationException("Invalid coordinates.", code: "places.invalid_coordinates");
         }
 
         string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -188,7 +191,9 @@ public class PlacesController : ControllerBase
         bool allowed = await _rateLimiter.IsAllowedAsync(rateKey, RateLimitMaxRequests, RateLimitWindow, ct);
         if (!allowed)
         {
-            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many requests.", code = "rate_limited" });
+            throw new RateLimitException(
+                code: "places.reverse_rate_limited",
+                message: "Too many requests.");
         }
 
         // Spatial integrity: always resolve locality FRESH for the caller's
@@ -210,7 +215,7 @@ public class PlacesController : ControllerBase
         LocalitySummary? locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
         {
-            return NotFound(new { error = "No locality found for the given coordinates.", code = "locality_not_found" });
+            throw new NotFoundException(code: "places.locality_not_found", message: "No locality found for the given coordinates.");
         }
 
         // Label-only cache. Keyed by quantized coords AND the resolved

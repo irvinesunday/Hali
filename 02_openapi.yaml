@@ -50,12 +50,9 @@ paths:
           description: OTP sent
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string, example: "OTP sent" }
+              schema: { $ref: '#/components/schemas/OtpRequestedResponse' }
         '429':
-          description: OTP rate limited
+          description: OTP rate limited (auth.otp_rate_limited)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -85,7 +82,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '400':
-          description: Invalid or expired OTP
+          description: Invalid or expired OTP (auth.otp_invalid)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -110,7 +107,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Invalid or expired refresh token
+          description: Invalid or expired refresh token (auth.refresh_token_invalid)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -151,12 +148,17 @@ paths:
       responses:
         '202': { description: OTP sent to phone }
         '400':
-          description: Invalid, expired, or already-accepted invite
+          description: Invalid or expired invite (invite.invalid, invite.expired)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Invite already accepted (invite.already_accepted)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '429':
-          description: OTP rate limited
+          description: OTP rate limited (auth.otp_rate_limited)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -252,15 +254,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  required: [localityId, wardName, cityName]
-                  properties:
-                    localityId: { type: string, format: uuid }
-                    wardName: { type: string }
-                    cityName:
-                      type: string
-                      nullable: true
+                items: { $ref: '#/components/schemas/LocalitySummary' }
 
   /v1/localities/search:
     get:
@@ -299,7 +293,12 @@ paths:
                       type: string
                       nullable: true
         '400':
-          description: Query too short
+          description: Query too short or too long (locality.query_too_short, locality.query_too_long)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded (locality.search_rate_limited)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -327,15 +326,14 @@ paths:
           description: Nearest matched locality
           content:
             application/json:
-              schema:
-                type: object
-                required: [localityId, wardName, cityName]
-                properties:
-                  localityId: { type: string, format: uuid }
-                  wardName: { type: string }
-                  cityName: { type: string, nullable: true }
+              schema: { $ref: '#/components/schemas/LocalitySummary' }
+        '400':
+          description: Coordinates out of range (locality.invalid_coordinates)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
-          description: No locality found for coordinates
+          description: No locality found for coordinates (locality.not_found)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -665,17 +663,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/OfficialPostResponse'
         '400':
-          description: type, category, title, or body missing
+          description: |
+            Missing fields (official_post.missing_fields),
+            invalid post type (official_post.invalid_type), or
+            invalid category (official_post.invalid_category).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Outside institution jurisdiction (code=outside_jurisdiction)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '422':
-          description: invalid_post_type, invalid_category, or institution_required
+          description: |
+            Outside institution jurisdiction
+            (official_post.outside_jurisdiction) or missing/malformed
+            institution_id claim on the JWT (auth.institution_id_missing).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -787,12 +786,15 @@ paths:
       responses:
         '204': { description: Updated }
         '400':
-          description: device_hash or expo_push_token missing
+          description: device_hash or expo_push_token missing (device.missing_fields)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '422':
-          description: device_not_found
+        '404':
+          description: |
+            Device not recognised (device.not_found). Previously 422 —
+            re-typed as NotFound (H2) since "no matching device" is
+            semantically a missing resource.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -898,15 +900,61 @@ components:
     ErrorResponse:
       type: object
       description: |
-        Standard error envelope. Most endpoints return `{ error }`; some 422
-        responses additionally include a stable `code` for programmatic
-        handling. When `code` is `policy_blocked`, an optional `reason` field
-        carries the specific sub-reason (e.g.
-        `context_edit_window_expired`).
+        Canonical error envelope emitted by the API's centralized exception
+        middleware (H1) and referenced by most documented application-level
+        error responses in this spec. A small number of legacy endpoints
+        still document body-less 4xx responses; those are tracked for
+        migration but are intentionally not referenced to this schema.
+
+        Framework-generated authentication/authorization failures (e.g. 401
+        from the JwtBearer challenge or 403 from policy denial) short-circuit
+        before the exception middleware runs and therefore may return an
+        empty body instead of this envelope. Documented `401`/`403` entries
+        that reference this schema describe failures surfaced as typed
+        `UnauthorizedException`/`ForbiddenException` from application code.
+
+          * `error.code` — stable, snake_case_with_dot-namespacing identifier
+            for programmatic handling (e.g. `auth.otp_invalid`,
+            `validation.locality_unresolved`, `signal.duplicate`).
+          * `error.message` — short human-readable summary safe to surface
+            in UI. Not localized; treat wording as unstable between versions.
+          * `error.details` — optional. When present on 400 responses it
+            carries `{ fields: { fieldName: ["error msg", ...] } }` for
+            per-field validation errors. Other codes may include additional
+            structured metadata.
+          * `error.traceId` — sanitized correlation ID for support/log
+            correlation. Not a security boundary.
+      required: [error]
       properties:
-        error: { type: string }
-        code: { type: string, nullable: true }
-        reason: { type: string, nullable: true }
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, nullable: true, additionalProperties: true }
+            traceId: { type: string }
+
+    OtpRequestedResponse:
+      type: object
+      description: |
+        Success body for POST /v1/auth/otp. The `message` field is a short
+        human-readable status; clients should not depend on its exact wording.
+      required: [message]
+      properties:
+        message: { type: string, example: "OTP sent" }
+
+    LocalitySummary:
+      type: object
+      description: |
+        Minimal ward/locality summary. Used both by the canonical ward list
+        and by single-ward coordinate-resolution responses. Mirrors
+        `Hali.Contracts.Notifications.LocalitySummaryDto`.
+      required: [localityId, wardName, cityName]
+      properties:
+        localityId: { type: string, format: uuid }
+        wardName: { type: string }
+        cityName: { type: string, nullable: true }
 
     TokenResponse:
       type: object
