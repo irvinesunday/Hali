@@ -72,8 +72,8 @@ public class HomeObservabilityTests
                 Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
             .Returns(new List<SignalCluster>());
 
-        _feedQuery.GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+        _feedQuery.GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(new List<OfficialPostResponseDto>());
 
         _redis.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())

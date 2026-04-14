@@ -113,8 +113,8 @@ public class HomeFeedConcurrencyTests
             finally { Exit(); }
         }
 
-        public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
-            Guid localityId, CancellationToken ct)
+        public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalitiesAsync(
+            IEnumerable<Guid> localityIds, CancellationToken ct)
         {
             await EnterAsync(ct);
             try
@@ -152,7 +152,7 @@ public class HomeFeedConcurrencyTests
 
         // Mirror BuildFullResponseAsync pattern
         var t1 = svc.GetActiveByLocalitiesPagedAsync(localityIds, false, 21, null, CancellationToken.None);
-        var t2 = svc.GetOfficialPostsByLocalityAsync(localityIds[0], CancellationToken.None);
+        var t2 = svc.GetOfficialPostsByLocalitiesAsync(localityIds, CancellationToken.None);
         var t3 = svc.GetActiveByLocalitiesPagedAsync(localityIds, true, 11, null, CancellationToken.None);
         var t4 = svc.GetAllActivePagedAsync(localityIds, 11, null, CancellationToken.None);
 
@@ -172,7 +172,7 @@ public class HomeFeedConcurrencyTests
         var localityIds = new List<Guid> { Guid.NewGuid() };
 
         var t1 = svc.GetActiveByLocalitiesPagedAsync(localityIds, false, 21, null, CancellationToken.None);
-        var t2 = svc.GetOfficialPostsByLocalityAsync(localityIds[0], CancellationToken.None);
+        var t2 = svc.GetOfficialPostsByLocalitiesAsync(localityIds, CancellationToken.None);
         var t3 = svc.GetActiveByLocalitiesPagedAsync(localityIds, true, 11, null, CancellationToken.None);
         var t4 = svc.GetAllActivePagedAsync(localityIds, 11, null, CancellationToken.None);
 

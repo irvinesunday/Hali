@@ -33,8 +33,11 @@ public interface IHomeFeedQueryService
         DateTime? cursorBefore, CancellationToken ct);
 
     /// <summary>
-    /// Returns published official posts scoped to a locality, mapped to response DTOs.
+    /// Returns published official posts scoped to any of the specified localities,
+    /// mapped to response DTOs. Results are de-duplicated by post id (a post
+    /// scoped to multiple localities returns once) and ordered by CreatedAt
+    /// descending. Single DB scope — replaces the previous per-locality loop.
     /// </summary>
-    Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
-        Guid localityId, CancellationToken ct);
+    Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalitiesAsync(
+        IEnumerable<Guid> localityIds, CancellationToken ct);
 }
