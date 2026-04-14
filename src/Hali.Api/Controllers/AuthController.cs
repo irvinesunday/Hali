@@ -27,9 +27,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> RequestOtp([FromBody] OtpRequestDto dto, CancellationToken ct)
     {
         await _otpService.RequestOtpAsync(dto.Destination, dto.AuthMethod, ct);
-        // Success payload is still an anonymous {message} shape at this commit;
-        // Commit 5 replaces it with the typed OtpRequestedResponseDto.
-        return Ok(new { message = "OTP sent" });
+        return Ok(new OtpRequestedResponseDto("OTP sent"));
     }
 
     [HttpPost("verify")]
