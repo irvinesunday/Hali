@@ -7,51 +7,121 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Check } from 'lucide-react-native';
-import { useComposerContext } from '../../../src/context/ComposerContext';
+import {
+  useComposerContext,
+  type ComposerLocationOverride,
+  type LocationOverridePickedVia,
+} from '../../../src/context/ComposerContext';
 import { Button } from '../../../src/components/common/Button';
 import { ConditionBadge } from '../../../src/components/shared';
+import { LocationFallbackPicker } from '../../../src/components/compose/LocationFallbackPicker';
 import { formatCategoryLabel } from '../../../src/utils/formatters';
-import { classifyLocationGate, type ConfidenceGate } from '../../../src/utils/composerGates';
+import {
+  canProceedFromLocationGate,
+  classifyLocationGate,
+  type ConfidenceGate,
+} from '../../../src/utils/composerGates';
 import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
 import type { SignalPreviewResponse } from '../../../src/types/api';
 
 export default function ComposerConfirmScreen(): React.ReactElement {
   const router = useRouter();
-  const { preview, setPreview } = useComposerContext();
+  const {
+    preview,
+    setPreview,
+    locationOverride,
+    locationOverridePickedVia,
+    setLocationOverride,
+  } = useComposerContext();
   if (preview === null) {
     return <PreviewMissingFallback onBack={() => router.replace('/(app)/compose/text')} />;
   }
-  return <ConfirmScreenContent preview={preview} setPreview={setPreview} />;
+  return (
+    <ConfirmScreenContent
+      preview={preview}
+      setPreview={setPreview}
+      locationOverride={locationOverride}
+      locationOverridePickedVia={locationOverridePickedVia}
+      setLocationOverride={setLocationOverride}
+    />
+  );
 }
 
 function ConfirmScreenContent({
-  preview, setPreview,
-}: { preview: SignalPreviewResponse; setPreview: (p: SignalPreviewResponse | null) => void }): React.ReactElement {
+  preview, setPreview, locationOverride, locationOverridePickedVia, setLocationOverride,
+}: {
+  preview: SignalPreviewResponse;
+  setPreview: (p: SignalPreviewResponse | null) => void;
+  locationOverride: ComposerLocationOverride | null;
+  locationOverridePickedVia: LocationOverridePickedVia | null;
+  setLocationOverride: (
+    o: ComposerLocationOverride | null,
+    pickedVia?: LocationOverridePickedVia | null,
+  ) => void;
+}): React.ReactElement {
   const router = useRouter();
   const [locationLabel, setLocationLabel] = useState(preview.location.locationLabel ?? '');
   const [locationConfirmed, setLocationConfirmed] = useState(false);
 
+  // C11: gate combines (server flag, numeric confidence, label).
+  // The server wins when it has spoken. We intentionally do NOT force the
+  // gate to 'accept' when an override is picked — that would un-render the
+  // picker (which displays the selected-state card with a "Change"
+  // affordance). Instead, we keep the underlying gate and let the render
+  // branch prefer the picker whenever an override is present.
   const locationGate = useMemo<ConfidenceGate>(
-    () => classifyLocationGate(preview.location.locationConfidence),
-    [preview.location.locationConfidence],
+    () =>
+      classifyLocationGate({
+        confidence: preview.location.locationConfidence,
+        requiresFallback: preview.requiresLocationFallback,
+        label: locationLabel,
+      }),
+    [
+      preview.location.locationConfidence,
+      preview.requiresLocationFallback,
+      locationLabel,
+    ],
   );
 
-  const canProceed = useMemo<boolean>(() => {
-    const trimmed = locationLabel.trim();
-    const original = (preview.location.locationLabel ?? '').trim();
-    const userEdited = trimmed !== original && trimmed.length > 0;
-    switch (locationGate) {
-      case 'accept':   return true;
-      case 'confirm':  return locationConfirmed || userEdited;
-      case 'required': return trimmed.length > 0;
-    }
-  }, [locationGate, locationLabel, locationConfirmed, preview.location.locationLabel]);
+  // Render the picker when the server / gate asked for fallback OR when
+  // the user has already locked in an override (e.g. returning to Step 2
+  // from Step 3). Otherwise show the text-input path for the happy /
+  // amber tiers.
+  const renderFallbackPicker =
+    locationOverride !== null || locationGate === 'fallback';
+
+  // Pure helper; see composerGates.canProceedFromLocationGate for the full
+  // rules. The 'fallback' tier is override-only — the text input is not
+  // rendered in that tier, and the stale NLP label in `locationLabel`
+  // state must not be allowed to silently bypass the fallback gate.
+  const canProceed = useMemo<boolean>(
+    () =>
+      canProceedFromLocationGate({
+        gate: locationGate,
+        hasOverride: locationOverride !== null,
+        label: locationLabel,
+        originalLabel: preview.location.locationLabel,
+        confirmed: locationConfirmed,
+      }),
+    [
+      locationGate,
+      locationOverride,
+      locationLabel,
+      locationConfirmed,
+      preview.location.locationLabel,
+    ],
+  );
 
   function handleNext(): void {
-    setPreview({
-      ...preview,
-      location: { ...preview.location, locationLabel: locationLabel.trim() || preview.location.locationLabel },
-    });
+    // If the user picked an override, the override is authoritative and
+    // we don't need to mutate preview.location.locationLabel — submit.tsx
+    // reads the override directly and overrides both coords and label.
+    if (locationOverride === null) {
+      setPreview({
+        ...preview,
+        location: { ...preview.location, locationLabel: locationLabel.trim() || preview.location.locationLabel },
+      });
+    }
     router.push('/(app)/compose/submit');
   }
 
@@ -92,40 +162,41 @@ function ConfirmScreenContent({
 
           <View style={styles.locationBlock}>
             <Text style={styles.fieldLabel}>Location</Text>
-            {locationGate === 'required' && (
-              <Text style={styles.warningRequired}>
-                We couldn't confidently identify the location. Please enter it below.
-              </Text>
-            )}
-            {locationGate === 'confirm' && (
-              <Text style={styles.warningAmber}>
-                We extracted this location but aren't fully confident. Confirm or correct it.
-              </Text>
-            )}
-            <TextInput
-              style={[
-                styles.locationInput,
-                locationGate === 'required' && locationLabel.trim() === '' && styles.locationInputError,
-              ]}
-              value={locationLabel}
-              onChangeText={(v) => { setLocationLabel(v); setLocationConfirmed(false); }}
-              placeholder={locationGate === 'required' ? 'Enter the location…' : 'Confirm or correct the location…'}
-              placeholderTextColor={Colors.faintForeground}
-              accessibilityLabel="Location"
-              accessibilityHint={locationGate === 'required'
-                ? "Required. We couldn't confidently identify the location, so please enter it."
-                : "Optional. Confirm the extracted location or correct it if needed."}
-            />
-            {locationGate === 'confirm' && !locationConfirmed && (
-              <TouchableOpacity style={styles.confirmChip}
-                onPress={() => setLocationConfirmed(true)}
-                accessibilityRole="button" accessibilityLabel="Confirm location">
-                <Check size={14} color={Colors.primary} strokeWidth={2.5} />
-                <Text style={styles.confirmChipText}>Looks right</Text>
-              </TouchableOpacity>
-            )}
-            {locationGate === 'confirm' && locationConfirmed && (
-              <Text style={styles.confirmedText}>Location confirmed.</Text>
+            {renderFallbackPicker ? (
+              <LocationFallbackPicker
+                selected={locationOverride}
+                pickedVia={locationOverridePickedVia}
+                onPick={(o, pickedVia) => setLocationOverride(o, pickedVia)}
+                onClear={() => setLocationOverride(null)}
+              />
+            ) : (
+              <>
+                {locationGate === 'confirm' && (
+                  <Text style={styles.warningAmber}>
+                    We extracted this location but aren&apos;t fully confident. Confirm or correct it.
+                  </Text>
+                )}
+                <TextInput
+                  style={styles.locationInput}
+                  value={locationLabel}
+                  onChangeText={(v) => { setLocationLabel(v); setLocationConfirmed(false); }}
+                  placeholder="Confirm or correct the location…"
+                  placeholderTextColor={Colors.faintForeground}
+                  accessibilityLabel="Location"
+                  accessibilityHint="Confirm the extracted location or correct it if needed."
+                />
+                {locationGate === 'confirm' && !locationConfirmed && (
+                  <TouchableOpacity style={styles.confirmChip}
+                    onPress={() => setLocationConfirmed(true)}
+                    accessibilityRole="button" accessibilityLabel="Confirm location">
+                    <Check size={14} color={Colors.primary} strokeWidth={2.5} />
+                    <Text style={styles.confirmChipText}>Looks right</Text>
+                  </TouchableOpacity>
+                )}
+                {locationGate === 'confirm' && locationConfirmed && (
+                  <Text style={styles.confirmedText}>Location confirmed.</Text>
+                )}
+              </>
             )}
           </View>
 
@@ -182,7 +253,6 @@ const styles = StyleSheet.create({
   },
   fieldValue: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.foreground },
   locationBlock: { gap: Spacing.sm },
-  warningRequired: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.destructive },
   warningAmber: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.conditionBadge.amber.text },
   locationInput: {
     borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
@@ -190,7 +260,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.body, fontFamily: FontFamily.regular,
     color: Colors.foreground, backgroundColor: Colors.card,
   },
-  locationInputError: { borderColor: Colors.destructive },
   confirmChip: {
     alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
     backgroundColor: Colors.primarySubtle, borderRadius: Radius.full,

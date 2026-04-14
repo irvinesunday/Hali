@@ -393,7 +393,7 @@ public class ContractDriftTests
         var dto = new SignalPreviewResponseDto(
             "water", "water_outage", null, 0.85,
             new SignalLocationDto(null, null, null, null, null, "Ngong Rd", null, 0.9, "nlp"),
-            null, "Water outage reported", true);
+            null, "Water outage reported", true, false);
 
         var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
         using var doc = JsonDocument.Parse(json);
@@ -404,6 +404,7 @@ public class ContractDriftTests
         Assert.True(root.TryGetProperty("conditionConfidence", out _));
         Assert.True(root.TryGetProperty("location", out var loc));
         Assert.True(root.TryGetProperty("shouldSuggestJoin", out _));
+        Assert.True(root.TryGetProperty("requiresLocationFallback", out _));
         Assert.True(loc.TryGetProperty("locationLabel", out _));
         Assert.True(loc.TryGetProperty("locationConfidence", out _));
         Assert.True(loc.TryGetProperty("locationSource", out _));
@@ -424,7 +425,8 @@ public class ContractDriftTests
             Location: new SignalLocationDto(null, null, null, null, null, null, null, 0.0, "nlp"),
             TemporalType: null,
             NeutralSummary: null,
-            ShouldSuggestJoin: false);
+            ShouldSuggestJoin: false,
+            RequiresLocationFallback: true);
 
         var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
         using var doc = JsonDocument.Parse(json);

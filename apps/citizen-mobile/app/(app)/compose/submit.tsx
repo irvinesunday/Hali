@@ -7,23 +7,31 @@ import { ArrowLeft, Info } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
 import { submitSignal } from '../../../src/api/signals';
-import { useComposerContext } from '../../../src/context/ComposerContext';
+import {
+  useComposerContext,
+  type ComposerLocationOverride,
+} from '../../../src/context/ComposerContext';
 import { Button } from '../../../src/components/common/Button';
 import { formatCategoryLabel } from '../../../src/utils/formatters';
 import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
-import type { SignalSubmitRequest, SignalPreviewResponse } from '../../../src/types/api';
+import type {
+  SignalLocationSource,
+  SignalSubmitRequest,
+  SignalPreviewResponse,
+} from '../../../src/types/api';
 
 type ScreenState = 'idle' | 'loading' | 'error';
 
 export default function ComposerSubmitScreen(): React.ReactElement {
   const router = useRouter();
-  const { freeText, preview, deviceHash, reset } = useComposerContext();
+  const { freeText, preview, deviceHash, locationOverride, reset } = useComposerContext();
   if (preview === null) {
     return <PreviewMissingFallback onBack={() => router.replace('/(app)/compose/text')} />;
   }
   return (
     <SubmitScreenContent
       freeText={freeText} preview={preview} deviceHash={deviceHash}
+      locationOverride={locationOverride}
       onSuccess={(clusterId?: string) => {
         reset();
         if (clusterId) {
@@ -37,8 +45,14 @@ export default function ComposerSubmitScreen(): React.ReactElement {
 }
 
 function SubmitScreenContent({
-  freeText, preview, deviceHash, onSuccess,
-}: { freeText: string; preview: SignalPreviewResponse; deviceHash: string; onSuccess: (clusterId?: string) => void }): React.ReactElement {
+  freeText, preview, deviceHash, locationOverride, onSuccess,
+}: {
+  freeText: string;
+  preview: SignalPreviewResponse;
+  deviceHash: string;
+  locationOverride: ComposerLocationOverride | null;
+  onSuccess: (clusterId?: string) => void;
+}): React.ReactElement {
   const router = useRouter();
   const [screenState, setScreenState] = useState<ScreenState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -47,22 +61,55 @@ function SubmitScreenContent({
     if (screenState === 'loading') return;
     setScreenState('loading');
     setErrorMessage('');
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    let position: Location.LocationObject | null = null;
-    if (status === 'granted') {
-      try {
-        position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      } catch {
+
+    // Resolve the authoritative submit coordinates + label + source.
+    //
+    // Path 1 — C11 fallback override: the user picked a PlaceCandidate in
+    // the confirm step (or tapped "use my current location"). Both coords
+    // and label come from the override and are considered authoritative;
+    // we deliberately skip the device-GPS capture here because the
+    // override's coordinates are what the user actually chose.
+    //
+    // Path 2 — default: device GPS provides coords; label + source come
+    // from the (possibly user-edited) NLP preview. Source is narrowed
+    // through the SignalLocationSource allowlist on the wire.
+    let submitLatitude: number;
+    let submitLongitude: number;
+    let submitLabel: string | undefined;
+    let submitSource: SignalLocationSource;
+
+    if (locationOverride !== null) {
+      submitLatitude = locationOverride.latitude;
+      submitLongitude = locationOverride.longitude;
+      submitLabel = locationOverride.label;
+      submitSource = locationOverride.source;
+    } else {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      let position: Location.LocationObject | null = null;
+      if (status === 'granted') {
+        try {
+          position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        } catch {
+          position = await Location.getLastKnownPositionAsync();
+        }
+      } else {
         position = await Location.getLastKnownPositionAsync();
       }
-    } else {
-      position = await Location.getLastKnownPositionAsync();
+      if (!position) {
+        setScreenState('error');
+        setErrorMessage('Could not determine location. Please enable location services and try again.');
+        return;
+      }
+      submitLatitude = position.coords.latitude;
+      submitLongitude = position.coords.longitude;
+      submitLabel = preview.location.locationLabel ?? undefined;
+      // Narrow the preview's raw string to the wire-allowlist union. If NLP
+      // ever reports a source we don't recognise we default to 'user_edit'
+      // so the backend doesn't reject the submit with
+      // validation.invalid_location_source.
+      submitSource = narrowLocationSource(preview.location.locationSource);
     }
-    if (!position) {
-      setScreenState('error');
-      setErrorMessage('Could not determine location. Please enable location services and try again.');
-      return;
-    }
+
     const idempotencyKey = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256, `${freeText}:${Date.now()}`,
     );
@@ -72,12 +119,12 @@ function SubmitScreenContent({
       subcategorySlug: preview.subcategorySlug,
       conditionSlug: preview.conditionSlug ?? undefined,
       conditionConfidence: preview.conditionConfidence,
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      locationLabel: preview.location.locationLabel ?? undefined,
+      latitude: submitLatitude,
+      longitude: submitLongitude,
+      locationLabel: submitLabel,
       locationPrecisionType: preview.location.locationPrecisionType ?? undefined,
       locationConfidence: preview.location.locationConfidence,
-      locationSource: preview.location.locationSource,
+      locationSource: submitSource,
       temporalType: preview.temporalType ?? undefined,
       neutralSummary: preview.neutralSummary ?? undefined,
     };
@@ -114,8 +161,14 @@ function SubmitScreenContent({
         <View style={styles.card}>
           <Field label="Category" value={formatCategoryLabel(preview.category)} />
           <Field label="Subcategory" value={formatCategoryLabel(preview.subcategorySlug)} />
-          {preview.location.locationLabel !== null && preview.location.locationLabel !== '' && (
-            <Field label="Location" value={preview.location.locationLabel} />
+          {/* Override wins for display too — if the user picked in the
+              fallback picker, show that label instead of the stale NLP one. */}
+          {locationOverride !== null ? (
+            <Field label="Location" value={locationOverride.label} />
+          ) : (
+            preview.location.locationLabel !== null && preview.location.locationLabel !== '' && (
+              <Field label="Location" value={preview.location.locationLabel} />
+            )
           )}
           {preview.neutralSummary !== null && preview.neutralSummary !== '' && (
             <Field label="Summary" value={preview.neutralSummary} />
@@ -150,6 +203,24 @@ function SubmitScreenContent({
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+/**
+ * Narrow an arbitrary wire string (typically `preview.location.locationSource`
+ * from the backend NLP extraction) to the SignalLocationSource allowlist.
+ *
+ * The server now normalizes any unknown NLP-emitted value to `'nlp'` in
+ * SignalIngestionService.PreviewAsync, so in practice this shim is only
+ * exercised when a stale cached preview from an older client version
+ * survives. In that case the honest default is `'nlp'` — the preview is
+ * NLP-origin data by construction. Defaulting to `'user_edit'` (the
+ * prior behaviour) misattributed authorship to the user.
+ */
+function narrowLocationSource(raw: string): SignalLocationSource {
+  if (raw === 'nlp' || raw === 'user_edit' || raw === 'place_search') {
+    return raw;
+  }
+  return 'nlp';
 }
 
 function Field({ label, value }: { label: string; value: string }): React.ReactElement {

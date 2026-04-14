@@ -218,6 +218,16 @@ export type HomeSectionName =
 
 // ─── Signals ──────────────────────────────────────────────────────────────────
 
+/**
+ * Canonical LocationSource wire values (C11). Must stay in sync with
+ * Hali.Contracts.Signals.LocationSource (C#) and the LocationSource enum
+ * in 02_openapi.yaml.
+ *
+ * The draggable map-pin fallback ('map_pin') is intentionally deferred to
+ * a follow-up — do not add it to this union until that surface ships.
+ */
+export type SignalLocationSource = 'nlp' | 'user_edit' | 'place_search';
+
 export interface SignalLocation {
   areaName: string | null;
   roadName: string | null;
@@ -227,7 +237,10 @@ export interface SignalLocation {
   locationLabel: string | null;
   locationPrecisionType: string | null;
   locationConfidence: number;
-  locationSource: string;
+  // Narrowed to the canonical wire allowlist (C11). The backend
+  // normalizes any unknown NLP-emitted value to 'nlp' in
+  // SignalIngestionService.PreviewAsync, so this union is safe on read.
+  locationSource: SignalLocationSource;
 }
 
 export interface SignalPreviewRequest {
@@ -249,6 +262,13 @@ export interface SignalPreviewResponse {
   temporalType: string | null;
   neutralSummary: string | null;
   shouldSuggestJoin: boolean;
+  /**
+   * Server-authoritative flag: when true the composer MUST route the user
+   * into the low-confidence fallback picker (place search / current
+   * location) before allowing submit. See C11 and backend
+   * LocationFallbackPolicy.
+   */
+  requiresLocationFallback: boolean;
 }
 
 export interface SignalSubmitRequest {
@@ -264,10 +284,27 @@ export interface SignalSubmitRequest {
   locationLabel?: string;
   locationPrecisionType?: string;
   locationConfidence: number;
-  locationSource: string;
+  locationSource: SignalLocationSource;
   temporalType?: string;
   neutralSummary?: string;
   sourceLanguage?: string;
+}
+
+/**
+ * A single geocoding candidate returned by /v1/places/search and
+ * /v1/places/reverse. Matches Hali.Contracts.Signals.PlaceCandidateDto.
+ *
+ * When the user selects a PlaceCandidate in the composer's fallback
+ * picker, latitude/longitude become authoritative submit coordinates
+ * and displayName becomes the submitted locationLabel.
+ */
+export interface PlaceCandidate {
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  localityId: string | null;
+  wardName: string | null;
+  cityName: string | null;
 }
 
 /**

@@ -96,7 +96,10 @@ public sealed class SignalIntegrationTests : IntegrationTestBase
             latitude = -1.2921,
             longitude = 36.8219,
             locationConfidence = 0.70,
-            locationSource = "user",
+            // C11: wire allowlist is {"nlp","user_edit","place_search"};
+            // "user" is no longer accepted and would return 400 with
+            // validation.invalid_location_source.
+            locationSource = "user_edit",
         };
 
         var first = await authClient.PostAsJsonAsync("/v1/signals/submit", payload);
