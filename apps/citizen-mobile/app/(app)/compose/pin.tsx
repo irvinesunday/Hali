@@ -72,15 +72,13 @@ export default function PinCorrectionScreen(): React.ReactElement {
   const router = useRouter();
   const { locationOverride, setLocationOverride } = useComposerContext();
 
-  // Initial marker position is deterministic from context + preview. The
-  // pure helper is unit-tested in __tests__/composer/pinCorrection.test.ts.
+  // Initial marker position is deterministic from the current override:
+  // if the user has already picked via search / "Use my current location",
+  // we seed the pin there so the map is a refinement surface; otherwise
+  // we fall back to the Nairobi default. The pure helper is unit-tested
+  // in __tests__/composer/pinCorrection.test.ts.
   const initial = useMemo(
-    () =>
-      computeInitialPinPosition({
-        override: locationOverride,
-        previewUserLatitude: null,
-        previewUserLongitude: null,
-      }),
+    () => computeInitialPinPosition(locationOverride),
     [locationOverride],
   );
 
@@ -157,21 +155,21 @@ export default function PinCorrectionScreen(): React.ReactElement {
     [resolveForPoint],
   );
 
+  // A single source of truth for "can this candidate produce a valid
+  // override?". Derived from the same overrideFromMapPin predicate
+  // that the confirm handler uses so the Confirm button's enabled
+  // state matches the actual ability to proceed — no avoidable
+  // dead-end taps that put the user into an error state.
+  const buildableOverride = useMemo<ComposerLocationOverride | null>(
+    () => (candidate !== null ? overrideFromMapPin(candidate) : null),
+    [candidate],
+  );
+
   const handleConfirm = useCallback(() => {
-    if (candidate === null) return;
-    const override: ComposerLocationOverride | null = overrideFromMapPin(candidate);
-    if (override === null) {
-      // Defense-in-depth: should never fire because we only enable the
-      // Confirm button when candidate has a non-empty displayName in
-      // bounds, but if the PlaceCandidate somehow violates those rules
-      // we refuse to produce an override rather than submit a bad pick.
-      setResolveState('error');
-      setErrorMessage('Could not use that pin. Please drag to another point.');
-      return;
-    }
-    setLocationOverride(override, MAP_PICKED_VIA);
+    if (buildableOverride === null) return;
+    setLocationOverride(buildableOverride, MAP_PICKED_VIA);
     router.back();
-  }, [candidate, setLocationOverride, router]);
+  }, [buildableOverride, setLocationOverride, router]);
 
   const handleReset = useCallback(() => {
     setMarkerLatitude(initial.latitude);
@@ -182,7 +180,7 @@ export default function PinCorrectionScreen(): React.ReactElement {
     void resolveForPoint(initial.latitude, initial.longitude);
   }, [initial, resolveForPoint]);
 
-  const canConfirm = candidate !== null && resolveState === 'idle';
+  const canConfirm = resolveState === 'idle' && buildableOverride !== null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

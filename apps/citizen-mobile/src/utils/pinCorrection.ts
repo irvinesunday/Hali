@@ -10,34 +10,24 @@ import type {
   ComposerLocationOverride,
   LocationOverridePickedVia,
 } from '../context/ComposerContext';
-import type { PlaceCandidate, SignalPreviewResponse } from '../types/api';
+import type { PlaceCandidate } from '../types/api';
 
 /**
- * Fallback coordinate when no context is available. Central-ish Nairobi —
- * Kenyan civic coverage is seeded around Nairobi county and this keeps
- * the initial pin inside the resolvable PostGIS boundary set. Callers
- * that have *any* stronger signal (existing override / preview context)
- * MUST use it instead; this constant is the last-resort origin for a
- * first-time user with no GPS and no prior pick.
+ * Fallback coordinate when no override has been picked yet. Central-ish
+ * Nairobi — Kenyan civic coverage is seeded around Nairobi county and
+ * this keeps the initial pin inside the resolvable PostGIS boundary set.
+ *
+ * Why not seed from device GPS here? The composer does not currently
+ * capture device coordinates on Step 1 (preview is sent with only
+ * freeText + selectedWard + countryCode), and the pin screen is
+ * deliberately permission-quiet — it must not trigger a new foreground-
+ * location prompt just because the user opened it. If / when the
+ * composer grows an earlier GPS capture, thread that value into
+ * {@link computeInitialPinPosition} via a new explicit argument; do not
+ * bolt on a silent device-GPS call here.
  */
 export const DEFAULT_PIN_LATITUDE = -1.2921;
 export const DEFAULT_PIN_LONGITUDE = 36.8219;
-
-export interface InitialPinPositionInput {
-  /**
-   * Current composer override, if the user has already picked via search
-   * or "Use my current location". Preferred starting point because the
-   * map is a *refinement* surface for an existing pick.
-   */
-  override: ComposerLocationOverride | null;
-  /**
-   * The preview response's user-supplied lat/lng (from Step 1) when the
-   * user sent their current GPS with the preview call. Used when no
-   * override has been picked yet.
-   */
-  previewUserLatitude?: number | null;
-  previewUserLongitude?: number | null;
-}
 
 export interface InitialPinPosition {
   latitude: number;
@@ -48,67 +38,33 @@ export interface InitialPinPosition {
  * Compute the initial marker position for the pin sub-screen.
  *
  * Precedence:
- *   1. Existing override coords (refinement use-case).
- *   2. Preview's userLatitude / userLongitude (the composer already had a
- *      fix when the user hit Preview).
- *   3. Nairobi default (guarantees a valid-looking starting point even
- *      on first-time users with no GPS).
+ *   1. Existing override coords (refinement use-case — the user has
+ *      already picked via search or "Use my current location" and is
+ *      now nudging the pin on the map).
+ *   2. Nairobi default (first-time users with no override yet).
  *
  * Invariants:
  *   - Return value always has finite latitude/longitude inside the
- *     global bounds. Out-of-bounds inputs are filtered to the default.
+ *     global bounds. An out-of-bounds override is filtered to the
+ *     default.
  *   - The returned point is purely an initial render hint; the backend
  *     still re-runs locality + spatial guards on submit, so this helper
  *     cannot itself bypass spatial integrity.
  */
 export function computeInitialPinPosition(
-  input: InitialPinPositionInput,
+  override: ComposerLocationOverride | null,
 ): InitialPinPosition {
-  if (input.override !== null && isInBounds(input.override.latitude, input.override.longitude)) {
+  if (override !== null && isInBounds(override.latitude, override.longitude)) {
     return {
-      latitude: input.override.latitude,
-      longitude: input.override.longitude,
+      latitude: override.latitude,
+      longitude: override.longitude,
     };
-  }
-
-  const pLat = input.previewUserLatitude;
-  const pLng = input.previewUserLongitude;
-  if (
-    typeof pLat === 'number' &&
-    typeof pLng === 'number' &&
-    isInBounds(pLat, pLng)
-  ) {
-    return { latitude: pLat, longitude: pLng };
   }
 
   return {
     latitude: DEFAULT_PIN_LATITUDE,
     longitude: DEFAULT_PIN_LONGITUDE,
   };
-}
-
-/**
- * Narrow variant that picks the initial pin from a {@link SignalPreviewResponse}
- * + override pair. Thin adapter so the sub-screen doesn't need to destructure
- * the preview at the call site.
- */
-export function computeInitialPinFromContext(
-  override: ComposerLocationOverride | null,
-  preview: SignalPreviewResponse | null,
-  previewUserLatitude?: number | null,
-  previewUserLongitude?: number | null,
-): InitialPinPosition {
-  return computeInitialPinPosition({
-    override,
-    previewUserLatitude: previewUserLatitude ?? null,
-    previewUserLongitude: previewUserLongitude ?? null,
-  });
-  // `preview` currently unused in the body — kept on the signature because
-  // future refinements may read NLP-extracted precision hints out of it
-  // to widen / tighten the map's initial zoom. Leaving it here now keeps
-  // the call-site stable.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  void preview;
 }
 
 /**
