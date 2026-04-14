@@ -24,17 +24,31 @@ export interface ComposerLocationOverride {
   source: SignalLocationSource;
 }
 
+/**
+ * UI-only record of which fallback-picker path produced the current
+ * `locationOverride`. Kept here (and not on the override itself) so the
+ * wire `locationSource` stays a single value ('place_search') for both
+ * paths — `pickedVia` only drives the composer's selected-state subtitle
+ * copy ("Current location" vs "Selected from place search") and never
+ * leaves the client.
+ */
+export type LocationOverridePickedVia = 'search' | 'current';
+
 interface ComposerContextValue {
   freeText: string;
   locationHint: string | undefined;
   preview: SignalPreviewResponse | null;
   deviceHash: string;
   locationOverride: ComposerLocationOverride | null;
+  locationOverridePickedVia: LocationOverridePickedVia | null;
   setFreeText: (v: string) => void;
   setLocationHint: (v: string | undefined) => void;
   setPreview: (p: SignalPreviewResponse | null) => void;
   setDeviceHash: (h: string) => void;
-  setLocationOverride: (o: ComposerLocationOverride | null) => void;
+  setLocationOverride: (
+    o: ComposerLocationOverride | null,
+    pickedVia?: LocationOverridePickedVia | null,
+  ) => void;
   reset: () => void;
 }
 
@@ -45,14 +59,28 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [locationHint, setLocationHint] = useState<string | undefined>();
   const [preview, setPreview] = useState<SignalPreviewResponse | null>(null);
   const [deviceHash, setDeviceHash] = useState('');
-  const [locationOverride, setLocationOverride] =
+  const [locationOverride, setLocationOverrideState] =
     useState<ComposerLocationOverride | null>(null);
+  const [locationOverridePickedVia, setLocationOverridePickedVia] =
+    useState<LocationOverridePickedVia | null>(null);
+
+  const setLocationOverride = useCallback(
+    (
+      o: ComposerLocationOverride | null,
+      pickedVia: LocationOverridePickedVia | null = null,
+    ) => {
+      setLocationOverrideState(o);
+      setLocationOverridePickedVia(o === null ? null : pickedVia);
+    },
+    [],
+  );
 
   const reset = useCallback(() => {
     setFreeText('');
     setLocationHint(undefined);
     setPreview(null);
-    setLocationOverride(null);
+    setLocationOverrideState(null);
+    setLocationOverridePickedVia(null);
   }, []);
 
   return (
@@ -63,6 +91,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         preview,
         deviceHash,
         locationOverride,
+        locationOverridePickedVia,
         setFreeText,
         setLocationHint,
         setPreview,

@@ -58,6 +58,15 @@ public class SignalIngestionService : ISignalIngestionService
             throw new ValidationException("NLP returned an unrecognised category.", code: "validation.invalid_category");
         }
         bool requiresLocationFallback = LocationFallbackPolicy.RequiresFallback(result.Location);
+        // C11: normalize the NLP-emitted locationSource through the
+        // LocationSource allowlist before exposing it on the wire. The
+        // OpenAPI `LocationSource` enum is tight, so an unexpected NLP
+        // value would break the contract for any client reading the
+        // preview response. Unknown values default to "nlp" — the NLP
+        // extraction is the only valid source for a preview response.
+        string previewLocationSource = LocationSource.IsValid(result.Location.LocationSource)
+            ? result.Location.LocationSource
+            : LocationSource.Nlp;
         return new SignalPreviewResponseDto(
             result.Category,
             result.Subcategory,
@@ -72,7 +81,7 @@ public class SignalIngestionService : ISignalIngestionService
                 result.Location.LocationLabel,
                 result.Location.LocationPrecisionType,
                 result.Location.LocationConfidence,
-                result.Location.LocationSource),
+                previewLocationSource),
             result.TemporalHint?.Type,
             result.Summary,
             result.ShouldSuggestJoin,

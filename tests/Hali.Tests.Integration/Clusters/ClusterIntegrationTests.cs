@@ -41,7 +41,8 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             latitude            = -1.2921,
             longitude           = 36.8219,
             locationConfidence  = 0.80,
-            locationSource      = "user",
+            // C11: wire allowlist is {"nlp","user_edit","place_search"}.
+            locationSource      = "user_edit",
             neutralSummary      = "Road flooding near bridge.",
         });
         submitResp.EnsureSuccessStatusCode();
@@ -82,7 +83,8 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             latitude            = -1.2850,
             longitude           = 36.8300,
             locationConfidence  = 0.75,
-            locationSource      = "user",
+            // C11: wire allowlist is {"nlp","user_edit","place_search"}.
+            locationSource      = "user_edit",
         });
 
         var clusterId = await GetLatestClusterIdAsync();

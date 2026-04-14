@@ -39,13 +39,28 @@ import {
   Radius,
 } from '../../theme';
 
+/**
+ * UI-only record of which picker path produced the selected override.
+ * This is kept separate from {@link ComposerLocationOverride} because the
+ * wire `locationSource` enum is `'place_search'` for both paths (the label
+ * comes from the same backend geocoding service either way); `pickedVia`
+ * is purely for the selected-state subtitle copy and must not leak onto
+ * the wire.
+ */
+export type PickerPath = 'search' | 'current';
+
 export interface LocationFallbackPickerProps {
   /**
    * The picked override, if any. Rendering the "selected" state when
    * non-null so the user sees their choice and can change it.
    */
   selected: ComposerLocationOverride | null;
-  onPick: (override: ComposerLocationOverride) => void;
+  /**
+   * The UI-only path that produced {@link selected}. Controls the
+   * selected-state subtitle copy. Null when `selected` is null.
+   */
+  pickedVia: PickerPath | null;
+  onPick: (override: ComposerLocationOverride, pickedVia: PickerPath) => void;
   onClear: () => void;
 }
 
@@ -54,6 +69,7 @@ const MIN_QUERY_LENGTH = 2;
 
 export function LocationFallbackPicker({
   selected,
+  pickedVia,
   onPick,
   onClear,
 }: LocationFallbackPickerProps): React.ReactElement {
@@ -65,10 +81,25 @@ export function LocationFallbackPicker({
   const [resolvingGps, setResolvingGps] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
+  // Unmount guard: searchPlaces / reverseGeocodePoint / expo-location
+  // calls can resolve after the picker is unmounted (component swapped
+  // out by the parent when the gate changes, or the user navigates
+  // back). Gating every async setState through this ref prevents
+  // "Can't perform a React state update on an unmounted component"
+  // warnings and ghost UI updates. The search-ticket counter below still
+  // handles stale responses *between* two different queries while the
+  // component is mounted.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Debounced search. Every effect registration schedules the search and
-  // clears the previous pending timer; the cleanup also cancels in-flight
-  // requests when a newer query fires. This keeps the list consistent with
-  // whatever the user last typed and prevents ghost results after unmount.
+  // clears the previous pending timer; a newer query's response wins
+  // thanks to the ticket counter.
   const searchCounter = useRef(0);
   useEffect(() => {
     const trimmed = query.trim();
@@ -85,7 +116,8 @@ export function LocationFallbackPicker({
 
     const handle = setTimeout(async () => {
       const res = await searchPlaces(trimmed);
-      // Stale response guard: a newer query has started, drop this one.
+      // Drop if: component unmounted OR a newer query has started.
+      if (!mountedRef.current) return;
       if (myTicket !== searchCounter.current) return;
       setSearching(false);
       if (res.ok) {
@@ -101,12 +133,15 @@ export function LocationFallbackPicker({
 
   const handlePickCandidate = useCallback(
     (c: PlaceCandidate) => {
-      onPick({
-        latitude: c.latitude,
-        longitude: c.longitude,
-        label: c.displayName,
-        source: 'place_search',
-      });
+      onPick(
+        {
+          latitude: c.latitude,
+          longitude: c.longitude,
+          label: c.displayName,
+          source: 'place_search',
+        },
+        'search',
+      );
       setQuery('');
       setCandidates([]);
     },
@@ -119,6 +154,7 @@ export function LocationFallbackPicker({
     setGpsError(null);
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
+      if (!mountedRef.current) return;
       if (perm.status !== 'granted') {
         setGpsError('Location permission is required to use your current location.');
         return;
@@ -131,6 +167,7 @@ export function LocationFallbackPicker({
       } catch {
         point = await Location.getLastKnownPositionAsync();
       }
+      if (!mountedRef.current) return;
       if (!point) {
         setGpsError('Could not determine your current location.');
         return;
@@ -139,6 +176,7 @@ export function LocationFallbackPicker({
         point.coords.latitude,
         point.coords.longitude,
       );
+      if (!mountedRef.current) return;
       if (!reverse.ok) {
         if (reverse.error.status === 404) {
           setGpsError('Your current location is outside known wards.');
@@ -147,28 +185,36 @@ export function LocationFallbackPicker({
         }
         return;
       }
-      onPick({
-        latitude: reverse.value.latitude,
-        longitude: reverse.value.longitude,
-        label: reverse.value.displayName,
-        source: 'place_search',
-      });
+      onPick(
+        {
+          latitude: reverse.value.latitude,
+          longitude: reverse.value.longitude,
+          label: reverse.value.displayName,
+          source: 'place_search',
+        },
+        'current',
+      );
     } finally {
-      setResolvingGps(false);
+      if (mountedRef.current) setResolvingGps(false);
     }
   }, [onPick, resolvingGps]);
 
   if (selected !== null) {
+    // Subtitle copy is driven by the UI-only pickedVia flag, not the
+    // wire `source` (which is 'place_search' for both paths). pickedVia
+    // can be null when the parent restored a selection without an
+    // explicit path (e.g. after a remount) — fall back to the neutral
+    // "place search" copy in that case.
+    const subtitle =
+      pickedVia === 'current'
+        ? 'Current location'
+        : 'Selected from place search';
     return (
       <View style={styles.selectedCard} accessibilityLiveRegion="polite">
         <MapPin size={18} color={Colors.primary} strokeWidth={2} />
         <View style={styles.selectedTextWrap}>
           <Text style={styles.selectedLabel}>{selected.label}</Text>
-          <Text style={styles.selectedMeta}>
-            {selected.source === 'place_search'
-              ? 'Selected from place search'
-              : 'Current location'}
-          </Text>
+          <Text style={styles.selectedMeta}>{subtitle}</Text>
         </View>
         <TouchableOpacity
           onPress={onClear}

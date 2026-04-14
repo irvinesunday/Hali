@@ -237,7 +237,10 @@ export interface SignalLocation {
   locationLabel: string | null;
   locationPrecisionType: string | null;
   locationConfidence: number;
-  locationSource: string;
+  // Narrowed to the canonical wire allowlist (C11). The backend
+  // normalizes any unknown NLP-emitted value to 'nlp' in
+  // SignalIngestionService.PreviewAsync, so this union is safe on read.
+  locationSource: SignalLocationSource;
 }
 
 export interface SignalPreviewRequest {

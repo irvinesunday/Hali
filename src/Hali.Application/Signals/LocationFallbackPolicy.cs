@@ -28,10 +28,9 @@ public static class LocationFallbackPolicy
 
     public static bool RequiresFallback(NlpLocationDto location)
     {
-        if (location is null)
-        {
-            return true;
-        }
+        // `location` is non-nullable on `NlpExtractionResultDto.Location`
+        // so we don't guard against null here — that would be a caller bug,
+        // not a fallback trigger.
 
         if (location.LocationConfidence < LowConfidenceThreshold)
         {

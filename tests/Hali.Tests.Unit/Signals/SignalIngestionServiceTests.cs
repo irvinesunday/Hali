@@ -122,6 +122,40 @@ public class SignalIngestionServiceTests
     }
 
     [Theory]
+    [InlineData("garbage")]
+    [InlineData("NLP")]            // wire allowlist is case-sensitive
+    [InlineData("user")]           // legacy value no longer in the allowlist
+    [InlineData("")]
+    public async Task PreviewAsync_UnknownNlpLocationSource_NormalizedToNlp(string rawFromNlp)
+    {
+        _repo.BuildTaxonomyBlockAsync(Arg.Any<CancellationToken>()).Returns("roads: potholes");
+        NlpExtractionResultDto weirdSource = new NlpExtractionResultDto(
+            "roads", "potholes", "difficult", 0.85,
+            new NlpLocationDto("Nairobi West", null, null, null, null, "Ngong Rd", "road", 0.9, rawFromNlp),
+            new NlpTemporalHintDto("temporary", 0.7), "Potholes.", ShouldSuggestJoin: false, null);
+        _nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns(weirdSource);
+        SignalIngestionService svc = CreateService();
+
+        SignalPreviewResponseDto result = await svc.PreviewAsync(
+            new SignalPreviewRequestDto("Potholes", null, null, null, null, "Nairobi", "KE"));
+
+        Assert.Equal("nlp", result.Location.LocationSource);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ValidNlpLocationSource_Preserved()
+    {
+        _repo.BuildTaxonomyBlockAsync(Arg.Any<CancellationToken>()).Returns("roads: potholes");
+        _nlp.ExtractAsync(Arg.Any<NlpExtractionRequest>(), Arg.Any<CancellationToken>()).Returns(MakeNlpResult());
+        SignalIngestionService svc = CreateService();
+
+        SignalPreviewResponseDto result = await svc.PreviewAsync(
+            new SignalPreviewRequestDto("Big potholes on Lusaka Road", null, null, null, null, "Nairobi", "KE"));
+
+        Assert.Equal("nlp", result.Location.LocationSource);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]

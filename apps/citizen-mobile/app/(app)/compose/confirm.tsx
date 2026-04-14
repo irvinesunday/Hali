@@ -10,6 +10,7 @@ import { ArrowLeft, Check } from 'lucide-react-native';
 import {
   useComposerContext,
   type ComposerLocationOverride,
+  type LocationOverridePickedVia,
 } from '../../../src/context/ComposerContext';
 import { Button } from '../../../src/components/common/Button';
 import { ConditionBadge } from '../../../src/components/shared';
@@ -25,6 +26,7 @@ export default function ComposerConfirmScreen(): React.ReactElement {
     preview,
     setPreview,
     locationOverride,
+    locationOverridePickedVia,
     setLocationOverride,
   } = useComposerContext();
   if (preview === null) {
@@ -35,43 +37,54 @@ export default function ComposerConfirmScreen(): React.ReactElement {
       preview={preview}
       setPreview={setPreview}
       locationOverride={locationOverride}
+      locationOverridePickedVia={locationOverridePickedVia}
       setLocationOverride={setLocationOverride}
     />
   );
 }
 
 function ConfirmScreenContent({
-  preview, setPreview, locationOverride, setLocationOverride,
+  preview, setPreview, locationOverride, locationOverridePickedVia, setLocationOverride,
 }: {
   preview: SignalPreviewResponse;
   setPreview: (p: SignalPreviewResponse | null) => void;
   locationOverride: ComposerLocationOverride | null;
-  setLocationOverride: (o: ComposerLocationOverride | null) => void;
+  locationOverridePickedVia: LocationOverridePickedVia | null;
+  setLocationOverride: (
+    o: ComposerLocationOverride | null,
+    pickedVia?: LocationOverridePickedVia | null,
+  ) => void;
 }): React.ReactElement {
   const router = useRouter();
   const [locationLabel, setLocationLabel] = useState(preview.location.locationLabel ?? '');
   const [locationConfirmed, setLocationConfirmed] = useState(false);
 
   // C11: gate combines (server flag, numeric confidence, label).
-  // The server wins when it has spoken. Once the user has picked an
-  // override, we treat the location as accepted — the override is
-  // authoritative.
+  // The server wins when it has spoken. We intentionally do NOT force the
+  // gate to 'accept' when an override is picked — that would un-render the
+  // picker (which displays the selected-state card with a "Change"
+  // affordance). Instead, we keep the underlying gate and let the render
+  // branch prefer the picker whenever an override is present.
   const locationGate = useMemo<ConfidenceGate>(
     () =>
-      locationOverride !== null
-        ? 'accept'
-        : classifyLocationGate({
-            confidence: preview.location.locationConfidence,
-            requiresFallback: preview.requiresLocationFallback,
-            label: locationLabel,
-          }),
+      classifyLocationGate({
+        confidence: preview.location.locationConfidence,
+        requiresFallback: preview.requiresLocationFallback,
+        label: locationLabel,
+      }),
     [
-      locationOverride,
       preview.location.locationConfidence,
       preview.requiresLocationFallback,
       locationLabel,
     ],
   );
+
+  // Render the picker when the server / gate asked for fallback OR when
+  // the user has already locked in an override (e.g. returning to Step 2
+  // from Step 3). Otherwise show the text-input path for the happy /
+  // amber tiers.
+  const renderFallbackPicker =
+    locationOverride !== null || locationGate === 'fallback';
 
   const canProceed = useMemo<boolean>(() => {
     // Override path: the picker's selection stands on its own.
@@ -140,10 +153,11 @@ function ConfirmScreenContent({
 
           <View style={styles.locationBlock}>
             <Text style={styles.fieldLabel}>Location</Text>
-            {locationGate === 'fallback' ? (
+            {renderFallbackPicker ? (
               <LocationFallbackPicker
                 selected={locationOverride}
-                onPick={(o) => setLocationOverride(o)}
+                pickedVia={locationOverridePickedVia}
+                onPick={(o, pickedVia) => setLocationOverride(o, pickedVia)}
                 onClear={() => setLocationOverride(null)}
               />
             ) : (
