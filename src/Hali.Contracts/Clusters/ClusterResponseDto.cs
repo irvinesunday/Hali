@@ -35,6 +35,39 @@ public record ClusterResponseDto(
     /// participation record on this cluster.
     /// </summary>
     public MyParticipationDto? MyParticipation { get; init; }
+
+    /// <summary>
+    /// Fraction of restoration responses that voted 'yes'. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c> (null otherwise, and
+    /// null when no restoration responses have been recorded yet). Equal to
+    /// <see cref="RestorationYesVotes"/> divided by
+    /// <see cref="RestorationTotalVotes"/>. Exposed as a pre-computed server
+    /// value — mobile must not derive it from other fields.
+    /// </summary>
+    public double? RestorationRatio { get; init; }
+
+    /// <summary>
+    /// Count of 'restoration_yes' votes on this cluster. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c>. Aggregate count
+    /// only — no individual vote attribution.
+    /// </summary>
+    public int? RestorationYesVotes { get; init; }
+
+    /// <summary>
+    /// Total count of restoration responses on this cluster (participation
+    /// types <c>restoration_yes</c>, <c>restoration_no</c>,
+    /// <c>restoration_unsure</c>). Populated only when <see cref="State"/> is
+    /// <c>possible_restoration</c>. Aggregate count only.
+    /// </summary>
+    /// <remarks>
+    /// Observable today: the HTTP write path records <c>still_affected</c>
+    /// restoration responses as <c>ParticipationType.Affected</c> rather
+    /// than <c>RestorationNo</c>, so those responses do not currently
+    /// contribute to this count. Tracked in issue #142; when that write-path
+    /// mapping is fixed, `RestorationNo` rows will start appearing and this
+    /// count will include them automatically with no wire-shape change.
+    /// </remarks>
+    public int? RestorationTotalVotes { get; init; }
 }
 
 /// <summary>

@@ -79,6 +79,33 @@ public class ClustersController : ControllerBase
             }
         }
 
+        // Restoration progress snapshot — aggregate counts only, populated
+        // exclusively when the cluster is in possible_restoration. This is a
+        // pure read: we derive the ratio from two repo counts directly rather
+        // than invoking EvaluateRestorationAsync (which mutates state and
+        // emits outbox events — unsafe on a GET path).
+        int? restorationYesVotes = null;
+        int? restorationTotalVotes = null;
+        double? restorationRatio = null;
+        if (cluster.State == SignalState.PossibleRestoration)
+        {
+            int yesVotes = await _participationRepo.CountByTypeAsync(id, ParticipationType.RestorationYes, ct);
+            int totalResponses = await _participationRepo.CountRestorationResponsesAsync(id, ct);
+            // Defensive clamp. Participations are not strictly append-only —
+            // RecordParticipationAsync deletes a device's prior row before
+            // inserting a new one. If a RestorationYes row is deleted between
+            // these two sequential reads, yesVotes (read first) can exceed
+            // totalResponses (read second), and the ratio can exceed 1. Clamp
+            // so the wire contract (yes <= total, ratio in [0, 1]) always
+            // holds. The proper atomic-read fix is tracked in issue #143.
+            if (yesVotes > totalResponses) yesVotes = totalResponses;
+            restorationYesVotes = yesVotes;
+            restorationTotalVotes = totalResponses;
+            restorationRatio = totalResponses > 0
+                ? (double)yesVotes / totalResponses
+                : (double?)null;
+        }
+
         var dto = new ClusterResponseDto(
             cluster.Id,
             JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.State.ToString()),
@@ -97,6 +124,9 @@ public class ClustersController : ControllerBase
             LocationLabel = cluster.LocationLabelText,
             OfficialPosts = officialPosts,
             MyParticipation = myParticipation,
+            RestorationRatio = restorationRatio,
+            RestorationYesVotes = restorationYesVotes,
+            RestorationTotalVotes = restorationTotalVotes,
         };
         return Ok(dto);
     }
