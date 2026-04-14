@@ -409,6 +409,70 @@ public class ContractDriftTests
         Assert.True(loc.TryGetProperty("locationSource", out _));
     }
 
+    [Fact]
+    public void SignalPreviewResponseDto_NullableFields_SerializedAsJsonNull()
+    {
+        // Symmetric to ClusterResponseDto_NullableFields_SerializedAsJsonNull.
+        // Backs the OpenAPI `required: [..., conditionSlug, temporalType,
+        // neutralSummary, ...]` claim on SignalPreviewResponse by asserting
+        // these nullable fields are present on the wire as JSON null.
+        var dto = new SignalPreviewResponseDto(
+            Category: "water",
+            SubcategorySlug: "water_outage",
+            ConditionSlug: null,
+            ConditionConfidence: 0.5,
+            Location: new SignalLocationDto(null, null, null, null, null, null, null, 0.0, "nlp"),
+            TemporalType: null,
+            NeutralSummary: null,
+            ShouldSuggestJoin: false);
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        foreach (var field in new[] { "conditionSlug", "temporalType", "neutralSummary" })
+        {
+            Assert.True(doc.RootElement.TryGetProperty(field, out var value),
+                $"SignalPreviewResponse.{field} must be present on the wire");
+            Assert.Equal(JsonValueKind.Null, value.ValueKind);
+        }
+    }
+
+    // ── SignalLocationDto ───────────────────────────────────────────────────
+
+    [Fact]
+    public void SignalLocationDto_NullableFields_SerializedAsJsonNull()
+    {
+        // Symmetric to ClusterResponseDto_NullableFields_SerializedAsJsonNull.
+        // Backs the OpenAPI `required: [areaName, roadName, junctionName,
+        // landmarkName, facilityName, locationLabel, locationPrecisionType,
+        // locationConfidence, locationSource]` claim on SignalLocation by
+        // asserting every nullable field is present on the wire as JSON null.
+        var dto = new SignalLocationDto(
+            AreaName: null,
+            RoadName: null,
+            JunctionName: null,
+            LandmarkName: null,
+            FacilityName: null,
+            LocationLabel: null,
+            LocationPrecisionType: null,
+            LocationConfidence: 0.0,
+            LocationSource: "nlp");
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        foreach (var field in new[]
+        {
+            "areaName", "roadName", "junctionName", "landmarkName",
+            "facilityName", "locationLabel", "locationPrecisionType"
+        })
+        {
+            Assert.True(doc.RootElement.TryGetProperty(field, out var value),
+                $"SignalLocation.{field} must be present on the wire");
+            Assert.Equal(JsonValueKind.Null, value.ValueKind);
+        }
+    }
+
     // ── SignalSubmitResponseDto ──────────────────────────────────────────────
 
     [Fact]
@@ -427,6 +491,29 @@ public class ContractDriftTests
         Assert.True(root.TryGetProperty("clusterState", out _));
         Assert.True(root.TryGetProperty("localityId", out _));
         Assert.True(root.TryGetProperty("createdAt", out _));
+    }
+
+    [Fact]
+    public void SignalSubmitResponseDto_LocalityId_SerializedAsJsonNullWhenNull()
+    {
+        // Backs the OpenAPI `required: [..., localityId, ...]` claim on
+        // SignalSubmitResponse added in this PR. The backend always serialises
+        // LocalityId (Guid?) on the wire — as JSON null when the submitted
+        // signal has no resolved locality.
+        var dto = new SignalSubmitResponseDto(
+            SignalEventId: Guid.NewGuid(),
+            ClusterId: Guid.NewGuid(),
+            IsNewCluster: true,
+            ClusterState: "unconfirmed",
+            LocalityId: null,
+            CreatedAt: DateTime.UtcNow);
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.True(doc.RootElement.TryGetProperty("localityId", out var value),
+            "SignalSubmitResponse.localityId must be present on the wire");
+        Assert.Equal(JsonValueKind.Null, value.ValueKind);
     }
 
     // ── OfficialPostResponseDto ─────────────────────────────────────────────
@@ -449,6 +536,69 @@ public class ContractDriftTests
         Assert.True(root.TryGetProperty("isRestorationClaim", out _));
         Assert.True(root.TryGetProperty("relatedClusterId", out _));
         Assert.True(root.TryGetProperty("startsAt", out _));
+    }
+
+    [Fact]
+    public void OfficialPostResponseDto_NullableFields_SerializedAsJsonNull()
+    {
+        // Symmetric to ClusterResponseDto_NullableFields_SerializedAsJsonNull.
+        // Backs the OpenAPI `required: [..., startsAt, endsAt, ...,
+        // relatedClusterId, ...]` claim on OfficialPostResponse by asserting
+        // these nullable fields are present on the wire as JSON null.
+        var dto = new OfficialPostResponseDto(
+            Id: Guid.NewGuid(),
+            InstitutionId: Guid.NewGuid(),
+            Type: "live_update",
+            Category: "water",
+            Title: "Repair crew dispatched",
+            Body: "A repair crew is on the way.",
+            StartsAt: null,
+            EndsAt: null,
+            Status: "published",
+            RelatedClusterId: null,
+            IsRestorationClaim: false,
+            CreatedAt: DateTime.UtcNow);
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        foreach (var field in new[] { "startsAt", "endsAt", "relatedClusterId" })
+        {
+            Assert.True(doc.RootElement.TryGetProperty(field, out var value),
+                $"OfficialPostResponse.{field} must be present on the wire");
+            Assert.Equal(JsonValueKind.Null, value.ValueKind);
+        }
+    }
+
+    // ── UserMeResponseDto ───────────────────────────────────────────────────
+
+    [Fact]
+    public void UserMeResponseDto_NullableFields_SerializedAsJsonNull()
+    {
+        // Symmetric to ClusterResponseDto_NullableFields_SerializedAsJsonNull.
+        // Backs the OpenAPI `required: [id, displayName, phoneE164, email, ...]`
+        // claim on UserMeResponse by asserting these nullable fields are
+        // present on the wire as JSON null.
+        var dto = new Hali.Contracts.Auth.UserMeResponseDto
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = null,
+            PhoneE164 = null,
+            Email = null,
+            Status = "active",
+            CreatedAt = DateTime.UtcNow,
+            NotificationSettings = new Hali.Contracts.Notifications.NotificationSettingsDto(),
+        };
+
+        var json = JsonSerializer.Serialize(dto, ApiJsonOptions);
+        using var doc = JsonDocument.Parse(json);
+
+        foreach (var field in new[] { "displayName", "phoneE164", "email" })
+        {
+            Assert.True(doc.RootElement.TryGetProperty(field, out var value),
+                $"UserMeResponse.{field} must be present on the wire");
+            Assert.Equal(JsonValueKind.Null, value.ValueKind);
+        }
     }
 
     // ── Enum snake_case contract tests ──────────────────────────────────────
