@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Domain.Entities.Auth;
 using Hali.Domain.Enums;
@@ -89,7 +90,7 @@ public class InstitutionServiceTests
     }
 
     [Fact]
-    public async Task InstitutionSetup_ExpiredInvite_Returns400()
+    public async Task InstitutionSetup_ExpiredInvite_Throws400WithCode()
     {
         string rawToken = "expired-token";
         string tokenHash = AuthService.HashToken(rawToken);
@@ -106,13 +107,13 @@ public class InstitutionServiceTests
             });
 
         var svc = CreateService();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ValidationException>(
             () => svc.SetupInstitutionAccountAsync(new InstitutionSetupRequestDto(rawToken, "+254700000002")));
-        Assert.Equal("INVITE_EXPIRED", ex.Message);
+        Assert.Equal("invite.expired", ex.Code);
     }
 
     [Fact]
-    public async Task InstitutionSetup_AlreadyAcceptedInvite_Returns400()
+    public async Task InstitutionSetup_AlreadyAcceptedInvite_Throws409WithCode()
     {
         string rawToken = "accepted-token";
         string tokenHash = AuthService.HashToken(rawToken);
@@ -129,21 +130,21 @@ public class InstitutionServiceTests
             });
 
         var svc = CreateService();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ConflictException>(
             () => svc.SetupInstitutionAccountAsync(new InstitutionSetupRequestDto(rawToken, "+254700000002")));
-        Assert.Equal("INVITE_ALREADY_ACCEPTED", ex.Message);
+        Assert.Equal("invite.already_accepted", ex.Code);
     }
 
     [Fact]
-    public async Task InstitutionSetup_InvalidToken_Returns400()
+    public async Task InstitutionSetup_InvalidToken_Throws400WithCode()
     {
         _repo.FindInviteByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((InstitutionInvite?)null);
 
         var svc = CreateService();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ValidationException>(
             () => svc.SetupInstitutionAccountAsync(new InstitutionSetupRequestDto("bogus", "+254700000002")));
-        Assert.Equal("INVITE_INVALID", ex.Message);
+        Assert.Equal("invite.invalid", ex.Code);
     }
 
     [Fact]

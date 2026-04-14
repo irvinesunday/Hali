@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Domain.Entities.Auth;
 using Hali.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -32,7 +33,9 @@ public class OtpService : IOtpService
         string key = "rl:otp:" + destination;
         if (!(await _rateLimiter.IsAllowedAsync(key, _opts.MaxRequestsPerWindow, TimeSpan.FromMinutes(_opts.WindowMinutes), ct)))
         {
-            throw new InvalidOperationException("OTP_RATE_LIMITED");
+            throw new RateLimitException(
+                code: "auth.otp_rate_limited",
+                message: "Too many OTP requests. Please try again later.");
         }
         string otp = GenerateOtp(_opts.Length);
         DateTime now = DateTime.UtcNow;
