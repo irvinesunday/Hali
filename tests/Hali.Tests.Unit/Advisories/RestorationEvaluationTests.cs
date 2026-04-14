@@ -77,11 +77,13 @@ public class RestorationEvaluationTests
         public Task<int> CountByTypeAsync(Guid clusterId, ParticipationType type, CancellationToken ct)
             => Task.FromResult(_store.FindAll(x => x.ClusterId == clusterId && x.ParticipationType == type).Count);
 
-        public Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct)
-            => Task.FromResult(_store.FindAll(x => x.ClusterId == clusterId &&
-                (x.ParticipationType == ParticipationType.RestorationYes ||
-                 x.ParticipationType == ParticipationType.RestorationNo ||
-                 x.ParticipationType == ParticipationType.RestorationUnsure)).Count);
+        public Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct)
+        {
+            int yes = _store.Count(x => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationYes);
+            int no = _store.Count(x => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationNo);
+            int unsure = _store.Count(x => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationUnsure);
+            return Task.FromResult(new RestorationCountSnapshot(yes, no, yes + no + unsure));
+        }
 
         public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
@@ -100,8 +102,10 @@ public class RestorationEvaluationTests
         Id = id ?? Guid.NewGuid(),
         State = SignalState.Active,
         Category = CivicCategory.Roads,
-        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
-        FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        FirstSeenAt = DateTime.UtcNow,
+        LastSeenAt = DateTime.UtcNow
     };
 
     [Fact]
