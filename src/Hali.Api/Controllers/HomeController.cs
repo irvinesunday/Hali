@@ -251,12 +251,8 @@ public class HomeController : ControllerBase
         if (localityIds.Count == 0)
             return EmptyPostSection();
 
-        var allPosts = new List<OfficialPostResponseDto>();
-        foreach (var lid in localityIds)
-        {
-            var posts = await _feedQuery.GetOfficialPostsByLocalityAsync(lid, ct);
-            allPosts.AddRange(posts);
-        }
+        IReadOnlyList<OfficialPostResponseDto> allPosts =
+            await _feedQuery.GetOfficialPostsByLocalitiesAsync(localityIds, ct);
 
         // Sort by CreatedAt descending, apply cursor
         var sorted = allPosts

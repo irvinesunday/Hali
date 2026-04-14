@@ -301,8 +301,8 @@ public class ContractDriftTests
                 Arg.Any<IEnumerable<Guid>>(), Arg.Any<int>(),
                 Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
-        feedQuery.GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+        feedQuery.GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<OfficialPostResponseDto>)Array.Empty<OfficialPostResponseDto>());
 
         // Cache miss on read, capture the JSON on write. The controller's

@@ -77,8 +77,8 @@ public class HomeAnonymousBrowseTests
             .Returns(new List<SignalCluster>().AsReadOnly());
 
         _feedQuery
-            .GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(new List<Hali.Contracts.Advisories.OfficialPostResponseDto>());
     }
 
@@ -126,8 +126,8 @@ public class HomeAnonymousBrowseTests
             .Returns(new List<SignalCluster>().AsReadOnly());
 
         _feedQuery
-            .GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(),
+            .GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(),
                 Arg.Any<CancellationToken>())
             .Returns(new List<Hali.Contracts.Advisories.OfficialPostResponseDto>());
 
@@ -233,8 +233,8 @@ public class HomeAnonymousBrowseTests
             .Returns(new List<SignalCluster>().AsReadOnly());
 
         _feedQuery
-            .GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(),
+            .GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(),
                 Arg.Any<CancellationToken>())
             .Returns(new List<Hali.Contracts.Advisories.OfficialPostResponseDto>());
 
@@ -282,8 +282,8 @@ public class HomeAnonymousBrowseTests
             .Returns(new List<SignalCluster>().AsReadOnly());
 
         _feedQuery
-            .GetOfficialPostsByLocalityAsync(
-                Arg.Any<Guid>(),
+            .GetOfficialPostsByLocalitiesAsync(
+                Arg.Any<IEnumerable<Guid>>(),
                 Arg.Any<CancellationToken>())
             .Returns(new List<Hali.Contracts.Advisories.OfficialPostResponseDto>());
 
