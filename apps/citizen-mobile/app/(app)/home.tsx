@@ -44,6 +44,7 @@ import { useHome, ApiResultError } from '../../src/hooks/useClusters';
 import { useLocalityContext } from '../../src/context/LocalityContext';
 import { useAuth } from '../../src/context/AuthContext';
 import { filterLocalities } from '../../src/utils/localityFilter';
+import { resolveLocalitySelection } from '../../src/utils/localitySelection';
 import { formatRelativeTime, getCategoryInstitutionName } from '../../src/utils/formatters';
 import {
   Colors,
@@ -280,23 +281,14 @@ export default function HomeScreen(): React.ReactElement {
           activeLocalityId={activeLocality?.localityId ?? null}
           isAuthenticated={isAuthenticated}
           onSelectWard={(ward) => {
-            // If the ward is one of the user's existing follows, route
-            // through setActiveLocalityId so the stored displayLabel is
-            // preserved. Otherwise drop the bare ward into activeLocality
-            // (no follow side-effect — works for both guests and authed
-            // users who are browsing).
-            const followed = followedLocalities.find(
-              (l) => l.localityId === ward.localityId,
+            const selection = resolveLocalitySelection(
+              ward,
+              followedLocalities,
             );
-            if (followed !== undefined) {
-              setActiveLocalityId(ward.localityId);
+            if (selection.kind === 'existingFollow') {
+              setActiveLocalityId(selection.localityId);
             } else {
-              setActiveLocality({
-                localityId: ward.localityId,
-                wardName: ward.wardName,
-                displayLabel: null,
-                cityName: ward.cityName,
-              });
+              setActiveLocality(selection.locality);
             }
             setLocalitySelectorOpen(false);
           }}
