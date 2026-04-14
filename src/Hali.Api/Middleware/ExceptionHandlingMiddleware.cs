@@ -14,12 +14,6 @@ public class ExceptionHandlingMiddleware
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
     private readonly ExceptionToApiErrorMapper _mapper;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
-
     public ExceptionHandlingMiddleware(
         RequestDelegate next,
         ILogger<ExceptionHandlingMiddleware> logger,
@@ -77,7 +71,7 @@ public class ExceptionHandlingMiddleware
 
         context.Response.StatusCode = mapping.StatusCode;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response, JsonOptions));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(response, ApiErrorJsonOptions.Default));
     }
 
     /// <summary>

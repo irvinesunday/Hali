@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Auth;
@@ -53,6 +54,57 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
         ValidIssuer = jwtIssuer,
         ValidAudience = jwtAudience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+    };
+
+    // Replace the framework's default empty-bodied 401 with the canonical
+    // ApiErrorResponse envelope. Without this, every [Authorize]-protected
+    // endpoint short-circuits before ExceptionHandlingMiddleware can write
+    // a body, breaking the wire contract every other error path honours.
+    //
+    // Code is "auth.unauthenticated" — distinct from the application-layer
+    // "auth.unauthorized" thrown by controllers when a token is valid but
+    // an expected claim is missing. We deliberately do NOT leak whether
+    // the token was missing, malformed, or expired (security side-channel).
+    opts.Events = new JwtBearerEvents
+    {
+        OnChallenge = async context =>
+        {
+            // Suppress the framework's default challenge so we own the response.
+            context.HandleResponse();
+
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            // Preserve RFC 7235 challenge advertisement.
+            if (!context.Response.Headers.ContainsKey("WWW-Authenticate"))
+            {
+                context.Response.Headers.Append("WWW-Authenticate", "Bearer");
+            }
+
+            // CorrelationIdMiddleware runs before authentication, so
+            // Items["CorrelationId"] is populated and already sanitized to
+            // a server-only GUID. TraceIdentifier is the framework fallback.
+            var traceId = context.HttpContext.Items["CorrelationId"] as string
+                ?? context.HttpContext.TraceIdentifier
+                ?? string.Empty;
+
+            var envelope = new ApiErrorResponse
+            {
+                Error = new ApiErrorBody
+                {
+                    Code = "auth.unauthenticated",
+                    Message = "Authentication required.",
+                    TraceId = traceId
+                }
+            };
+
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
+        }
     };
 });
 
