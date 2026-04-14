@@ -19,6 +19,7 @@ import { formatCategoryLabel } from '../../../src/utils/formatters';
 import {
   canProceedFromLocationGate,
   classifyLocationGate,
+  isMeaningfulLabelEdit,
   type ConfidenceGate,
 } from '../../../src/utils/composerGates';
 import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
@@ -117,9 +118,31 @@ function ConfirmScreenContent({
     // we don't need to mutate preview.location.locationLabel — submit.tsx
     // reads the override directly and overrides both coords and label.
     if (locationOverride === null) {
+      // C11 follow-up (#131): a meaningful edit to the text-input label
+      // means the wire source must flip from 'nlp' to 'user_edit' so
+      // downstream source-attribution matches the label's provenance.
+      // "Meaningful" mirrors the 'confirm' tier gate rule — trimmed,
+      // non-empty, and different from the trimmed original (see
+      // isMeaningfulLabelEdit in composerGates.ts). Whitespace-only
+      // and blanking edits do NOT flip source.
+      //
+      // Once flipped, the source stays 'user_edit' even if the user
+      // navigates back and re-edits; that's the correct outcome because
+      // the persisted label is already user-authored content, and there
+      // is no "un-edit" path back to the original NLP label from the
+      // UI.
+      const edited = isMeaningfulLabelEdit({
+        label: locationLabel,
+        originalLabel: preview.location.locationLabel,
+      });
+      const trimmed = locationLabel.trim();
       setPreview({
         ...preview,
-        location: { ...preview.location, locationLabel: locationLabel.trim() || preview.location.locationLabel },
+        location: {
+          ...preview.location,
+          locationLabel: trimmed || preview.location.locationLabel,
+          locationSource: edited ? 'user_edit' : preview.location.locationSource,
+        },
       });
     }
     router.push('/(app)/compose/submit');

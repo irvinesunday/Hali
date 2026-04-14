@@ -105,6 +105,37 @@ export function classifyConditionGate(confidence: number): ConfidenceGate {
 }
 
 /**
+ * Did the user *meaningfully* edit the composer's location label?
+ *
+ * Semantics — both sides are trimmed before comparison:
+ *   - whitespace-only edits don't count
+ *   - blanking the field doesn't count (no new user-authored content)
+ *   - any non-empty text that differs from the trimmed original counts
+ *
+ * Used in two places:
+ *   - {@link canProceedFromLocationGate}'s 'confirm' tier uses this to
+ *     decide whether to unlock Next without the explicit "Looks right"
+ *     chip, and
+ *   - the composer's `handleNext` uses it to flip the submit wire
+ *     `locationSource` from `'nlp'` to `'user_edit'` so source
+ *     attribution matches the label's provenance (C11 follow-up #131).
+ *
+ * Keeping a single helper prevents the two paths from drifting — if
+ * the gate thinks "you edited this" but the submit path thinks "you
+ * didn't", we'd submit user-authored text under `source='nlp'`.
+ */
+export interface MeaningfulEditInput {
+  label: string;
+  originalLabel: string | null | undefined;
+}
+
+export function isMeaningfulLabelEdit(input: MeaningfulEditInput): boolean {
+  const trimmed = input.label.trim();
+  const original = (input.originalLabel ?? '').trim();
+  return trimmed.length > 0 && trimmed !== original;
+}
+
+/**
  * Inputs to {@link canProceedFromLocationGate}. Mirrors the state the
  * composer's Step 2 carries internally (text-input value + the original
  * NLP label + whether the user tapped "Looks right" + whether the
@@ -147,9 +178,10 @@ export function canProceedFromLocationGate(input: LocationProceedInput): boolean
   // on its own regardless of gate.
   if (input.hasOverride) return true;
 
-  const trimmed = input.label.trim();
-  const original = (input.originalLabel ?? '').trim();
-  const userEdited = trimmed !== original && trimmed.length > 0;
+  const userEdited = isMeaningfulLabelEdit({
+    label: input.label,
+    originalLabel: input.originalLabel,
+  });
 
   switch (input.gate) {
     case 'accept':
@@ -166,6 +198,6 @@ export function canProceedFromLocationGate(input: LocationProceedInput): boolean
     case 'required':
       // Not emitted for the location gate today (kept in the union for
       // the condition gate). Treat defensively as "requires a label".
-      return trimmed.length > 0;
+      return input.label.trim().length > 0;
   }
 }
