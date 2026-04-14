@@ -1,7 +1,6 @@
 using System;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Auth;
@@ -43,15 +42,6 @@ string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
 string jwtIssuer = builder.Configuration["Auth:JwtIssuer"] ?? "hali";
 string jwtAudience = builder.Configuration["Auth:JwtAudience"] ?? "hali";
-
-// JSON options for the OnChallenge envelope — mirror the shape used by
-// ExceptionHandlingMiddleware so the framework 401 path is wire-identical
-// to the application-layer error path.
-var challengeJsonOptions = new JsonSerializerOptions
-{
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-};
 
 builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
 {
@@ -113,7 +103,7 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(
-                JsonSerializer.Serialize(envelope, challengeJsonOptions));
+                JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
         }
     };
 });

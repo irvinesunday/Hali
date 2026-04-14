@@ -970,12 +970,17 @@ components:
         still document body-less 4xx responses; those are tracked for
         migration but are intentionally not referenced to this schema.
 
-        Framework-generated authentication/authorization failures (e.g. 401
-        from the JwtBearer challenge or 403 from policy denial) short-circuit
-        before the exception middleware runs and therefore may return an
-        empty body instead of this envelope. Documented `401`/`403` entries
-        that reference this schema describe failures surfaced as typed
-        `UnauthorizedException`/`ForbiddenException` from application code.
+        Framework-generated `401` responses from the JwtBearer challenge
+        (missing/invalid/expired token on an `[Authorize]` endpoint) also
+        emit this envelope, with `code = "auth.unauthenticated"` distinct
+        from the application-layer `auth.unauthorized` thrown by controllers
+        when a token is valid but an expected claim is missing.
+        Framework-generated `403` responses from role/policy denial still
+        short-circuit before the exception middleware runs and currently
+        return an empty body; that symmetric fix is tracked in issue #147.
+        Documented `403` entries that reference this schema today describe
+        failures surfaced as typed `ForbiddenException` from application
+        code.
 
           * `error.code` — stable, snake_case_with_dot-namespacing identifier
             for programmatic handling (e.g. `auth.otp_invalid`,

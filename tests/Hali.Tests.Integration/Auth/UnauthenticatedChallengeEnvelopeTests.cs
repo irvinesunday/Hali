@@ -23,8 +23,6 @@ namespace Hali.Tests.Integration.Auth;
 [Trait("Category", "Integration")]
 public sealed class UnauthenticatedChallengeEnvelopeTests : IntegrationTestBase
 {
-    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
-
     public UnauthenticatedChallengeEnvelopeTests(HaliWebApplicationFactory factory)
         : base(factory) { }
 
