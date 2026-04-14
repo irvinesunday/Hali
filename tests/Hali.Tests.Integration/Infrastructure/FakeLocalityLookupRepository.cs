@@ -32,4 +32,9 @@ internal sealed class FakeLocalityLookupRepository : ILocalityLookupRepository
             .ToDictionary(id => id, _ => TestLocality);
         return Task.FromResult<IReadOnlyDictionary<Guid, LocalitySummary>>(result);
     }
+
+    public Task<IReadOnlyList<LocalitySummary>> ListAllAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult<IReadOnlyList<LocalitySummary>>(new[] { TestLocality });
+    }
 }

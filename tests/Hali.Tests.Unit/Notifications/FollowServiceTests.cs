@@ -58,6 +58,9 @@ public class FollowServiceTests
 
         public Task<LocalitySummary?> FindByPointAsync(double latitude, double longitude, CancellationToken ct = default)
             => Task.FromResult<LocalitySummary?>(null);
+
+        public Task<IReadOnlyList<LocalitySummary>> ListAllAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<LocalitySummary>>(Store.Values.ToList());
     }
 
     private static FollowService NewService(IFollowRepository? repo = null, FakeLocalityLookup? lookup = null)

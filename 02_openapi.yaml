@@ -231,6 +231,37 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/localities/wards:
+    get:
+      tags: [Localities]
+      summary: List every ward/locality in the system (canonical list)
+      description: |
+        Returns the full, alphabetically sorted list of wards/localities
+        known to the platform. Intended for the mobile client to cache
+        locally and run client-side search/filter against — avoiding a
+        geocoding round-trip per keystroke and enabling a "browse all"
+        UX.
+
+        Response is cached in Redis for 24 hours (the underlying ward
+        geometry changes only on explicit import). Anonymous endpoint.
+      security: []
+      responses:
+        '200':
+          description: Canonical ward list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, wardName, cityName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+
   /v1/localities/search:
     get:
       tags: [Localities]

@@ -52,4 +52,16 @@ public class LocalityLookupRepository : ILocalityLookupRepository
             ? null
             : new LocalitySummary(match.Id, match.WardName, match.CityName, match.CountyName);
     }
+
+    public async Task<IReadOnlyList<LocalitySummary>> ListAllAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.Localities
+            .OrderBy(l => l.WardName)
+            .Select(l => new { l.Id, l.WardName, l.CityName, l.CountyName })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(r => new LocalitySummary(r.Id, r.WardName, r.CityName, r.CountyName))
+            .ToList();
+    }
 }
