@@ -72,9 +72,17 @@ public sealed class EvaluatePossibleRestorationJob(
         CivisOptions options,
         CancellationToken ct)
     {
-        int restorationYes = await participationRepo.CountByTypeAsync(cluster.Id, ParticipationType.RestorationYes, ct);
-        int stillAffected = await participationRepo.CountByTypeAsync(cluster.Id, ParticipationType.Affected, ct);
-        int totalRestorationResponses = await participationRepo.CountRestorationResponsesAsync(cluster.Id, ct);
+        // Atomic snapshot of restoration vote counts (#143). "Still affected"
+        // votes are restoration_no rows: the HTTP write path maps the
+        // "still_affected" response value to ParticipationType.RestorationNo
+        // (see ParticipationService.RecordRestorationResponseAsync, fixed in
+        // #142). The previous Affected-row count conflated initial "I'm
+        // affected" reports with restoration-time dissents and is no longer
+        // the correct signal for revert-to-active.
+        RestorationCountSnapshot snapshot = await participationRepo.GetRestorationCountSnapshotAsync(cluster.Id, ct);
+        int restorationYes = snapshot.YesVotes;
+        int stillAffected = snapshot.NoVotes;
+        int totalRestorationResponses = snapshot.TotalResponses;
 
         // Revert to active if still-affected votes overwhelm restoration votes
         if (stillAffected > restorationYes && stillAffected >= options.MinRestorationAffectedVotes)

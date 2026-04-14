@@ -81,7 +81,7 @@ public class ParticipationService : IParticipationService
         ParticipationType participationType = response switch
         {
             "restored" => ParticipationType.RestorationYes,
-            "still_affected" => ParticipationType.Affected,
+            "still_affected" => ParticipationType.RestorationNo,
             "not_sure" => ParticipationType.RestorationUnsure,
             _ => throw new ValidationException("Invalid restoration response value.", code: "validation.invalid_restoration_response"),
         };
@@ -96,8 +96,12 @@ public class ParticipationService : IParticipationService
         {
             return;
         }
-        int restorationYes = await _participationRepo.CountByTypeAsync(clusterId, ParticipationType.RestorationYes, ct);
-        int totalResponses = await _participationRepo.CountRestorationResponsesAsync(clusterId, ct);
+        // Atomic single-query snapshot — see issue #143. Two-query pattern
+        // (CountByType(RestorationYes) + CountRestorationResponses) could see
+        // an inconsistent yes/total under concurrent participation-type flips.
+        RestorationCountSnapshot snapshot = await _participationRepo.GetRestorationCountSnapshotAsync(clusterId, ct);
+        int restorationYes = snapshot.YesVotes;
+        int totalResponses = snapshot.TotalResponses;
         if (totalResponses >= _options.MinRestorationAffectedVotes)
         {
             double ratio = (double)restorationYes / (double)totalResponses;

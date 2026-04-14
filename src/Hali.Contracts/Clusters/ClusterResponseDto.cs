@@ -59,14 +59,6 @@ public record ClusterResponseDto(
     /// <c>restoration_unsure</c>). Populated only when <see cref="State"/> is
     /// <c>possible_restoration</c>. Aggregate count only.
     /// </summary>
-    /// <remarks>
-    /// Observable today: the HTTP write path records <c>still_affected</c>
-    /// restoration responses as <c>ParticipationType.Affected</c> rather
-    /// than <c>RestorationNo</c>, so those responses do not currently
-    /// contribute to this count. Tracked in issue #142; when that write-path
-    /// mapping is fixed, `RestorationNo` rows will start appearing and this
-    /// count will include them automatically with no wire-shape change.
-    /// </remarks>
     public int? RestorationTotalVotes { get; init; }
 }
 

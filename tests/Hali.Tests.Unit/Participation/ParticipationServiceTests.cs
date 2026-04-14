@@ -171,14 +171,57 @@ public class ParticipationServiceTests
 	}
 
 	[Fact]
-	public async Task RecordRestorationResponse_StillAffected_MapsToAffected()
+	public async Task RecordRestorationResponse_StillAffected_MapsToRestorationNo()
 	{
+		// Issue #142: the write path used to record "still_affected" as
+		// ParticipationType.Affected, which excluded it from restoration
+		// totals (CountRestorationResponses only counted types 3/4/5).
+		// Post-fix it must be persisted as RestorationNo so dissenting
+		// votes are visible to the restoration ratio gate.
 		SignalCluster cluster = ActiveCluster();
 		var (svc, pRepo, _) = Build(cluster);
 		await SeedAffectedAsync(svc, DeviceA);
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "still_affected", default(CancellationToken));
 		Hali.Domain.Entities.Participation.Participation p = pRepo.All.Single((Hali.Domain.Entities.Participation.Participation x) => x.DeviceId == DeviceA);
-		Assert.Equal(ParticipationType.Affected, p.ParticipationType);
+		Assert.Equal(ParticipationType.RestorationNo, p.ParticipationType);
+	}
+
+	[Fact]
+	public async Task RecordRestorationResponse_StillAffected_DropsAffectedRowAndDecrementsAffectedCount()
+	{
+		// Confirms the corrected mapping flows through RefreshCountsAsync:
+		// the seeded Affected row is replaced by a RestorationNo row, so
+		// the cluster's AffectedCount falls back to 0. This documents the
+		// AffectedCount semantic shift called out in #142's acceptance
+		// criteria — Affected counts no longer include silent
+		// "still_affected" restoration dissents.
+		SignalCluster cluster = ActiveCluster();
+		var (svc, pRepo, _) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
+		Assert.Equal(1, cluster.AffectedCount);
+		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "still_affected", default(CancellationToken));
+		Assert.Equal(0, cluster.AffectedCount);
+		Assert.DoesNotContain(pRepo.All, x => x.DeviceId == DeviceA && x.ParticipationType == ParticipationType.Affected);
+	}
+
+	[Fact]
+	public async Task EvaluateRestoration_IncludesStillAffectedDissentInTotal()
+	{
+		// Regression for #142: when one device votes "restored" and another
+		// votes "still_affected", the ratio must be 1/2 (not 1/1). Pre-fix
+		// the still_affected row was Affected and excluded from the total,
+		// flipping the cluster to possible_restoration on a fully dissented
+		// vote.
+		SignalCluster cluster = ActiveCluster();
+		var (svc, _, cRepo) = Build(cluster);
+		await SeedAffectedAsync(svc, DeviceA);
+		await SeedAffectedAsync(svc, DeviceB);
+		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default);
+		await svc.RecordRestorationResponseAsync(ClusterId, DeviceB, null, "still_affected", default);
+		// 1 yes / 2 total = 0.5 < RestorationRatio (0.6) → cluster must
+		// remain Active and no possible_restoration decision must be written.
+		Assert.Equal(SignalState.Active, cluster.State);
+		Assert.Empty(cRepo.Decisions);
 	}
 
 	[Fact]
@@ -238,5 +281,53 @@ public class ParticipationServiceTests
 		await svc.RecordRestorationResponseAsync(ClusterId, DeviceA, null, "restored", default(CancellationToken));
 		Assert.Equal(SignalState.Active, cluster.State);
 		Assert.Empty(cRepo.Decisions);
+	}
+
+	[Fact]
+	public async Task GetRestorationCountSnapshot_ReturnsYesNoTotalConsistently()
+	{
+		// Direct contract test for the new repository surface: yes + no +
+		// unsure must equal total, and yes must never exceed total. This
+		// covers #143's atomic-snapshot invariant at the repo boundary so
+		// any future implementation (real EF or fake) can be checked
+		// against the same shape.
+		var pRepo = new FakeParticipationRepo();
+		var clusterId = ClusterId;
+
+		Hali.Domain.Entities.Participation.Participation Make(ParticipationType t, Guid device) => new()
+		{
+			Id = Guid.NewGuid(),
+			ClusterId = clusterId,
+			DeviceId = device,
+			ParticipationType = t,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		// 3 yes, 2 no, 1 unsure, plus 1 unrelated Affected row that must not
+		// be included in the totals.
+		await pRepo.AddAsync(Make(ParticipationType.RestorationYes, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.RestorationYes, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.RestorationYes, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.RestorationNo, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.RestorationNo, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.RestorationUnsure, Guid.NewGuid()), default);
+		await pRepo.AddAsync(Make(ParticipationType.Affected, Guid.NewGuid()), default);
+
+		RestorationCountSnapshot snapshot = await pRepo.GetRestorationCountSnapshotAsync(clusterId, default);
+
+		Assert.Equal(3, snapshot.YesVotes);
+		Assert.Equal(2, snapshot.NoVotes);
+		Assert.Equal(6, snapshot.TotalResponses);
+		Assert.True(snapshot.YesVotes <= snapshot.TotalResponses);
+	}
+
+	[Fact]
+	public async Task GetRestorationCountSnapshot_NoRestorationVotes_ReturnsZeros()
+	{
+		var pRepo = new FakeParticipationRepo();
+		RestorationCountSnapshot snapshot = await pRepo.GetRestorationCountSnapshotAsync(ClusterId, default);
+		Assert.Equal(0, snapshot.YesVotes);
+		Assert.Equal(0, snapshot.NoVotes);
+		Assert.Equal(0, snapshot.TotalResponses);
 	}
 }

@@ -1246,11 +1246,7 @@ components:
             Total count of restoration responses on this cluster (participation
             types restoration_yes + restoration_no + restoration_unsure).
             Populated only when state == possible_restoration. Aggregate count
-            only. Note: the current HTTP write path records `still_affected`
-            responses as `affected` rather than `restoration_no`, so those
-            responses do not presently contribute to this count. Tracked in
-            issue #142 — resolving it does not change the wire shape here,
-            only the data that populates it.
+            only.
     MyParticipation:
       type: object
       description: |
