@@ -36,7 +36,8 @@ public interface IHomeFeedQueryService
     /// Returns published official posts scoped to any of the specified localities,
     /// mapped to response DTOs. Results are de-duplicated by post id (a post
     /// scoped to multiple localities returns once) and ordered by CreatedAt
-    /// descending. Single DB scope — replaces the previous per-locality loop.
+    /// descending. Single DI scope / DbContext — replaces the previous
+    /// per-locality loop.
     /// </summary>
     Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalitiesAsync(
         IEnumerable<Guid> localityIds, CancellationToken ct);

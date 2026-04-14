@@ -87,6 +87,11 @@ public class HomeFeedQueryService : IHomeFeedQueryService
             .Distinct()
             .ToListAsync(ct);
 
+        // Short-circuit: no scoped posts means no results. Avoids a second
+        // round-trip with an empty IN() set in the common case where a
+        // followed locality set has no published official posts.
+        if (postIds.Count == 0) return Array.Empty<OfficialPostResponseDto>();
+
         var posts = await db.OfficialPosts
             .AsNoTracking()
             .Where(p => postIds.Contains(p.Id) && p.Status == "published")
