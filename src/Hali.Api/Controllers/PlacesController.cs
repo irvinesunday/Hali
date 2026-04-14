@@ -191,52 +191,78 @@ public class PlacesController : ControllerBase
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many requests.", code = "rate_limited" });
         }
 
-        // Quantize the cache key so small GPS jitter hits the same cache entry
-        // (~11m at 4 decimal places near the equator). Nominatim TOS is also
-        // happier when we don't fan out unique keys per millidegree.
-        string cacheKey = string.Format(
-            System.Globalization.CultureInfo.InvariantCulture,
-            "places_reverse:{0:F4}:{1:F4}",
-            latitude,
-            longitude);
-        RedisValue cached = await _redis.StringGetAsync(cacheKey);
-        if (cached.HasValue)
-        {
-            try
-            {
-                var hit = JsonSerializer.Deserialize<PlaceCandidateDto>((string)cached!, _cacheJsonOptions);
-                if (hit is not null)
-                {
-                    return Ok(hit);
-                }
-            }
-            catch
-            {
-                // fall through to live fetch
-            }
-        }
-
+        // Spatial integrity: always resolve locality FRESH for the caller's
+        // coordinates before consulting the label cache. The previous design
+        // (cache the full PlaceCandidateDto keyed by {lat:F4}:{lng:F4})
+        // allowed two callers whose points rounded into the same 4dp bucket
+        // (~11m at the equator) to share a cached response — which, for a
+        // ward-boundary bucket or a bucket that straddled the edge of known
+        // coverage, could
+        //   (a) return a neighbor's locality to a caller whose point was
+        //       outside every Hali locality (bypass of the locality guard),
+        //   (b) return a neighbor's wardName / cityName / localityId across
+        //       a ward boundary, and
+        //   (c) return a neighbor's lat/lng instead of the caller's own.
+        // We now always call FindByPointAsync on the caller's coordinates
+        // and only cache the reverse-geocoded label string (the expensive
+        // Nominatim call). The response is rebuilt from the caller's
+        // coordinates + the caller's fresh locality every time.
         LocalitySummary? locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
         {
             return NotFound(new { error = "No locality found for the given coordinates.", code = "locality_not_found" });
         }
 
-        GeocodingResult? reverse;
-        try
+        // Label-only cache. Keyed by quantized coords AND the resolved
+        // localityId so a same-bucket cross-locality hit cannot serve a
+        // neighbour's Nominatim label (which typically embeds the ward
+        // name in its free-form string). Value is the already-trimmed
+        // display name or null-sentinel when Nominatim returned nothing.
+        string labelCacheKey = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "places_reverse_label:{0:F4}:{1:F4}:{2}",
+            latitude,
+            longitude,
+            locality.Id);
+
+        string? label = null;
+        RedisValue cachedLabel = await _redis.StringGetAsync(labelCacheKey);
+        if (cachedLabel.HasValue)
         {
-            reverse = await _geocoding.ReverseGeocodeAsync(latitude, longitude, ct);
+            string raw = (string)cachedLabel!;
+            if (!string.IsNullOrEmpty(raw))
+            {
+                label = raw;
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+
+        if (label is null)
         {
-            _logger.LogWarning(ex, "Reverse geocode failed (coordinates redacted)");
-            reverse = null;
+            GeocodingResult? reverse;
+            try
+            {
+                reverse = await _geocoding.ReverseGeocodeAsync(latitude, longitude, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Reverse geocode failed (coordinates redacted)");
+                reverse = null;
+            }
+
+            label = TrimDisplayName(reverse?.DisplayName);
+            if (!string.IsNullOrEmpty(label))
+            {
+                // Only cache when we have a real Nominatim label. Skipping
+                // the write on a null/empty label avoids pinning a failed
+                // lookup for the full TTL; the fallback label is cheap to
+                // rebuild from the fresh locality each call.
+                await _redis.StringSetAsync(labelCacheKey, label, ReverseCacheTtl);
+            }
         }
 
         PlaceCandidateDto result = new PlaceCandidateDto
         {
-            DisplayName = TrimDisplayName(reverse?.DisplayName)
-                ?? BuildFallbackLabel(locality),
+            DisplayName = !string.IsNullOrEmpty(label) ? label : BuildFallbackLabel(locality),
             Latitude = latitude,
             Longitude = longitude,
             LocalityId = locality.Id,
@@ -244,7 +270,6 @@ public class PlacesController : ControllerBase
             CityName = locality.CityName,
         };
 
-        await _redis.StringSetAsync(cacheKey, JsonSerializer.Serialize(result, _cacheJsonOptions), ReverseCacheTtl);
         return Ok(result);
     }
 

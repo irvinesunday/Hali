@@ -265,4 +265,193 @@ public class PlacesControllerTests
         ObjectResult obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status429TooManyRequests, obj.StatusCode);
     }
+
+    // ---- reverse cache integrity (B-2 / Copilot #1) ----
+    //
+    // Previously the reverse cache was keyed only by quantized coords
+    // ({lat:F4}:{lng:F4}) and stored the full PlaceCandidateDto. Two
+    // callers whose points rounded into the same 4dp bucket could share
+    // a response, which across ward boundaries — or across the edge of
+    // known coverage — leaked a neighbor's localityId / wardName / coords
+    // and could bypass the locality guard entirely.
+    //
+    // The fix: always call FindByPointAsync for the caller's coordinates;
+    // the cache now holds ONLY the expensive Nominatim label, keyed by
+    // {lat:F4}:{lng:F4}:{localityId} so a same-bucket cross-locality
+    // request cannot reuse a neighbour's label.
+    //
+    // These tests prove the two integrity invariants without relying on
+    // NSubstitute's StringSetAsync overload resolution (which is brittle
+    // across SE.Redis 2.12.x's multiple default-arg overloads of
+    // StringSetAsync): we simulate "a prior call has populated the
+    // cache" by pre-seeding `StringGetAsync` with a payload that the old
+    // design would have returned, and assert that the new design ignores
+    // it and re-resolves the caller's locality + rebuilds the response.
+
+    [Fact]
+    public async Task Reverse_OutsideLocality_IsNotServedFromCachedNeighborPayload()
+    {
+        // Simulate: a prior same-bucket call populated the cache with a
+        // valid candidate in LocalityA. Now a caller whose point is
+        // OUTSIDE any known locality hits the same bucket.
+        //
+        // Old design: StringGetAsync would have returned the cached DTO
+        // and the endpoint would have skipped FindByPointAsync entirely,
+        // returning LocalityA's data → locality guard bypassed.
+        //
+        // New design: FindByPointAsync is always called first; when it
+        // returns null the cache is never consulted and 404 is returned.
+        PlaceCandidateDto seededNeighbour = new PlaceCandidateDto
+        {
+            DisplayName = "Ngong Road, Nairobi West",
+            Latitude = -1.30001,
+            Longitude = 36.80001,
+            LocalityId = LocalityA,
+            WardName = "Nairobi West",
+            CityName = "Nairobi",
+        };
+        string seededJson = JsonSerializer.Serialize(seededNeighbour);
+        _localities.FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>())
+            .Returns((LocalitySummary?)null);
+
+        PlacesController controller = CreateController();
+        // Seed StringGetAsync AFTER CreateController so this setup wins
+        // over the default "always return RedisValue.Null" setup.
+        _redis.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(seededJson);
+
+        IActionResult result = await controller.Reverse(-1.30004, 36.80004, CancellationToken.None);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+        // The key integrity assertions: FindByPointAsync ran for the
+        // caller's coords, and the upstream geocoder was never touched
+        // (we short-circuit at the locality guard).
+        await _localities.Received(1)
+            .FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>());
+        await _geocoding.DidNotReceive()
+            .ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Reverse_CrossLocalitySameBucket_DoesNotReturnNeighborLocality()
+    {
+        // Simulate: a prior same-bucket call in LocalityA populated the
+        // cache. Now a caller whose point is inside LocalityB (different
+        // ward, same 4dp bucket) arrives.
+        //
+        // Old design: StringGetAsync returned LocalityA's DTO verbatim,
+        // so callerB saw LocalityA's wardName/cityName/localityId + caller
+        // A's coords.
+        //
+        // New design: the cache key is partitioned by localityId, so a
+        // seeded entry written under LocalityA's key is not visible to a
+        // lookup under LocalityB's key. The controller calls Nominatim
+        // fresh for callerB and returns callerB's own locality.
+        PlaceCandidateDto seededLocalityA = new PlaceCandidateDto
+        {
+            DisplayName = "Ngong Road, Nairobi West",
+            Latitude = -1.30001,
+            Longitude = 36.80001,
+            LocalityId = LocalityA,
+            WardName = "Nairobi West",
+            CityName = "Nairobi",
+        };
+        string seededJson = JsonSerializer.Serialize(seededLocalityA);
+
+        _localities.FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>())
+            .Returns(new LocalitySummary(LocalityB, "Dagoretti", "Nairobi", "Nairobi"));
+        _geocoding.ReverseGeocodeAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>())
+            .Returns(new GeocodingResult("Ngong Road, Dagoretti, Nairobi, Kenya",
+                "Ngong Road", "Dagoretti", "Nairobi", "Kenya"));
+
+        PlacesController controller = CreateController();
+        // Seed StringGetAsync to return the LocalityA payload only when
+        // an old-style key (no localityId in the key) is queried — to
+        // prove that the new code never uses that key. Any key the
+        // new controller asks for (which includes localityId) returns
+        // RedisValue.Null → cache miss → live Nominatim call.
+        _redis.StringGetAsync(
+                Arg.Is<RedisKey>(k =>
+                    k.ToString().StartsWith("places_reverse:", StringComparison.Ordinal)
+                    && !k.ToString().StartsWith("places_reverse_label:", StringComparison.Ordinal)),
+                Arg.Any<CommandFlags>())
+            .Returns(seededJson);
+
+        IActionResult result = await controller.Reverse(-1.30004, 36.80004, CancellationToken.None);
+
+        PlaceCandidateDto payload = Assert.IsType<PlaceCandidateDto>(Assert.IsType<OkObjectResult>(result).Value);
+        // CallerB's response reflects CallerB's own locality + coords,
+        // NOT LocalityA from the seeded neighbour payload.
+        Assert.Equal(LocalityB, payload.LocalityId);
+        Assert.Equal("Dagoretti", payload.WardName);
+        Assert.Equal(-1.30004, payload.Latitude);
+        Assert.Equal(36.80004, payload.Longitude);
+        Assert.Equal("Ngong Road, Dagoretti", payload.DisplayName);
+
+        await _localities.Received(1)
+            .FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Reverse_CacheKey_IncludesLocalityId()
+    {
+        // Proves the cache partitioning: the controller's cache read uses
+        // a key that contains the resolved localityId. This is the
+        // structural guarantee that a cross-locality same-bucket request
+        // cannot reuse a neighbour's cache entry.
+        _localities.FindByPointAsync(-1.30001, 36.80001, Arg.Any<CancellationToken>())
+            .Returns(new LocalitySummary(LocalityA, "Nairobi West", "Nairobi", "Nairobi"));
+        _geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
+            .Returns((GeocodingResult?)null);
+
+        PlacesController controller = CreateController();
+        IActionResult result = await controller.Reverse(-1.30001, 36.80001, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        // At least one StringGetAsync call must have used a key that
+        // contains the resolved localityId, anchoring the cache to the
+        // caller's actual locality rather than coords alone.
+        await _redis.Received().StringGetAsync(
+            Arg.Is<RedisKey>(k =>
+                k.ToString().StartsWith("places_reverse_label:", StringComparison.Ordinal)
+                && k.ToString().Contains(LocalityA.ToString())),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task Reverse_AlwaysResolvesCallerLocality_EvenWhenSomethingIsCached()
+    {
+        // Strongest invariant: FindByPointAsync runs for the caller's
+        // coords BEFORE any cached payload can affect the response. Pre-
+        // seed a cache hit that would satisfy any key, and assert the
+        // locality repository was still consulted with the caller's coords.
+        PlaceCandidateDto seeded = new PlaceCandidateDto
+        {
+            DisplayName = "Seeded Label",
+            Latitude = 0.0,
+            Longitude = 0.0,
+            LocalityId = LocalityA,
+            WardName = "Seeded Ward",
+            CityName = "Seeded City",
+        };
+        string seededJson = JsonSerializer.Serialize(seeded);
+        _localities.FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>())
+            .Returns(new LocalitySummary(LocalityB, "Dagoretti", "Nairobi", "Nairobi"));
+        _geocoding.ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>())
+            .Returns((GeocodingResult?)null);
+
+        PlacesController controller = CreateController();
+        _redis.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(seededJson);
+
+        IActionResult result = await controller.Reverse(-1.30004, 36.80004, CancellationToken.None);
+
+        PlaceCandidateDto payload = Assert.IsType<PlaceCandidateDto>(Assert.IsType<OkObjectResult>(result).Value);
+        // Locality came from the fresh lookup, not the seeded cache entry.
+        Assert.Equal(LocalityB, payload.LocalityId);
+        Assert.Equal(-1.30004, payload.Latitude);
+        Assert.Equal(36.80004, payload.Longitude);
+        await _localities.Received(1)
+            .FindByPointAsync(-1.30004, 36.80004, Arg.Any<CancellationToken>());
+    }
 }
