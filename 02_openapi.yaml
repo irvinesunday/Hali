@@ -823,7 +823,9 @@ components:
       description: |
         Mirrors `Hali.Contracts.Signals.SignalLocationDto`. Resolved location
         descriptors and a confidence score.
-      required: [locationConfidence, locationSource]
+      required:
+        [areaName, roadName, junctionName, landmarkName, facilityName,
+         locationLabel, locationPrecisionType, locationConfidence, locationSource]
       properties:
         areaName: { type: string, nullable: true }
         roadName: { type: string, nullable: true }
@@ -841,7 +843,8 @@ components:
         previously-documented `candidates[]` and `existingClusterCandidates[]`
         arrays do NOT exist in the backend.
       required:
-        [category, subcategorySlug, conditionConfidence, location, shouldSuggestJoin]
+        [category, subcategorySlug, conditionSlug, conditionConfidence, location,
+         temporalType, neutralSummary, shouldSuggestJoin]
       properties:
         category: { $ref: '#/components/schemas/CivicCategory' }
         subcategorySlug: { type: string }
@@ -1014,8 +1017,8 @@ components:
     OfficialPostResponse:
       type: object
       required:
-        [id, institutionId, type, category, title, body, status,
-         isRestorationClaim, createdAt]
+        [id, institutionId, type, category, title, body, startsAt, endsAt,
+         status, relatedClusterId, isRestorationClaim, createdAt]
       properties:
         id: { type: string, format: uuid }
         institutionId: { type: string, format: uuid }
@@ -1039,7 +1042,7 @@ components:
         clusterResolved: { type: boolean }
     UserMeResponse:
       type: object
-      required: [id, status, createdAt, notificationSettings]
+      required: [id, displayName, phoneE164, email, status, createdAt, notificationSettings]
       properties:
         id: { type: string, format: uuid }
         displayName: { type: string, nullable: true }

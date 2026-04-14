@@ -82,7 +82,7 @@ public class ClustersController : ControllerBase
         var dto = new ClusterResponseDto(
             cluster.Id,
             JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.State.ToString()),
-            cluster.Category.ToString().ToLowerInvariant(),
+            JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.Category.ToString()),
             cluster.SubcategorySlug,
             cluster.Title,
             cluster.Summary,
