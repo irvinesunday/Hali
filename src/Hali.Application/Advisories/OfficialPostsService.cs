@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Contracts.Advisories;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Clusters;
@@ -29,15 +30,17 @@ public class OfficialPostsService : IOfficialPostsService
         CancellationToken ct)
     {
         if (!Enum.TryParse<OfficialPostType>(dto.Type.Replace("_", ""), ignoreCase: true, out var postType))
-            throw new ArgumentException("INVALID_POST_TYPE");
+            throw new ValidationException("Invalid post type.", code: "official_post.invalid_type");
 
         if (!Enum.TryParse<CivicCategory>(dto.Category.Replace("_", ""), ignoreCase: true, out var category))
-            throw new ArgumentException("INVALID_CATEGORY");
+            throw new ValidationException("Invalid category.", code: "official_post.invalid_category");
 
         // Geo-scope enforcement BEFORE insert — no out-of-jurisdiction row ever lands in the DB
         bool allowed = await _repo.CheckJurisdictionForLocalityAsync(institutionId, dto.LocalityId, ct);
         if (!allowed)
-            throw new InvalidOperationException("OUTSIDE_JURISDICTION");
+            throw new ForbiddenException(
+                code: "official_post.outside_jurisdiction",
+                message: "Post scope is outside institution jurisdiction.");
 
         var post = new OfficialPost
         {
