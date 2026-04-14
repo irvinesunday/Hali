@@ -39,10 +39,11 @@ import {
   FeedbackButton,
 } from '../../src/components/shared';
 
-import { getFollowedLocalities, searchLocalities } from '../../src/api/localities';
+import { getAllLocalities, getFollowedLocalities } from '../../src/api/localities';
 import { useHome, ApiResultError } from '../../src/hooks/useClusters';
 import { useLocalityContext } from '../../src/context/LocalityContext';
 import { useAuth } from '../../src/context/AuthContext';
+import { filterLocalities } from '../../src/utils/localityFilter';
 import { formatRelativeTime, getCategoryInstitutionName } from '../../src/utils/formatters';
 import {
   Colors,
@@ -58,7 +59,7 @@ import type {
   ClusterResponse,
   OfficialPostResponse,
   PagedSection,
-  LocalitySearchResult,
+  LocalitySummary,
 } from '../../src/types/api';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -278,17 +279,25 @@ export default function HomeScreen(): React.ReactElement {
           followedLocalities={followedLocalities}
           activeLocalityId={activeLocality?.localityId ?? null}
           isAuthenticated={isAuthenticated}
-          onSelectLocality={(id) => {
-            setActiveLocalityId(id);
-            setLocalitySelectorOpen(false);
-          }}
-          onSelectSearchResult={(result) => {
-            setActiveLocality({
-              localityId: result.localityId,
-              wardName: result.wardName,
-              displayLabel: result.placeLabel,
-              cityName: result.cityName,
-            });
+          onSelectWard={(ward) => {
+            // If the ward is one of the user's existing follows, route
+            // through setActiveLocalityId so the stored displayLabel is
+            // preserved. Otherwise drop the bare ward into activeLocality
+            // (no follow side-effect — works for both guests and authed
+            // users who are browsing).
+            const followed = followedLocalities.find(
+              (l) => l.localityId === ward.localityId,
+            );
+            if (followed !== undefined) {
+              setActiveLocalityId(ward.localityId);
+            } else {
+              setActiveLocality({
+                localityId: ward.localityId,
+                wardName: ward.wardName,
+                displayLabel: null,
+                cityName: ward.cityName,
+              });
+            }
             setLocalitySelectorOpen(false);
           }}
         />
@@ -395,109 +404,111 @@ function ErrorState({
 }
 
 // ─── Locality selector sheet ────────────────────────────────────────────────
+//
+// Searchable ward picker. Fetches the canonical ward list once
+// (GET /v1/localities/wards, cached 24h server-side and staleTime:Infinity
+// client-side) and filters it locally so typing is instant. Shows the
+// user's followed wards at the top for fast switching, then the full
+// "Browse all wards" list below.
 
 interface LocalitySelectorSheetProps {
   onClose: () => void;
   followedLocalities: Array<{ localityId: string; wardName: string; displayLabel: string | null }>;
   activeLocalityId: string | null;
   isAuthenticated: boolean;
-  onSelectLocality: (id: string) => void;
-  /** Select a search result directly — used by anonymous browse. */
-  onSelectSearchResult: (result: LocalitySearchResult) => void;
+  /** Tap on any ward row — follow-state handled by the caller. */
+  onSelectWard: (ward: LocalitySummary) => void;
 }
+
+type SheetRow =
+  | { kind: 'header'; id: string; label: string }
+  | { kind: 'ward'; ward: LocalitySummary };
 
 function LocalitySelectorSheet({
   onClose,
   followedLocalities,
   activeLocalityId,
   isAuthenticated,
-  onSelectLocality,
-  onSelectSearchResult,
+  onSelectWard,
 }: LocalitySelectorSheetProps): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<LocalitySearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
-  const latestSearchRequestRef = useRef(0);
 
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      if (searchTimeout.current) {
-        clearTimeout(searchTimeout.current);
-        searchTimeout.current = null;
+  // Full ward list — static-ish data, cached aggressively. The query only
+  // mounts when the sheet is open (the parent conditionally renders this
+  // component) so there's no cost when the picker is closed.
+  const wardsQuery = useQuery({
+    queryKey: ['localities', 'all'],
+    queryFn: async () => {
+      const result = await getAllLocalities();
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    },
+    staleTime: 24 * 60 * 60 * 1000, // 24h — backend cache matches
+    retry: 1,
+  });
+
+  const allWards = wardsQuery.data ?? [];
+
+  const filteredWards = useMemo<LocalitySummary[]>(
+    () => filterLocalities(allWards, searchQuery),
+    [allWards, searchQuery],
+  );
+
+  const listData = useMemo<SheetRow[]>(() => {
+    const rows: SheetRow[] = [];
+    const followedIds = new Set(followedLocalities.map((l) => l.localityId));
+    const trimmedQuery = searchQuery.trim();
+
+    // Section 1: Followed wards. Only show this section when the user
+    // is browsing (no search query) — once they start typing, folding
+    // followed + all wards into one filtered list is clearer.
+    if (trimmedQuery.length === 0 && followedLocalities.length > 0) {
+      rows.push({ kind: 'header', id: 'h:followed', label: 'Your areas' });
+      for (const fl of followedLocalities) {
+        rows.push({
+          kind: 'ward',
+          ward: {
+            localityId: fl.localityId,
+            wardName: fl.displayLabel ?? fl.wardName,
+            cityName: null,
+          },
+        });
       }
-    };
-  }, []);
-
-  const handleSearchChange = (text: string) => {
-    setSearchQuery(text);
-    if (searchTimeout.current) {
-      clearTimeout(searchTimeout.current);
-      searchTimeout.current = null;
     }
 
-    const trimmed = text.trim();
-    if (trimmed.length < 2) {
-      // Invalidate any in-flight request and clear results immediately.
-      latestSearchRequestRef.current += 1;
-      setSearching(false);
-      setSearchResults([]);
-      return;
+    // Section 2: Browse / search results over the full ward list,
+    // excluding any ward already shown in the followed section above.
+    const browseWards =
+      trimmedQuery.length === 0
+        ? filteredWards.filter((w) => !followedIds.has(w.localityId))
+        : filteredWards;
+
+    if (browseWards.length > 0) {
+      rows.push({
+        kind: 'header',
+        id: 'h:browse',
+        label:
+          trimmedQuery.length === 0
+            ? followedLocalities.length > 0
+              ? 'Browse all wards'
+              : 'All wards'
+            : 'Matches',
+      });
+      for (const w of browseWards) {
+        rows.push({ kind: 'ward', ward: w });
+      }
     }
 
-    const requestId = ++latestSearchRequestRef.current;
-    searchTimeout.current = setTimeout(async () => {
-      if (!isMountedRef.current || requestId !== latestSearchRequestRef.current) {
-        return;
-      }
-      setSearching(true);
-      try {
-        const result = await searchLocalities(trimmed);
-        if (
-          !isMountedRef.current ||
-          requestId !== latestSearchRequestRef.current
-        ) {
-          return;
-        }
-        // Always reflect the latest request — clear stale results on
-        // error so the UI never shows results for a different query.
-        if (result.ok) {
-          setSearchResults(result.value);
-        } else {
-          setSearchResults([]);
-        }
-      } catch {
-        if (
-          isMountedRef.current &&
-          requestId === latestSearchRequestRef.current
-        ) {
-          setSearchResults([]);
-        }
-      } finally {
-        if (
-          isMountedRef.current &&
-          requestId === latestSearchRequestRef.current
-        ) {
-          setSearching(false);
-        }
-      }
-    }, 350);
-  };
+    return rows;
+  }, [followedLocalities, filteredWards, searchQuery]);
 
-  const showFollowed = searchQuery.trim().length < 2;
+  const showEmptyState =
+    wardsQuery.isSuccess &&
+    searchQuery.trim().length > 0 &&
+    filteredWards.length === 0;
 
-  // Normalise both data sources into a single shape for FlatList
-  const listData: Array<{ localityId: string; label: string }> = showFollowed
-    ? followedLocalities.map((l) => ({
-        localityId: l.localityId,
-        label: l.displayLabel ?? l.wardName,
-      }))
-    : searchResults.map((r) => ({
-        localityId: r.localityId,
-        label: r.placeLabel,
-      }));
+  const showLoadError = wardsQuery.isError;
+  const showInitialLoading = wardsQuery.isLoading && allWards.length === 0;
 
   return (
     <View style={styles.sheetOverlay}>
@@ -509,7 +520,9 @@ function LocalitySelectorSheet({
       <View style={styles.sheet}>
         {/* Sheet header */}
         <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>{isAuthenticated ? 'Your areas' : 'Browse an area'}</Text>
+          <Text style={styles.sheetTitle}>
+            {isAuthenticated ? 'Your areas' : 'Browse an area'}
+          </Text>
           <TouchableOpacity
             onPress={onClose}
             accessibilityLabel="Close"
@@ -524,14 +537,16 @@ function LocalitySelectorSheet({
           <Search size={16} color={Colors.mutedForeground} strokeWidth={2} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search for an area…"
+            placeholder="Search wards by name…"
             placeholderTextColor={Colors.faintForeground}
             value={searchQuery}
-            onChangeText={handleSearchChange}
+            onChangeText={setSearchQuery}
             autoCorrect={false}
+            autoCapitalize="none"
             returnKeyType="search"
+            accessibilityLabel="Search wards"
           />
-          {searching && (
+          {showInitialLoading && (
             <ActivityIndicator size="small" color={Colors.primary} />
           )}
         </View>
@@ -555,46 +570,37 @@ function LocalitySelectorSheet({
         {/* Results list */}
         <FlatList
           data={listData}
-          keyExtractor={(item) => item.localityId}
+          keyExtractor={(item) =>
+            item.kind === 'header' ? item.id : `w:${item.ward.localityId}`
+          }
           renderItem={({ item }) => {
-            const id = item.localityId;
-            const label = item.label;
-            const isActive = id === activeLocalityId;
-            const isFollowed = followedLocalities.some(
-              (l) => l.localityId === id,
-            );
-            // Anonymous users may select any search result for browse-mode;
-            // authenticated users can only select their followed localities
-            // (unfollowed results are disabled until ward follow is wired).
-            const canSelect = isFollowed || (!isAuthenticated && !showFollowed);
+            if (item.kind === 'header') {
+              return (
+                <Text style={styles.sheetSectionHeader}>{item.label}</Text>
+              );
+            }
+
+            const ward = item.ward;
+            const isActive = ward.localityId === activeLocalityId;
+            const label = ward.cityName
+              ? `${ward.wardName}, ${ward.cityName}`
+              : ward.wardName;
 
             return (
               <TouchableOpacity
                 style={[
                   styles.localityRow,
                   isActive && styles.localityRowActive,
-                  !canSelect && styles.localityRowDisabled,
                 ]}
-                disabled={!canSelect}
                 onPress={() => {
                   Keyboard.dismiss();
-                  if (!canSelect) return;
-                  if (isFollowed) {
-                    onSelectLocality(id);
-                  } else {
-                    // Guest browse — look up by stable localityId key so
-                    // selection is correct even if searchResults changed
-                    // between render and tap.
-                    const sr = searchResults.find(
-                      (result) => result.localityId === id,
-                    );
-                    if (sr) {
-                      onSelectSearchResult(sr);
-                    }
-                  }
+                  onSelectWard(ward);
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isActive, disabled: !canSelect }}
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={
+                  isActive ? `${label}, currently selected` : label
+                }
               >
                 <Text
                   style={[
@@ -611,8 +617,14 @@ function LocalitySelectorSheet({
             );
           }}
           ListEmptyComponent={
-            searchQuery.trim().length >= 2 && !searching ? (
-              <Text style={styles.searchEmpty}>No areas found</Text>
+            showLoadError ? (
+              <Text style={styles.searchEmpty}>
+                Couldn't load wards. Pull down to retry.
+              </Text>
+            ) : showEmptyState ? (
+              <Text style={styles.searchEmpty}>No wards match "{searchQuery.trim()}"</Text>
+            ) : showInitialLoading ? (
+              <Text style={styles.searchEmpty}>Loading wards…</Text>
             ) : null
           }
           keyboardShouldPersistTaps="handled"
@@ -781,7 +793,17 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   sheetList: {
-    maxHeight: 280,
+    maxHeight: 360,
+  },
+  sheetSectionHeader: {
+    fontSize: FontSize.micro,
+    fontFamily: FontFamily.semiBold,
+    color: Colors.mutedForeground,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: ScreenPaddingH,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
   },
   localityRow: {
     flexDirection: 'row',
@@ -794,9 +816,6 @@ const styles = StyleSheet.create({
   },
   localityRowActive: {
     backgroundColor: Colors.primarySubtle,
-  },
-  localityRowDisabled: {
-    opacity: 0.5,
   },
   localityRowText: {
     fontSize: FontSize.body,

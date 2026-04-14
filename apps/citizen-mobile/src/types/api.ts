@@ -104,6 +104,19 @@ export interface LocalitySearchResult {
 
 export type LocalitySearchResponse = LocalitySearchResult[];
 
+/**
+ * Response item from GET /v1/localities/wards — the canonical full
+ * ward/locality list. The mobile client caches this and runs a
+ * fast client-side search/filter over it.
+ */
+export interface LocalitySummary {
+  localityId: string;
+  wardName: string;
+  cityName: string | null;
+}
+
+export type LocalitiesListResponse = LocalitySummary[];
+
 // Response from GET /v1/localities/resolve-by-coordinates.
 // Shape differs from LocalitySearchResult — no placeLabel field.
 export interface LocalityResolveResponse {
