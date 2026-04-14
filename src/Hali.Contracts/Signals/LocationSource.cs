@@ -20,17 +20,18 @@ namespace Hali.Contracts.Signals;
 ///     <item><c>place_search</c> — user picked a Nominatim-backed place search
 ///           result from the low-confidence fallback picker. Both the label
 ///           and the coordinates are authoritative from the picker.</item>
+///     <item><c>map_pin</c> — user refined location by dropping / dragging a
+///           marker on the map fallback surface (C11.1). Coordinates come
+///           from the marker position; the label is reverse-geocoded on
+///           marker release via <c>/v1/places/reverse</c>.</item>
 ///   </list>
-///
-/// The draggable map-pin fallback (<c>map_pin</c>) is intentionally deferred —
-/// see the C11.1 follow-up issue. Do not advertise <c>map_pin</c> here or in
-/// OpenAPI until that surface ships.
 /// </summary>
 public static class LocationSource
 {
     public const string Nlp = "nlp";
     public const string UserEdit = "user_edit";
     public const string PlaceSearch = "place_search";
+    public const string MapPin = "map_pin";
 
     /// <summary>
     /// Case-sensitive allowlist. Submit requests whose <c>LocationSource</c>
@@ -42,6 +43,7 @@ public static class LocationSource
         Nlp,
         UserEdit,
         PlaceSearch,
+        MapPin,
     };
 
     public static IReadOnlyCollection<string> All => AllSet;

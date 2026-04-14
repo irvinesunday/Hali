@@ -523,18 +523,20 @@ public class SignalIngestionServiceTests
         Assert.NotEqual(Guid.Empty, result.SignalEventId);
     }
 
-    // --- C11: location source allowlist + place_search label requirement ---
+    // --- C11 + C11.1: location source allowlist + authoritative-label sources ---
 
     [Theory]
     [InlineData("nlp")]
     [InlineData("user_edit")]
     [InlineData("place_search")]
+    [InlineData("map_pin")]        // C11.1: draggable map-pin fallback
     public async Task SubmitAsync_ValidLocationSource_Succeeds(string source)
     {
         SetupDefaultRepo();
         SetupDefaultH3();
         SetupDefaultLocality();
-        // place_search requires a label; the default request already has one.
+        // place_search and map_pin require a label; the default request
+        // already has one.
         SignalSubmitRequestDto request = MakeSubmitRequest() with { LocationSource = source };
         SignalIngestionService svc = CreateService();
 
@@ -544,9 +546,10 @@ public class SignalIngestionServiceTests
     }
 
     [Theory]
-    [InlineData("map_pin")]        // deferred to C11.1 — not yet in the allowlist
+    [InlineData("MAP_PIN")]        // wire allowlist is case-sensitive
     [InlineData("NLP")]            // wire allowlist is case-sensitive
     [InlineData("place-search")]   // dash vs underscore
+    [InlineData("pin")]            // not a canonical value
     [InlineData("")]
     [InlineData("   ")]
     public async Task SubmitAsync_UnknownLocationSource_ThrowsInvalidLocationSource(string source)
@@ -562,18 +565,29 @@ public class SignalIngestionServiceTests
         await _repo.DidNotReceive().PersistSignalAsync(Arg.Any<SignalEvent>(), Arg.Any<CancellationToken>());
     }
 
+    public static TheoryData<string, string?> AuthoritativeLabelSources()
+    {
+        var data = new TheoryData<string, string?>();
+        foreach (var source in new[] { "place_search", "map_pin" })
+        {
+            data.Add(source, null);
+            data.Add(source, "");
+            data.Add(source, "   ");
+        }
+        return data;
+    }
+
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task SubmitAsync_PlaceSearchWithoutLabel_ThrowsLocationLabelRequired(string? label)
+    [MemberData(nameof(AuthoritativeLabelSources))]
+    public async Task SubmitAsync_AuthoritativeLabelSourceWithoutLabel_ThrowsLocationLabelRequired(
+        string source, string? label)
     {
         SetupDefaultRepo();
         SetupDefaultH3();
         SetupDefaultLocality();
         SignalSubmitRequestDto request = MakeSubmitRequest() with
         {
-            LocationSource = "place_search",
+            LocationSource = source,
             LocationLabel = label,
         };
         SignalIngestionService svc = CreateService();
