@@ -21,23 +21,61 @@ namespace Hali.Tests.Unit.Home;
 public class HomeFeedConcurrencyTests
 {
     // ── Fake IHomeFeedQueryService that tracks concurrent calls ──────────────
+    //
+    // Determinism note (issue #103):
+    // This fake previously used Task.Delay(10) to simulate DB latency and relied
+    // on time-based overlap to prove the fire-then-await pattern was concurrent.
+    // That proof is flaky on slow CI runners where the delay can complete before
+    // all tasks are scheduled. We now use a TaskCompletionSource release gate:
+    // each in-flight call arrives at the gate and only proceeds once
+    // _expectedConcurrency callers are simultaneously present. If fewer callers
+    // arrive, the gate's CancellationToken timeout fires and the test fails
+    // loudly rather than racing. When _expectedConcurrency is 1 (single-call
+    // tests) the gate opens immediately, so no coordination is required.
 
     private sealed class TrackingFeedQueryService : IHomeFeedQueryService
     {
         private int _activeCalls;
         private int _peakConcurrency;
+        private int _arrivedCount;
         private readonly object _lock = new();
+        private readonly int _expectedConcurrency;
+        private readonly TaskCompletionSource _gate =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TimeSpan _gateTimeout;
 
-        public int PeakConcurrency => _peakConcurrency;
+        public TrackingFeedQueryService(int expectedConcurrency = 1, TimeSpan? gateTimeout = null)
+        {
+            if (expectedConcurrency < 1)
+                throw new ArgumentOutOfRangeException(nameof(expectedConcurrency));
+            _expectedConcurrency = expectedConcurrency;
+            _gateTimeout = gateTimeout ?? TimeSpan.FromSeconds(5);
 
-        private void Enter()
+            // For single-caller scenarios, release the gate up front so Enter()
+            // does not block on itself.
+            if (expectedConcurrency == 1)
+                _gate.TrySetResult();
+        }
+
+        public int PeakConcurrency => Volatile.Read(ref _peakConcurrency);
+
+        private async Task EnterAsync(CancellationToken ct)
         {
             lock (_lock)
             {
                 _activeCalls++;
                 if (_activeCalls > _peakConcurrency)
                     _peakConcurrency = _activeCalls;
+                _arrivedCount++;
+                if (_arrivedCount >= _expectedConcurrency)
+                    _gate.TrySetResult();
             }
+
+            // Wait until the expected number of callers are all present, so every
+            // task is provably in-flight simultaneously. Fail fast on timeout.
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linked.CancelAfter(_gateTimeout);
+            await _gate.Task.WaitAsync(linked.Token).ConfigureAwait(false);
         }
 
         private void Exit()
@@ -49,10 +87,9 @@ public class HomeFeedConcurrencyTests
             IEnumerable<Guid> localityIds, bool? recurringOnly, int limit,
             DateTime? cursorBefore, CancellationToken ct)
         {
-            Enter();
+            await EnterAsync(ct);
             try
             {
-                await Task.Delay(10, ct); // simulate DB latency
                 var ids = localityIds.ToList();
                 if (ids.Count == 0)
                     return new List<SignalCluster>();
@@ -68,10 +105,9 @@ public class HomeFeedConcurrencyTests
             IEnumerable<Guid> excludeLocalityIds, int limit,
             DateTime? cursorBefore, CancellationToken ct)
         {
-            Enter();
+            await EnterAsync(ct);
             try
             {
-                await Task.Delay(10, ct);
                 return new List<SignalCluster> { MakeCluster(Guid.NewGuid()) };
             }
             finally { Exit(); }
@@ -80,10 +116,9 @@ public class HomeFeedConcurrencyTests
         public async Task<IReadOnlyList<OfficialPostResponseDto>> GetOfficialPostsByLocalityAsync(
             Guid localityId, CancellationToken ct)
         {
-            Enter();
+            await EnterAsync(ct);
             try
             {
-                await Task.Delay(10, ct);
                 return new List<OfficialPostResponseDto>();
             }
             finally { Exit(); }
@@ -109,7 +144,10 @@ public class HomeFeedConcurrencyTests
     [Fact]
     public async Task ConcurrentSections_ExecuteInParallel()
     {
-        var svc = new TrackingFeedQueryService();
+        // The gate only releases once all four callers are simultaneously
+        // in-flight, so observing the WhenAll completing is itself proof of
+        // concurrent execution — no time-based race.
+        var svc = new TrackingFeedQueryService(expectedConcurrency: 4);
         var localityIds = new List<Guid> { Guid.NewGuid() };
 
         // Mirror BuildFullResponseAsync pattern
@@ -120,9 +158,9 @@ public class HomeFeedConcurrencyTests
 
         await Task.WhenAll(t1, t2, t3, t4);
 
-        // At least 2 of the 4 tasks should have overlapped
-        Assert.True(svc.PeakConcurrency >= 2,
-            $"Expected concurrent execution but peak was {svc.PeakConcurrency}");
+        // All four tasks must have been in-flight together for the gate to
+        // release. Peak concurrency is therefore exactly the expected count.
+        Assert.Equal(4, svc.PeakConcurrency);
     }
 
     // ── Test 2: all four sections return results under concurrency ────────────
@@ -130,7 +168,7 @@ public class HomeFeedConcurrencyTests
     [Fact]
     public async Task ConcurrentSections_AllReturnResults()
     {
-        var svc = new TrackingFeedQueryService();
+        var svc = new TrackingFeedQueryService(expectedConcurrency: 4);
         var localityIds = new List<Guid> { Guid.NewGuid() };
 
         var t1 = svc.GetActiveByLocalitiesPagedAsync(localityIds, false, 21, null, CancellationToken.None);
@@ -182,7 +220,7 @@ public class HomeFeedConcurrencyTests
     [Fact]
     public async Task ConcurrentExecution_PreservesSectionFiltering()
     {
-        var svc = new TrackingFeedQueryService();
+        var svc = new TrackingFeedQueryService(expectedConcurrency: 2);
         var localityIds = new List<Guid> { Guid.NewGuid() };
 
         var activeNowTask = svc.GetActiveByLocalitiesPagedAsync(localityIds, false, 21, null, CancellationToken.None);
