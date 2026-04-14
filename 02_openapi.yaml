@@ -437,7 +437,6 @@ paths:
               $ref: '#/components/schemas/FeedbackRequest'
       responses:
         '202': { description: Feedback received }
-        '429': { description: Rate limit exceeded }
 
   # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:
