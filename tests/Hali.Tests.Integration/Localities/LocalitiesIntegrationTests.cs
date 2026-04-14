@@ -84,12 +84,13 @@ public sealed class LocalitiesIntegrationTests : IntegrationTestBase
         // sentinel, we've proven the controller served from cache rather
         // than recomputing from the repository.
         //
-        // The controller caches via default-options JsonSerializer (PascalCase)
-        // and the ASP.NET Core output pipeline writes the wire response in
-        // camelCase — so we write the sentinel in PascalCase to match the
-        // deserialize side, and assert on the camelCase wire shape.
+        // Post-#127: the controller caches via MVC-configured JsonSerializer
+        // options (camelCase) so the cache and wire contracts match. The
+        // sentinel is written in camelCase for the same reason, and the
+        // assertion below verifies the wire response preserves the sentinel
+        // ward name.
         const string sentinelBody =
-            "[{\"LocalityId\":\"00000000-0000-0000-0000-000000000001\",\"WardName\":\"__cache_sentinel__\",\"CityName\":null}]";
+            "[{\"localityId\":\"00000000-0000-0000-0000-000000000001\",\"wardName\":\"__cache_sentinel__\",\"cityName\":null}]";
         await redis.StringSetAsync(WardListCacheKey, sentinelBody);
 
         var warm = await Client.GetAsync("/v1/localities/wards");
@@ -106,6 +107,89 @@ public sealed class LocalitiesIntegrationTests : IntegrationTestBase
         Assert.Equal(
             "__cache_sentinel__",
             doc.RootElement[0].GetProperty("wardName").GetString());
+    }
+
+    /// <summary>
+    /// Regression lock for Issue #127. The Redis cache payload MUST use the
+    /// same camelCase property naming as the HTTP wire response — any future
+    /// drift back to default-options <see cref="JsonSerializer"/> would
+    /// produce PascalCase cache entries while the ASP.NET Core output
+    /// pipeline continues to write camelCase, silently breaking clients on
+    /// cache hits that pass through without reserialization.
+    /// </summary>
+    [Fact]
+    public async Task ListWards_CachedPayload_UsesCamelCasePropertyNames()
+    {
+        await ClearWardListCacheAsync();
+
+        // Cold — populates cache via the repository → serializer path.
+        var response = await Client.GetAsync("/v1/localities/wards");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var redis = scope.ServiceProvider.GetRequiredService<IDatabase>();
+        var raw = (string?)await redis.StringGetAsync(WardListCacheKey);
+
+        Assert.False(
+            string.IsNullOrEmpty(raw),
+            "Expected ward list to be cached in Redis after the cold call.");
+
+        // Casing invariant: the cache must carry the camelCase keys the
+        // client consumes over the wire. Assert both the presence of the
+        // camelCase keys AND the absence of the PascalCase ones.
+        Assert.Contains("\"localityId\"", raw);
+        Assert.Contains("\"wardName\"", raw);
+        Assert.Contains("\"cityName\"", raw);
+        Assert.DoesNotContain("\"LocalityId\"", raw);
+        Assert.DoesNotContain("\"WardName\"", raw);
+        Assert.DoesNotContain("\"CityName\"", raw);
+    }
+
+    // ----------------------------------------------------------------------
+    // GET /v1/localities/search — cache JSON alignment (Issue #127)
+    // ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Rollout compatibility for Issue #127. Any Redis entry written before
+    /// the fix uses PascalCase property names (default-options
+    /// <see cref="JsonSerializer"/>). The fix uses MVC-configured options
+    /// whose <c>PropertyNameCaseInsensitive = true</c> handles those legacy
+    /// entries cleanly, so no cache-key bump or manual invalidation is
+    /// needed during deploy. This test seeds a PascalCase sentinel and
+    /// asserts the wire response comes back as camelCase (i.e. the
+    /// deserialize + Ok() reserialize path works end to end).
+    /// </summary>
+    [Fact]
+    public async Task Search_LegacyPascalCaseCacheEntry_IsServedAsCamelCase()
+    {
+        const string query = "jsonoptions-rollout-probe";
+        var cacheKey = $"locality_search:{query}";
+
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var redis = scope.ServiceProvider.GetRequiredService<IDatabase>();
+
+        // Pre-seed a PascalCase entry — the exact shape the OLD controller
+        // would have written before this fix.
+        const string legacyPascalCaseEntry =
+            "[{\"LocalityId\":\"00000000-0000-0000-0000-000000000002\"," +
+            "\"PlaceLabel\":\"Legacy Place\"," +
+            "\"WardName\":\"Legacy Ward\"," +
+            "\"CityName\":\"Nairobi\"}]";
+        await redis.StringSetAsync(cacheKey, legacyPascalCaseEntry);
+
+        var response = await Client.GetAsync($"/v1/localities/search?q={query}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind);
+        Assert.Equal(1, doc.RootElement.GetArrayLength());
+
+        var first = doc.RootElement[0];
+        // Wire must be camelCase regardless of the cached entry's casing.
+        Assert.Equal("Legacy Ward", first.GetProperty("wardName").GetString());
+        Assert.Equal("Legacy Place", first.GetProperty("placeLabel").GetString());
+        Assert.Equal("Nairobi", first.GetProperty("cityName").GetString());
     }
 
     // ----------------------------------------------------------------------
