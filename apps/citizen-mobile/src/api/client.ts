@@ -68,18 +68,63 @@ export async function clearTokens(): Promise<void> {
 // ─── Error construction ──────────────────────────────────────────────────────
 
 /**
- * Normalise the three error body shapes used across the Hali backend:
- *   1. { error: "..." }                        — most endpoints
- *   2. { error: "...", code: "..." }           — clusters / official posts 422s
- *   3. { code: "...", message: "..." }         — signals rate limiter
+ * Normalise an HTTP error body into the mobile `ApiError` shape.
  *
- * Returns a unified ApiError with both `code` and `message` populated.
- * Prefers `message` over `error` when both are present; prefers `code` over
- * a default when provided.
+ * Primary shape — the canonical backend envelope (H1 + H2):
+ *
+ *   { "error": { "code": "...", "message": "...", "details"?: ..., "traceId": "..." } }
+ *
+ * The entire documented 4xx/5xx surface of the API — including framework
+ * 401/403 — emits this envelope. When it is present, `code`, `message`,
+ * `traceId`, and `details` are extracted verbatim (`details` is passed
+ * through as `unknown`; narrowing is the consumer's responsibility).
+ *
+ * Legacy fallbacks — retained so any still-drifted or third-party endpoint
+ * does not regress to a generic error:
+ *
+ *   1. { "error": "..." }                   — string-only body
+ *   2. { "error": "...", "code": "..." }    — string body + top-level code
+ *   3. { "code": "...", "message": "..." }  — top-level code + message
+ *
+ * Non-object bodies (null — set by `response.json().catch(() => null)` on
+ * malformed / non-JSON / empty bodies) always degrade to `unknown_error`.
+ *
+ * Exported for targeted unit coverage; no runtime caller outside this module.
  */
-function buildApiError(status: number, body: unknown): ApiError {
+export function buildApiError(status: number, body: unknown): ApiError {
   if (body !== null && typeof body === 'object') {
     const b = body as Record<string, unknown>;
+
+    // Canonical envelope: nested `error` object.
+    // (arrays also have typeof === 'object', so guard explicitly)
+    if (
+      b.error !== null &&
+      typeof b.error === 'object' &&
+      !Array.isArray(b.error)
+    ) {
+      const e = b.error as Record<string, unknown>;
+      const code = typeof e.code === 'string' ? e.code : 'unknown_error';
+      const message =
+        typeof e.message === 'string'
+          ? e.message
+          : 'An unexpected error occurred.';
+      const traceId =
+        typeof e.traceId === 'string' && e.traceId.length > 0
+          ? e.traceId
+          : undefined;
+      // Preserve any non-null details value (object, array, or string).
+      // Null is treated as absent to avoid leaking a "present but empty"
+      // signal into consumers.
+      const details =
+        e.details !== undefined && e.details !== null ? e.details : undefined;
+
+      const error: ApiError = { status, code, message };
+      if (traceId !== undefined) error.traceId = traceId;
+      if (details !== undefined) error.details = details;
+      return error;
+    }
+
+    // Legacy fallbacks — pre-H1 shapes still accepted defensively.
     const code = typeof b.code === 'string' ? b.code : 'unknown_error';
     const message =
       typeof b.message === 'string'

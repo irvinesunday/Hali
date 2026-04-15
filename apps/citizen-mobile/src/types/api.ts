@@ -1,9 +1,28 @@
 // ─── Result + Error (canonical location — do not redeclare elsewhere) ───────
 
+/**
+ * Normalised error shape surfaced by the mobile API client.
+ *
+ * The wire contract is the canonical backend envelope:
+ *   { error: { code, message, details?, traceId } }
+ *
+ * `status` is the HTTP response status (0 for network errors). `code` and
+ * `message` are always populated — malformed/legacy bodies degrade to
+ * `code: 'unknown_error'` and a generic message. `traceId` and `details`
+ * are only set when the canonical envelope provides them.
+ *
+ * `details` is `unknown` on purpose: today it can be a keyed field-errors
+ * object (`{ fields: { fieldName: [...] } }` from `ValidationException`),
+ * a string, an array, or absent. Consumers that need to read it should
+ * narrow it at the use site — do not widen this type into a union here
+ * (that is tracked separately; see the mobile `ErrorCode` follow-up).
+ */
 export interface ApiError {
   status: number;
   code: string;
   message: string;
+  traceId?: string;
+  details?: unknown;
 }
 
 export type Result<T, E = ApiError> =
