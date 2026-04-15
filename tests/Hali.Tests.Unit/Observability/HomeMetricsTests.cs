@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using StackExchange.Redis;
 using Xunit;
 
@@ -217,6 +218,54 @@ public class HomeMetricsTests
         var m = Assert.Single(capture.DurationMeasurements);
         Assert.Equal("false", m.Tags[HomeMetrics.TagAuthenticated]);
         Assert.Equal(HomeMetrics.LocalityScopeGuestEmpty, m.Tags[HomeMetrics.TagLocalityScope]);
+    }
+
+    [Fact]
+    public async Task GetHome_AuthenticatedNoFollows_RefinesScopeToGuestEmpty()
+    {
+        // An authenticated caller with zero followed localities is
+        // operationally equivalent to "no resolved localities" — the scope
+        // tag is refined from the initial `fallback` to `guest_empty` after
+        // the follow lookup returns. This mirrors the existing
+        // ObservabilityEvents.HomeLocalityScopeGuestEmpty structured log
+        // event, which fires under the same condition regardless of auth.
+        using var scope = TestHomeMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+        var (feedQuery, follows, redis) = BuildEmptyDeps(followsLocality: false);
+        var controller = CreateController(scope.Metrics, feedQuery, follows, redis, authenticated: true);
+
+        await controller.GetHome(null, null, null, CancellationToken.None);
+
+        var m = Assert.Single(capture.DurationMeasurements);
+        Assert.Equal("true", m.Tags[HomeMetrics.TagAuthenticated]);
+        Assert.Equal(HomeMetrics.LocalityScopeGuestEmpty, m.Tags[HomeMetrics.TagLocalityScope]);
+    }
+
+    [Fact]
+    public async Task GetHome_FollowLookupThrows_TagsAsFallback_NotGuestEmpty()
+    {
+        // Regression guard for the Copilot finding on PR #173: if the follow
+        // lookup throws (e.g. dependency outage) on an authenticated caller
+        // without an explicit localityId, the request was in `fallback`
+        // resolution mode at the moment of failure — the histogram must
+        // reflect that, not silently rebucket the failure as guest traffic.
+        using var scope = TestHomeMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+
+        var feedQuery = Substitute.For<IHomeFeedQueryService>();
+        var follows = Substitute.For<IFollowService>();
+        var redis = Substitute.For<IDatabase>();
+        follows.GetFollowedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("follow lookup dependency unavailable"));
+
+        var controller = CreateController(scope.Metrics, feedQuery, follows, redis, authenticated: true);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => controller.GetHome(null, null, null, CancellationToken.None));
+
+        var m = Assert.Single(capture.DurationMeasurements);
+        Assert.Equal("true", m.Tags[HomeMetrics.TagAuthenticated]);
+        Assert.Equal(HomeMetrics.LocalityScopeFallback, m.Tags[HomeMetrics.TagLocalityScope]);
     }
 
     [Fact]

@@ -52,10 +52,20 @@ public sealed class HomeMetrics : IDisposable
     public const string TagAuthenticated = "authenticated";
 
     /// <summary>
-    /// Tag key carrying locality-resolution mode. Values:
-    /// <c>"explicit"</c> (caller passed <c>?localityId</c>),
-    /// <c>"fallback"</c> (authenticated caller's followed-localities used),
-    /// <c>"guest_empty"</c> (anonymous caller with no explicit locality).
+    /// Tag key carrying locality-resolution outcome. Values:
+    /// <list type="bullet">
+    ///   <item><description><c>"explicit"</c> — caller passed <c>?localityId</c>.</description></item>
+    ///   <item><description><c>"fallback"</c> — authenticated caller with a
+    ///     non-empty followed-localities set. Also used on the exception path
+    ///     when the follow lookup throws for an authenticated caller without
+    ///     an explicit locality, so dependency outages in that lookup stay
+    ///     observable as fallback-mode failures rather than being silently
+    ///     rebucketed as guest traffic.</description></item>
+    ///   <item><description><c>"guest_empty"</c> — no localities were
+    ///     resolved. Anonymous callers without an explicit locality, and
+    ///     authenticated callers whose follow set resolved empty, both bucket
+    ///     here.</description></item>
+    /// </list>
     /// </summary>
     public const string TagLocalityScope = "locality_scope";
 

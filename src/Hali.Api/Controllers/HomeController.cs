@@ -78,13 +78,20 @@ public class HomeController : ControllerBase
         var sw = Stopwatch.StartNew();
         _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeRequestStarted);
 
-        // Captured for the latency-histogram tag set, set inside the try block
-        // once we have resolved auth posture and locality scope. Defaults are
-        // safe fall-throughs if the request fails before the decision is made
-        // (e.g. an exception during follow lookup) — the histogram still emits
-        // so failed-request latency stays observable.
-        bool isAuthenticated = false;
-        string localityScope = HomeMetrics.LocalityScopeGuestEmpty;
+        // Captured for the latency-histogram tag set. `isAuthenticated` and
+        // the initial `localityScope` are set from cheap input inspection
+        // before the follow lookup runs so that an exception during that
+        // lookup (e.g. dependency outage) still tags the histogram with the
+        // correct resolution-mode — the failure mode itself is the operational
+        // signal we care about. `localityScope` is refined to `guest_empty`
+        // after the lookup only when the followed-localities set is actually
+        // empty.
+        bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+        string localityScope = localityId.HasValue
+            ? HomeMetrics.LocalityScopeExplicit
+            : isAuthenticated
+                ? HomeMetrics.LocalityScopeFallback
+                : HomeMetrics.LocalityScopeGuestEmpty;
 
         try
         {
@@ -92,22 +99,23 @@ public class HomeController : ControllerBase
             // an explicit locality via ?localityId.  When omitted,
             // authenticated users fall back to their followed-localities set;
             // anonymous callers receive empty sections (no followed wards).
-            isAuthenticated = User.Identity?.IsAuthenticated == true;
             var localityIds = localityId.HasValue
                 ? new List<Guid> { localityId.Value }
                 : await GetFollowedLocalityIdsAsync(ct);
             var cursorDt = DecodeCursor(cursor);
 
-            // Log locality scoping mode and auth posture
+            // Log locality scoping mode and auth posture. The scope tag is
+            // refined here if the authenticated caller's follow set resolved
+            // empty — the request is no longer in "fallback" mode in any
+            // operationally useful sense, it matches the `guest_empty`
+            // resolution outcome (no localities available).
             if (localityId.HasValue)
             {
-                localityScope = HomeMetrics.LocalityScopeExplicit;
                 _logger?.LogInformation("{EventName} localityId={LocalityId} isAuthenticated={IsAuthenticated}",
                     ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value, isAuthenticated);
             }
             else if (localityIds.Count > 0)
             {
-                localityScope = HomeMetrics.LocalityScopeFallback;
                 _logger?.LogInformation("{EventName} localityCount={LocalityCount}",
                     ObservabilityEvents.HomeLocalityScopeFallback, localityIds.Count);
             }
