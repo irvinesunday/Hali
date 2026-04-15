@@ -436,6 +436,11 @@ paths:
         No auth required. Returns 202 immediately — fire and forget from client.
         account_id captured server-side if request is authenticated, otherwise null.
         Text capped at 300 chars server-side regardless of client input.
+
+        Rate-limited via the canonical Redis limiter (#169 / R4). Authenticated
+        callers are throttled per-account; anonymous callers fall back to a
+        per-IP bucket. Over-cap submissions return 429 with
+        `error.code = rate_limit.exceeded` on the canonical error envelope.
       security: []
       requestBody:
         required: true
@@ -445,6 +450,11 @@ paths:
               $ref: '#/components/schemas/FeedbackRequest'
       responses:
         '202': { description: Feedback received }
+        '429':
+          description: Rate limit exceeded (per-account for authenticated callers, per-IP for anonymous)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:

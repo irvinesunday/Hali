@@ -1,24 +1,49 @@
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Hali.Tests.Integration.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using StackExchange.Redis;
 using Xunit;
 
 namespace Hali.Tests.Integration.Feedback;
 
 /// <summary>
-/// End-to-end coverage for <c>POST /v1/feedback</c> (issue #156).
-/// Proves that valid submissions persist an <c>app_feedback</c> row with the
-/// expected field mapping, that invalid bodies are rejected at the controller
-/// boundary, and that the endpoint remains anonymous.
+/// End-to-end coverage for <c>POST /v1/feedback</c> (issue #156 persistence +
+/// issue #169 rate limiting). Proves that valid submissions persist an
+/// <c>app_feedback</c> row with the expected field mapping, that invalid
+/// bodies are rejected at the controller boundary, that the endpoint remains
+/// anonymous, and that over-cap submissions surface the canonical 429
+/// envelope without persisting the throttled row.
 /// </summary>
 [Collection("Integration")]
 [Trait("Category", "Integration")]
 public sealed class FeedbackIntegrationTests : IntegrationTestBase
 {
+    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
+
     public FeedbackIntegrationTests(HaliWebApplicationFactory factory) : base(factory) { }
+
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        // Redis state persists across tests in the Integration collection.
+        // Clear any residual feedback-submit rate-limit counters both BEFORE
+        // and AFTER each test so (a) each test begins with a fresh bucket and
+        // (b) a 429-producing test does not bleed its counter into a
+        // success-path test that runs immediately after.
+        await ClearFeedbackRateLimitKeysAsync();
+    }
+
+    public override async Task DisposeAsync()
+    {
+        await ClearFeedbackRateLimitKeysAsync();
+        await base.DisposeAsync();
+    }
 
     [Fact]
     public async Task Submit_AnonymousValidRequest_PersistsAppFeedbackRow()
@@ -137,6 +162,154 @@ public sealed class FeedbackIntegrationTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, await CountFeedbackAsync());
+    }
+
+    // ----------------------------------------------------------------------
+    // Rate limiting (#169 / R4)
+    //
+    // FeedbackController caps each identity (account or IP) at
+    // RateLimitMaxRequests per RateLimitWindow. The tests below assert (1)
+    // under-cap traffic still persists, (2) the (cap+1)th call trips the
+    // canonical 429 envelope with rate_limit.exceeded, and (3) authenticated
+    // and anonymous callers are keyed into independent buckets so one cannot
+    // silence the other.
+    // ----------------------------------------------------------------------
+
+    private const int RateLimitMaxRequests = 10;
+
+    [Fact]
+    public async Task Submit_AnonymousUnderCap_AllPersist()
+    {
+        // Under-cap traffic must continue to 202 and persist every row.
+        for (var i = 0; i < RateLimitMaxRequests; i++)
+        {
+            var response = await Client.PostAsJsonAsync("/v1/feedback", new
+            {
+                rating = "neutral",
+                text = $"under-cap-{i}",
+            });
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+
+        Assert.Equal(RateLimitMaxRequests, await CountFeedbackAsync());
+    }
+
+    [Fact]
+    public async Task Submit_AnonymousExceedsCap_Returns429CanonicalEnvelopeAndDoesNotPersist()
+    {
+        HttpResponseMessage? last = null;
+        for (var i = 0; i <= RateLimitMaxRequests; i++)
+        {
+            last = await Client.PostAsJsonAsync("/v1/feedback", new
+            {
+                rating = "positive",
+                text = $"probe-{i}",
+            });
+        }
+
+        Assert.NotNull(last);
+        Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
+        AssertCanonicalRateLimitEnvelope(await last.Content.ReadFromJsonAsync<JsonElement>(_json));
+
+        // The throttled (cap+1)th call must not have persisted. Only the
+        // allowed RateLimitMaxRequests rows should be present.
+        Assert.Equal(RateLimitMaxRequests, await CountFeedbackAsync());
+    }
+
+    [Fact]
+    public async Task Submit_AuthenticatedExceedsCap_Returns429()
+    {
+        // Authenticated callers are keyed per-account. Proves the limiter
+        // engages on the account-id key path, not only the IP fallback.
+        var (_, _, jwt) = await SeedVerifiedAccountAsync();
+        using var authed = CreateAuthenticatedClient(jwt);
+
+        HttpResponseMessage? last = null;
+        for (var i = 0; i <= RateLimitMaxRequests; i++)
+        {
+            last = await authed.PostAsJsonAsync("/v1/feedback", new
+            {
+                rating = "negative",
+                text = $"authed-probe-{i}",
+            });
+        }
+
+        Assert.NotNull(last);
+        Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
+        AssertCanonicalRateLimitEnvelope(await last.Content.ReadFromJsonAsync<JsonElement>(_json));
+    }
+
+    [Fact]
+    public async Task Submit_AuthenticatedAndAnonymousKeyedIndependently()
+    {
+        // Saturate the authenticated bucket to 429.
+        var (_, _, jwt) = await SeedVerifiedAccountAsync();
+        using var authed = CreateAuthenticatedClient(jwt);
+
+        HttpResponseMessage? authedLast = null;
+        for (var i = 0; i <= RateLimitMaxRequests; i++)
+        {
+            authedLast = await authed.PostAsJsonAsync("/v1/feedback", new
+            {
+                rating = "neutral",
+                text = $"authed-{i}",
+            });
+        }
+        Assert.NotNull(authedLast);
+        Assert.Equal(HttpStatusCode.TooManyRequests, authedLast!.StatusCode);
+
+        // The anonymous bucket must remain untouched — a flood on one account
+        // cannot silence unrelated callers sharing a NAT/proxy egress IP.
+        var anonResponse = await Client.PostAsJsonAsync("/v1/feedback", new
+        {
+            rating = "positive",
+            text = "anon-after-authed-flood",
+        });
+        Assert.Equal(HttpStatusCode.Accepted, anonResponse.StatusCode);
+    }
+
+    private static void AssertCanonicalRateLimitEnvelope(JsonElement body)
+    {
+        // Mirrors the canonical envelope assertion in
+        // StandardizedErrorEnvelopeTests. Kept local here so a regression in
+        // the feedback throttle surfaces in the feedback test class directly
+        // rather than only in the cross-cutting envelope suite.
+        Assert.Equal(JsonValueKind.Object, body.ValueKind);
+
+        Assert.True(body.TryGetProperty("error", out var error),
+            "response body must carry a top-level `error` object");
+        Assert.Equal(JsonValueKind.Object, error.ValueKind);
+
+        Assert.True(error.TryGetProperty("code", out var code));
+        Assert.Equal("rate_limit.exceeded", code.GetString());
+
+        Assert.True(error.TryGetProperty("message", out var message));
+        Assert.False(string.IsNullOrWhiteSpace(message.GetString()));
+
+        Assert.True(error.TryGetProperty("traceId", out _),
+            "error envelope must include a traceId for support/log correlation");
+    }
+
+    private async Task ClearFeedbackRateLimitKeysAsync()
+    {
+        // The controller keys anonymous callers by remote IP. Under the
+        // WebApplicationFactory TestServer the remote IP is unset, so every
+        // anonymous request hits `ratelimit:feedback_submit:ip:unknown`.
+        // The authenticated test paths key by account id; those account ids
+        // are freshly generated each test, so we only need to wipe the
+        // anonymous key plus the keys for any accounts this test touched.
+        //
+        // We pattern-match on :acct:* keys by walking the server's key space
+        // via SCAN — cheap at test-db scale and avoids requiring
+        // `allowAdmin` (KEYS pattern would, SCAN via IServer does not if we
+        // stream it). For simplicity and because the account-id key is
+        // always fresh per test, a single DEL of the anonymous sentinel is
+        // sufficient for the anonymous suite; the per-account keys naturally
+        // expire after RateLimitWindow and carry no cross-test leakage.
+        using var scope = Factory.Services.CreateScope();
+        var mux = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        var db = mux.GetDatabase();
+        await db.KeyDeleteAsync("ratelimit:feedback_submit:ip:unknown");
     }
 
     // ----------------------------------------------------------------------
