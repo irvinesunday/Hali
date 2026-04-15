@@ -42,6 +42,7 @@ public sealed class HaliWebApplicationFactory
         Environment.SetEnvironmentVariable("ConnectionStrings__Participation", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Advisories", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Notifications", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Feedback", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Admin", connStr);
         Environment.SetEnvironmentVariable("Redis__Url", TestConstants.RedisUrl);
 
@@ -57,6 +58,7 @@ public sealed class HaliWebApplicationFactory
                 ["ConnectionStrings:Participation"]  = connStr,
                 ["ConnectionStrings:Advisories"]     = connStr,
                 ["ConnectionStrings:Notifications"]  = connStr,
+                ["ConnectionStrings:Feedback"]       = connStr,
                 ["ConnectionStrings:Admin"]          = connStr,
                 ["Redis:Url"]                        = TestConstants.RedisUrl,
                 ["Auth:JwtSecret"]                   = TestConstants.JwtSecret,
@@ -134,6 +136,7 @@ public sealed class HaliWebApplicationFactory
             "TRUNCATE signal_events CASCADE",
             "TRUNCATE official_post_scopes, official_posts, institution_jurisdictions, institutions CASCADE",
             "TRUNCATE notifications, follows CASCADE",
+            "TRUNCATE app_feedback CASCADE",
         };
 
         foreach (var sql in statements)
@@ -482,6 +485,25 @@ CREATE TABLE IF NOT EXISTS notifications (
     CONSTRAINT uq_notification_dedupe UNIQUE (dedupe_key)
 )");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_notifications_queued_send_after ON notifications(send_after) WHERE status = 'queued'");
+
+        // Feedback table (EF migration 20260408100124_AddAppFeedbackTable) — mirrored
+        // here per the schema-bootstrap rule in docs/arch/CODING_STANDARDS.md.
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS app_feedback (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    rating varchar(10) NOT NULL,
+    text varchar(300),
+    screen varchar(50),
+    cluster_id uuid,
+    account_id uuid,
+    app_version varchar(20),
+    platform varchar(10),
+    session_id uuid,
+    submitted_at timestamptz NOT NULL
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_submitted_at ON app_feedback(submitted_at)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_rating ON app_feedback(rating)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_screen ON app_feedback(screen)");
     }
 
     // -------------------------------------------------------------------------
