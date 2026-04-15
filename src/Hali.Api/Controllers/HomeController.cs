@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Api.Observability;
 using Hali.Application.Errors;
 using Hali.Application.Home;
 using Hali.Application.Notifications;
@@ -36,6 +38,7 @@ public class HomeController : ControllerBase
     private readonly IHomeFeedQueryService _feedQuery;
     private readonly IFollowService _follows;
     private readonly IDatabase _redis;
+    private readonly HomeMetrics _metrics;
     private readonly ILogger<HomeController>? _logger;
 
     /// <summary>
@@ -53,12 +56,14 @@ public class HomeController : ControllerBase
         IFollowService follows,
         IDatabase redis,
         IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJsonOptions,
+        HomeMetrics metrics,
         ILogger<HomeController>? logger = null)
     {
         _feedQuery = feedQuery;
         _follows = follows;
         _redis = redis;
         _cacheJsonOptions = mvcJsonOptions.Value.JsonSerializerOptions;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -73,28 +78,53 @@ public class HomeController : ControllerBase
         var sw = Stopwatch.StartNew();
         _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeRequestStarted);
 
+        // Captured for the latency-histogram tag set. `isAuthenticated` and
+        // the initial `localityScope` are set from cheap input inspection
+        // before the follow lookup runs so that an exception during that
+        // lookup (e.g. dependency outage) still tags the histogram with the
+        // correct resolution-mode — the failure mode itself is the operational
+        // signal we care about. `localityScope` is refined to `guest_empty`
+        // after the lookup only when the followed-localities set is actually
+        // empty.
+        bool isAuthenticated = User.Identity?.IsAuthenticated == true;
+        string localityScope = localityId.HasValue
+            ? HomeMetrics.LocalityScopeExplicit
+            : isAuthenticated
+                ? HomeMetrics.LocalityScopeFallback
+                : HomeMetrics.LocalityScopeGuestEmpty;
+
         try
         {
             // Both authenticated and anonymous callers may scope the feed to
             // an explicit locality via ?localityId.  When omitted,
             // authenticated users fall back to their followed-localities set;
             // anonymous callers receive empty sections (no followed wards).
-            bool isAuthenticated = User.Identity?.IsAuthenticated == true;
             var localityIds = localityId.HasValue
                 ? new List<Guid> { localityId.Value }
                 : await GetFollowedLocalityIdsAsync(ct);
             var cursorDt = DecodeCursor(cursor);
 
-            // Log locality scoping mode and auth posture
+            // Log locality scoping mode and auth posture. The scope tag is
+            // refined here if the authenticated caller's follow set resolved
+            // empty — the request is no longer in "fallback" mode in any
+            // operationally useful sense, it matches the `guest_empty`
+            // resolution outcome (no localities available).
             if (localityId.HasValue)
+            {
                 _logger?.LogInformation("{EventName} localityId={LocalityId} isAuthenticated={IsAuthenticated}",
                     ObservabilityEvents.HomeLocalityScopeExplicit, localityId.Value, isAuthenticated);
+            }
             else if (localityIds.Count > 0)
+            {
                 _logger?.LogInformation("{EventName} localityCount={LocalityCount}",
                     ObservabilityEvents.HomeLocalityScopeFallback, localityIds.Count);
+            }
             else
+            {
+                localityScope = HomeMetrics.LocalityScopeGuestEmpty;
                 _logger?.LogInformation("{EventName} isAuthenticated={IsAuthenticated}",
                     ObservabilityEvents.HomeLocalityScopeGuestEmpty, isAuthenticated);
+            }
 
             // Section-specific paginated request — skip cache, return single section
             if (section is not null)
@@ -103,14 +133,12 @@ public class HomeController : ControllerBase
                 string safeSection = ObservabilityEvents.SanitizeForLog(section);
                 if (paged is null)
                 {
-                    sw.Stop();
                     _logger?.LogInformation(
                         "{EventName} section={Section} statusCode={StatusCode} durationMs={DurationMs}",
                         ObservabilityEvents.HomeRequestCompleted, safeSection, 400, sw.ElapsedMilliseconds);
                     throw new ValidationException("Unknown section name.", code: ErrorCodes.ValidationInvalidSection);
                 }
 
-                sw.Stop();
                 _logger?.LogInformation(
                     "{EventName} section={Section} durationMs={DurationMs}",
                     ObservabilityEvents.HomeRequestCompleted, safeSection, sw.ElapsedMilliseconds);
@@ -126,7 +154,11 @@ public class HomeController : ControllerBase
                 RedisValue cached = await _redis.StringGetAsync(cacheKey);
                 if (cached.HasValue)
                 {
-                    sw.Stop();
+                    // Hit/miss counters fire exactly once per cache-eligible
+                    // request — recorded immediately after the Redis lookup
+                    // resolves so the metric reflects what actually happened
+                    // even if response serialization later fails.
+                    _metrics.HomeFeedCacheHitsTotal.Add(1);
                     _logger?.LogInformation("{EventName} durationMs={DurationMs}",
                         ObservabilityEvents.HomeCacheHit, sw.ElapsedMilliseconds);
                     _logger?.LogInformation(
@@ -135,6 +167,7 @@ public class HomeController : ControllerBase
                     return Content(cached!, "application/json");
                 }
 
+                _metrics.HomeFeedCacheMissesTotal.Add(1);
                 _logger?.LogInformation("{EventName}", ObservabilityEvents.HomeCacheMiss);
 
                 var response = await BuildFullResponseAsync(localityIds, ct);
@@ -150,7 +183,6 @@ public class HomeController : ControllerBase
                     await _redis.StringSetAsync(cacheKey, json, CacheTtl);
                 }
 
-                sw.Stop();
                 _logger?.LogInformation(
                     "{EventName} durationMs={DurationMs} cacheHit={CacheHit}",
                     ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds, false);
@@ -158,7 +190,6 @@ public class HomeController : ControllerBase
             }
 
             var fullResponse = await BuildFullResponseAsync(localityIds, ct);
-            sw.Stop();
             _logger?.LogInformation(
                 "{EventName} durationMs={DurationMs}",
                 ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds);
@@ -166,11 +197,25 @@ public class HomeController : ControllerBase
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            sw.Stop();
             _logger?.LogError(ex,
                 "{EventName} durationMs={DurationMs}",
                 ObservabilityEvents.HomeRequestFailed, sw.ElapsedMilliseconds);
             throw;
+        }
+        finally
+        {
+            // Stop the stopwatch and emit the latency histogram exactly once
+            // per request, on every path (cache-hit, cache-miss, full assembly,
+            // section-paged, validation/throw). Tag values are set above before
+            // the request can branch; the defaults used if an exception fires
+            // before the decision is made are still bounded by the catalog.
+            sw.Stop();
+            var tags = new TagList
+            {
+                { HomeMetrics.TagAuthenticated, isAuthenticated ? "true" : "false" },
+                { HomeMetrics.TagLocalityScope, localityScope }
+            };
+            _metrics.HomeFeedRequestDuration.Record(sw.Elapsed.TotalSeconds, tags);
         }
     }
 

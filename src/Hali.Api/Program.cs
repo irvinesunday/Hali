@@ -42,6 +42,10 @@ builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
 // ApiMetrics owns the Hali.Api Meter + the api_exceptions_total counter. The
 // instance is long-lived; IMeterFactory is registered by the hosting stack.
 builder.Services.AddSingleton<ApiMetrics>();
+// HomeMetrics owns the Hali.Home Meter + the home feed latency histogram and
+// cache-hit/miss counters used by HomeController. Registered alongside
+// ApiMetrics so both meters export through the same OTel pipeline.
+builder.Services.AddSingleton<HomeMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -175,6 +179,7 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
         .WithMetrics(m => m
             .AddAspNetCoreInstrumentation()
             .AddMeter(ApiMetrics.MeterName)
+            .AddMeter(HomeMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 

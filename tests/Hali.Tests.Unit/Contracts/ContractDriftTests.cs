@@ -17,6 +17,7 @@ using Hali.Contracts.Signals;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Notifications;
 using Hali.Domain.Enums;
+using Hali.Tests.Unit.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -321,11 +322,13 @@ public class ContractDriftTests
                 Arg.Any<CommandFlags>())
             .Returns(true);
 
+        using var metricsScope = TestHomeMetrics.Create();
         var controller = new HomeController(
             feedQuery,
             follows,
             redis,
             BuildMvcJsonOptions(),
+            metricsScope.Metrics,
             NullLogger<HomeController>.Instance);
         controller.ControllerContext = new ControllerContext
         {
