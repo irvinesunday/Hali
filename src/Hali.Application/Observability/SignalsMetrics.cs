@@ -82,11 +82,14 @@ public sealed class SignalsMetrics : IDisposable
     // These mirror the three-way wire-visible bucket the issue defined:
     // success (the controller returned a 2xx body), validation_error (user
     // input rejected — ValidationException / ConflictException /
-    // RateLimitException / NotFoundException mapped as 4xx), and
-    // dependency_error (system/dependency failure — DependencyException,
-    // InvariantViolationException, and any other unmapped exception that
-    // lands as a 5xx). OperationCanceledException is not counted as any
-    // outcome (see SignalsController).
+    // RateLimitException mapped as 4xx), and dependency_error
+    // (system/dependency failure — DependencyException, any unmapped
+    // AppException subclass, server-side timeouts surfaced as
+    // OperationCanceledException with an unsignaled caller token, and any
+    // other exception translated to a 5xx by ExceptionHandlingMiddleware).
+    // Only true caller-initiated cancellation (ct.IsCancellationRequested
+    // at catch time) is excluded from the taxonomy entirely — see
+    // SignalsController for the guard.
 
     /// <summary>Outcome tag value: request succeeded (2xx response).</summary>
     public const string OutcomeSuccess = "success";

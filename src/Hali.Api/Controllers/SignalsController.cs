@@ -41,13 +41,16 @@ public class SignalsController : ControllerBase
     public async Task<IActionResult> Preview([FromBody] SignalPreviewRequestDto dto, CancellationToken ct, [FromServices] IConnectionMultiplexer redis)
     {
         // The request-outcome counter is incremented exactly once per non-
-        // cancellation call. `emit` stays true on every normal code path and
-        // flips to false only when OperationCanceledException propagates —
-        // client disconnects are not an operational signal about the endpoint
-        // itself, so they do not bias any bucket. The outcome string defaults
-        // to dependency_error and is tightened by the catch clauses when the
-        // exception kind is known; on the success path it is set just before
-        // the happy-path return.
+        // cancellation call. `emit` flips to false only when the caller's
+        // CancellationToken was actually signaled — a true client-disconnect
+        // is not an operational signal about the endpoint itself, so it does
+        // not bias any bucket. An OperationCanceledException with an
+        // unsignaled token is a server-side timeout (e.g. HttpClient budget
+        // exhausted) and is bucketed as dependency_error so submit/preview
+        // throughput does not go silent during real upstream outages.
+        // The outcome string defaults to dependency_error and is tightened
+        // by the catch clauses when the exception kind is known; on the
+        // success path it is set just before the happy-path return.
         string outcome = SignalsMetrics.OutcomeDependencyError;
         bool emit = true;
         try
@@ -82,9 +85,20 @@ public class SignalsController : ControllerBase
             outcome = SignalsMetrics.OutcomeSuccess;
             return Ok(response);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // True client cancellation — the caller's token is signaled.
+            // Skip the counter so disconnects do not skew outcome ratios.
+            emit = false;
+            throw;
+        }
         catch (OperationCanceledException)
         {
-            emit = false;
+            // Token not signaled — this is a server-side timeout dressed as
+            // OperationCanceledException (HttpClient / Polly / dependency
+            // budget). Bucket it as dependency_error so upstream failures
+            // stay visible to operators.
+            outcome = SignalsMetrics.OutcomeDependencyError;
             throw;
         }
         catch (ValidationException)
@@ -157,16 +171,25 @@ public class SignalsController : ControllerBase
             {
                 accountId = parsed;
             }
-            Device device = ((!string.IsNullOrWhiteSpace(dto.DeviceHash)) ? (await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct)) : null);
-            Device device2 = device;
+            // DeviceHash was validated non-empty above, so the lookup always
+            // runs and its result is the only source of truth for the
+            // device id.
+            Device? device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
 
-            var response = await _ingestion.SubmitAsync(dto, accountId, device2?.Id, ct);
+            var response = await _ingestion.SubmitAsync(dto, accountId, device?.Id, ct);
             outcome = SignalsMetrics.OutcomeSuccess;
             return Ok(response);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             emit = false;
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Server-side timeout (see Preview for the full rationale) —
+            // bucket as dependency_error instead of silently dropping.
+            outcome = SignalsMetrics.OutcomeDependencyError;
             throw;
         }
         catch (ValidationException)

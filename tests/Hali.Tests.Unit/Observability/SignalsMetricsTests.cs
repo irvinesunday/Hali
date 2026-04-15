@@ -4,7 +4,6 @@ using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Controllers;
@@ -232,10 +231,38 @@ public class SignalsMetricsTests
     [Fact]
     public async Task Preview_ClientCancelled_DoesNotIncrementPreviewCounter()
     {
-        // OperationCanceledException is explicitly excluded from the outcome
-        // taxonomy — disconnects should not bias any of the three buckets.
+        // True caller cancellation (token signaled) is excluded from the
+        // outcome taxonomy — disconnects should not bias any of the three
+        // buckets. A canceled CTS mirrors the real request-abort scenario
+        // and distinguishes it from server-side timeouts, which surface as
+        // OperationCanceledException with an unsignaled caller token and
+        // are bucketed as dependency_error.
         using var scope = TestSignalsMetrics.Create();
         using var capture = new MetricCapture(scope.Metrics);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var ingestion = Substitute.For<ISignalIngestionService>();
+        ingestion.PreviewAsync(Arg.Any<SignalPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+        var controller = CreateController(scope.Metrics, ingestion);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            controller.Preview(PreviewRequest(), cts.Token, BuildAllowAllRedis()));
+
+        Assert.Empty(capture.PreviewMeasurements);
+    }
+
+    [Fact]
+    public async Task Preview_ServerSideTimeout_IncrementsPreviewCounter_DependencyError()
+    {
+        // OperationCanceledException with an unsignaled caller token is a
+        // server-side timeout (HttpClient / dependency budget), not a
+        // client disconnect — the counter must still emit so upstream
+        // outages stay visible to operators.
+        using var scope = TestSignalsMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+
         var ingestion = Substitute.For<ISignalIngestionService>();
         ingestion.PreviewAsync(Arg.Any<SignalPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new OperationCanceledException());
@@ -244,7 +271,8 @@ public class SignalsMetricsTests
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             controller.Preview(PreviewRequest(), CancellationToken.None, BuildAllowAllRedis()));
 
-        Assert.Empty(capture.PreviewMeasurements);
+        var m = Assert.Single(capture.PreviewMeasurements);
+        Assert.Equal(SignalsMetrics.OutcomeDependencyError, m.Tags[SignalsMetrics.TagOutcome]);
     }
 
     // ── SignalsController.Submit — submit counter ────────────────────────────
@@ -305,6 +333,26 @@ public class SignalsMetricsTests
 
         var m = Assert.Single(capture.SubmitMeasurements);
         Assert.Equal(SignalsMetrics.OutcomeValidationError, m.Tags[SignalsMetrics.TagOutcome]);
+    }
+
+    [Fact]
+    public async Task Submit_ServerSideTimeout_IncrementsSubmitCounter_DependencyError()
+    {
+        // Mirror of Preview_ServerSideTimeout: an unsignaled caller token
+        // means the OperationCanceledException is a server-side budget
+        // exhaustion, not a client disconnect.
+        using var scope = TestSignalsMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+        var ingestion = Substitute.For<ISignalIngestionService>();
+        ingestion.SubmitAsync(Arg.Any<SignalSubmitRequestDto>(), Arg.Any<Guid?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+        var controller = CreateController(scope.Metrics, ingestion);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            controller.Submit(SubmitRequest(), CancellationToken.None));
+
+        var m = Assert.Single(capture.SubmitMeasurements);
+        Assert.Equal(SignalsMetrics.OutcomeDependencyError, m.Tags[SignalsMetrics.TagOutcome]);
     }
 
     [Fact]

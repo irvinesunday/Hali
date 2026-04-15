@@ -73,40 +73,23 @@ public class AnthropicNlpExtractionService : INlpExtractionService
 		req.Headers.Add("anthropic-version", "2023-06-01");
 		req.Content = JsonContent.Create(body);
 
+		// Outcome ladder for the histogram:
+		//   - success  : ParseAndValidate returned a non-null result.
+		//   - timeout  : OperationCanceledException (includes TaskCanceledException,
+		//                which HttpClient raises on its own timeout budget) with
+		//                an UNSIGNALED caller token — regardless of whether it
+		//                fires from SendAsync, ReadAsStringAsync, or later.
+		//   - fallback : any other failure path (non-2xx, network error, parse
+		//                error, unknown category).
+		// A true caller-initiated cancellation (ct.IsCancellationRequested is
+		// true) is propagated without recording so dashboards don't conflate
+		// client disconnects with NLP latency. Matches SignalsController.
 		string outcome = SignalsMetrics.NlpOutcomeFallback;
 		bool record = true;
 		var sw = Stopwatch.StartNew();
 		try
 		{
-			HttpResponseMessage response;
-			try
-			{
-				response = await _http.SendAsync(req, ct);
-			}
-			catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
-			{
-				// HttpClient surfaces its own timeout as TaskCanceledException;
-				// when the caller's CancellationToken was not signaled, the
-				// cancellation came from the HttpClient timeout budget and
-				// is operationally a timeout, not a generic fallback.
-				outcome = SignalsMetrics.NlpOutcomeTimeout;
-				_logger.LogError(ex, "Anthropic API request timed out");
-				return null;
-			}
-			catch (OperationCanceledException)
-			{
-				// Caller cancellation — leave the histogram unrecorded so
-				// dashboards do not conflate client disconnects with NLP
-				// latency. Matches the behaviour of the request counters in
-				// SignalsController.
-				record = false;
-				throw;
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Anthropic API request failed");
-				return null;
-			}
+			HttpResponseMessage response = await _http.SendAsync(req, ct);
 			if (!response.IsSuccessStatusCode)
 			{
 				_logger.LogError("Anthropic API returned {Status}", response.StatusCode);
@@ -119,10 +102,21 @@ public class AnthropicNlpExtractionService : INlpExtractionService
 			}
 			return result;
 		}
-		catch (OperationCanceledException)
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
 		{
 			record = false;
 			throw;
+		}
+		catch (OperationCanceledException ex)
+		{
+			outcome = SignalsMetrics.NlpOutcomeTimeout;
+			_logger.LogError(ex, "Anthropic API request timed out");
+			return null;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Anthropic API request failed");
+			return null;
 		}
 		finally
 		{
