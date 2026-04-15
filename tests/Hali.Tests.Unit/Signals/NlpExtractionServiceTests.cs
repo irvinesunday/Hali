@@ -36,7 +36,7 @@ public class NlpExtractionServiceTests
 		string nlpJson = "{\n  \"category\": \"roads\",\n  \"subcategory\": \"potholes\",\n  \"condition_level\": \"difficult\",\n  \"condition_confidence\": 0.85,\n  \"location\": {\n    \"area_name\": \"Nairobi West\",\n    \"road_name\": null,\n    \"junction_name\": null,\n    \"landmark_name\": \"National Oil\",\n    \"facility_name\": null,\n    \"location_label\": \"Potholes near National Oil, Nairobi West\",\n    \"location_precision_type\": \"road_landmark\",\n    \"location_confidence\": 0.80,\n    \"location_source\": \"nlp\"\n  },\n  \"temporal_hint\": { \"type\": \"temporary\", \"confidence\": 0.70 },\n  \"summary\": \"Potholes reported near National Oil in Nairobi West.\",\n  \"should_suggest_join\": true,\n  \"reasoning_notes\": [\"Detected road condition\", \"Detected landmark\"]\n}";
 		string anthropicResponse = WrapInAnthropicResponse(nlpJson);
 		AnthropicNlpExtractionService svc = CreateService(anthropicResponse);
-		NlpExtractionResultDto result = await svc.ExtractAsync(MakeRequest());
+		NlpExtractionResultDto? result = await svc.ExtractAsync(MakeRequest());
 		Assert.NotNull(result);
 		Assert.Equal("roads", result.Category);
 		Assert.Equal("potholes", result.Subcategory);
@@ -79,7 +79,7 @@ public class NlpExtractionServiceTests
 		string nlpJson = "{\n  \"category\": \"water\",\n  \"subcategory\": \"outage\",\n  \"condition_level\": \"none\",\n  \"condition_confidence\": 1.5,\n  \"location\": {\n    \"location_confidence\": -0.2,\n    \"location_source\": \"nlp\"\n  },\n  \"summary\": \"No water in South B.\",\n  \"should_suggest_join\": false\n}";
 		string anthropicResponse = WrapInAnthropicResponse(nlpJson);
 		AnthropicNlpExtractionService svc = CreateService(anthropicResponse);
-		NlpExtractionResultDto result = await svc.ExtractAsync(MakeRequest("No water in South B"));
+		NlpExtractionResultDto? result = await svc.ExtractAsync(MakeRequest("No water in South B"));
 		Assert.NotNull(result);
 		Assert.Equal(1.0, result.ConditionConfidence);
 		Assert.Equal(0.0, result.Location.LocationConfidence);
@@ -91,7 +91,7 @@ public class NlpExtractionServiceTests
 		string nlpJson = "```json\n{\n  \"category\": \"electricity\",\n  \"subcategory\": \"outage\",\n  \"condition_level\": \"complete_outage\",\n  \"condition_confidence\": 0.90,\n  \"location\": {\n    \"area_name\": \"South B\",\n    \"location_confidence\": 0.75,\n    \"location_source\": \"nlp\"\n  },\n  \"summary\": \"Power outage in South B.\",\n  \"should_suggest_join\": true\n}\n```";
 		string anthropicResponse = WrapInAnthropicResponse(nlpJson);
 		AnthropicNlpExtractionService svc = CreateService(anthropicResponse);
-		NlpExtractionResultDto result = await svc.ExtractAsync(MakeRequest("No power in South B"));
+		NlpExtractionResultDto? result = await svc.ExtractAsync(MakeRequest("No power in South B"));
 		Assert.NotNull(result);
 		Assert.Equal("electricity", result.Category);
 	}
