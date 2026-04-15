@@ -28,6 +28,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { Button } from '../../src/components/common/Button';
 import { STRINGS } from '../../src/config/strings';
 import { decodeAccountIdFromJwt } from '../../src/utils/jwt';
+import { mapOtpVerifyErrorToMessage } from '../../src/utils/otpErrorMessage';
 import {
   Colors,
   FontFamily,
@@ -114,14 +115,7 @@ export default function OtpScreen(): React.ReactElement {
 
     setScreenState('error');
     setOtp('');
-
-    if (result.error.status === 401 || result.error.code === 'invalid_otp') {
-      setErrorMessage(STRINGS.AUTH.OTP_INVALID);
-    } else if (result.error.code === 'otp_expired') {
-      setErrorMessage(STRINGS.AUTH.OTP_EXPIRED);
-    } else {
-      setErrorMessage(result.error.message || STRINGS.AUTH.OTP_VERIFY_FAILED);
-    }
+    setErrorMessage(mapOtpVerifyErrorToMessage(result.error));
 
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [otp, screenState, destination, signIn]);
