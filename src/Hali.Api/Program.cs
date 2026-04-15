@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
+using Hali.Api.Observability;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
 using Hali.Application.Notifications;
@@ -38,6 +39,9 @@ builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
+// ApiMetrics owns the Hali.Api Meter + the api_exceptions_total counter. The
+// instance is long-lived; IMeterFactory is registered by the hosting stack.
+builder.Services.AddSingleton<ApiMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -170,6 +174,7 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)))
         .WithMetrics(m => m
             .AddAspNetCoreInstrumentation()
+            .AddMeter(ApiMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 

@@ -19,7 +19,8 @@ public sealed class ExceptionToApiErrorMapper
                 Details = ve.FieldErrors is { Count: > 0 }
                     ? new { fields = ve.FieldErrors }
                     : null,
-                LogLevel = LogLevel.Information
+                LogLevel = LogLevel.Information,
+                Category = ErrorCategory.Validation
             },
 
             NotFoundException nfe => new ApiErrorMapping
@@ -27,7 +28,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 404,
                 Code = nfe.Code,
                 Message = nfe.Message,
-                LogLevel = LogLevel.Information
+                LogLevel = LogLevel.Information,
+                Category = ErrorCategory.NotFound
             },
 
             ConflictException ce => new ApiErrorMapping
@@ -35,7 +37,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 409,
                 Code = ce.Code,
                 Message = ce.Message,
-                LogLevel = LogLevel.Information
+                LogLevel = LogLevel.Information,
+                Category = ErrorCategory.Conflict
             },
 
             RateLimitException rle => new ApiErrorMapping
@@ -43,7 +46,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 429,
                 Code = rle.Code,
                 Message = rle.Message,
-                LogLevel = LogLevel.Warning
+                LogLevel = LogLevel.Warning,
+                Category = ErrorCategory.RateLimit
             },
 
             DependencyException de => new ApiErrorMapping
@@ -51,7 +55,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 503,
                 Code = de.Code,
                 Message = de.Message,
-                LogLevel = LogLevel.Warning
+                LogLevel = LogLevel.Warning,
+                Category = ErrorCategory.Dependency
             },
 
             UnauthorizedException ue => new ApiErrorMapping
@@ -59,7 +64,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 401,
                 Code = ue.Code,
                 Message = ue.Message,
-                LogLevel = LogLevel.Warning
+                LogLevel = LogLevel.Warning,
+                Category = ErrorCategory.Unauthorized
             },
 
             AppException ae => MapByCategory(ae),
@@ -69,7 +75,8 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 500,
                 Code = ErrorCodes.ServerInternalError,
                 Message = "An unexpected error occurred.",
-                LogLevel = LogLevel.Error
+                LogLevel = LogLevel.Error,
+                Category = ErrorCategory.Unexpected
             }
         };
     }
@@ -88,7 +95,11 @@ public sealed class ExceptionToApiErrorMapper
                 StatusCode = 500,
                 Code = ErrorCodes.ServerInternalError,
                 Message = "An unexpected error occurred.",
-                LogLevel = LogLevel.Error
+                LogLevel = LogLevel.Error,
+                // Category reflects the redacted wire outcome, not the
+                // (identical) raw exception category — keeping this in the
+                // mapping makes ApiMetrics agnostic to redaction semantics.
+                Category = ErrorCategory.Unexpected
             };
         }
 
@@ -112,7 +123,8 @@ public sealed class ExceptionToApiErrorMapper
             StatusCode = statusCode,
             Code = ae.Code,
             Message = ae.Message,
-            LogLevel = logLevel
+            LogLevel = logLevel,
+            Category = ae.Category
         };
     }
 }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Errors;
+using Hali.Tests.Unit.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,7 +21,8 @@ public class ExceptionHandlingMiddlewareTests
         return new ExceptionHandlingMiddleware(
             next,
             NullLogger<ExceptionHandlingMiddleware>.Instance,
-            new ExceptionToApiErrorMapper());
+            new ExceptionToApiErrorMapper(),
+            TestMetrics.Create());
     }
 
     private static DefaultHttpContext CreateContext()
