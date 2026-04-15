@@ -12,9 +12,11 @@ namespace Hali.Api.Controllers;
 
 /// <summary>
 /// POST /v1/feedback — anonymous in-app feedback capture.
-/// No auth required. Returns 202 immediately; persistence happens inline via
-/// <see cref="IFeedbackService"/>. Rate limiting is intentionally deferred
-/// (see PR for #156 — not re-added to OpenAPI until a limiter is wired in).
+/// No auth required. Persistence is synchronous via
+/// <see cref="IFeedbackService"/>; the response is <c>202 Accepted</c> to
+/// signal "recorded for later processing" semantics to the client, not
+/// asynchronous storage. Rate limiting is intentionally deferred (see PR
+/// for #156 — not re-added to OpenAPI until a limiter is wired in).
 /// </summary>
 [ApiController]
 [Route("v1/feedback")]

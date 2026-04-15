@@ -26,6 +26,10 @@ public sealed class FeedbackIntegrationTests : IntegrationTestBase
         var clusterId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
 
+        // Single, stable timestamp bounds to avoid drift from two UtcNow reads.
+        // Allow a small lower-bound skew for clock rounding between the client
+        // clock and Postgres' timestamptz resolution.
+        var before = DateTimeOffset.UtcNow.AddSeconds(-1);
         var response = await Client.PostAsJsonAsync("/v1/feedback", new
         {
             rating = "positive",
@@ -36,6 +40,7 @@ public sealed class FeedbackIntegrationTests : IntegrationTestBase
             platform = "android",
             sessionId,
         });
+        var after = DateTimeOffset.UtcNow.AddSeconds(1);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
 
@@ -49,8 +54,7 @@ public sealed class FeedbackIntegrationTests : IntegrationTestBase
         Assert.Equal("1.2.3", row.AppVersion);
         Assert.Equal("android", row.Platform);
         Assert.Equal(sessionId, row.SessionId);
-        Assert.True(row.SubmittedAt <= DateTimeOffset.UtcNow);
-        Assert.True(row.SubmittedAt > DateTimeOffset.UtcNow.AddMinutes(-5));
+        Assert.InRange(row.SubmittedAt, before, after);
     }
 
     [Fact]
