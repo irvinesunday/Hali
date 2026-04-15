@@ -1,6 +1,159 @@
 // ─── Result + Error (canonical location — do not redeclare elsewhere) ───────
 
 /**
+ * Canonical wire-visible backend error codes.
+ *
+ * Mirrors `02_openapi.yaml#/components/schemas/ErrorCode` exactly. The
+ * server-side source of truth is `src/Hali.Application/Errors/ErrorCodes.cs`.
+ * Drift between this mirror and the OpenAPI enum is enforced by
+ * `apps/citizen-mobile/__tests__/api/openapiErrorCodeParity.test.ts`.
+ *
+ * Internal-only codes used by the server for log/trace correlation
+ * (e.g. `clustering.no_spatial_cell`) are intentionally NOT listed —
+ * the backend redacts those to `server.internal_error` on the wire.
+ *
+ * Adding a new entry: copy the wire literal from the OpenAPI enum and
+ * pick a SCREAMING_SNAKE_CASE constant key. Keep the lists alphabetised
+ * by wire value within their grouping so diffs are reviewable.
+ */
+export const ERROR_CODES = {
+  // account.*
+  ACCOUNT_NOT_FOUND: 'account.not_found',
+
+  // auth.*
+  AUTH_FORBIDDEN: 'auth.forbidden',
+  AUTH_INSTITUTION_ID_MISSING: 'auth.institution_id_missing',
+  AUTH_OTP_INVALID: 'auth.otp_invalid',
+  AUTH_OTP_RATE_LIMITED: 'auth.otp_rate_limited',
+  AUTH_REFRESH_TOKEN_INVALID: 'auth.refresh_token_invalid',
+  AUTH_ROLE_INSUFFICIENT: 'auth.role_insufficient',
+  AUTH_UNAUTHENTICATED: 'auth.unauthenticated',
+  AUTH_UNAUTHORIZED: 'auth.unauthorized',
+
+  // cluster.*
+  CLUSTER_NOT_FOUND: 'cluster.not_found',
+
+  // dependency.*
+  DEPENDENCY_NLP_UNAVAILABLE: 'dependency.nlp_unavailable',
+  DEPENDENCY_SPATIAL_DERIVATION_FAILED: 'dependency.spatial_derivation_failed',
+
+  // device.*
+  DEVICE_MISSING_FIELDS: 'device.missing_fields',
+  DEVICE_NOT_FOUND: 'device.not_found',
+
+  // institution.*
+  INSTITUTION_MISSING_FIELDS: 'institution.missing_fields',
+
+  // invite.*
+  INVITE_ALREADY_ACCEPTED: 'invite.already_accepted',
+  INVITE_EXPIRED: 'invite.expired',
+  INVITE_INVALID: 'invite.invalid',
+
+  // locality.*
+  LOCALITY_NOT_FOUND: 'locality.not_found',
+  LOCALITY_QUERY_TOO_LONG: 'locality.query_too_long',
+  LOCALITY_QUERY_TOO_SHORT: 'locality.query_too_short',
+  LOCALITY_SEARCH_RATE_LIMITED: 'locality.search_rate_limited',
+
+  // official_post.*
+  OFFICIAL_POST_INVALID_CATEGORY: 'official_post.invalid_category',
+  OFFICIAL_POST_INVALID_TYPE: 'official_post.invalid_type',
+  OFFICIAL_POST_MISSING_FIELDS: 'official_post.missing_fields',
+  OFFICIAL_POST_OUTSIDE_JURISDICTION: 'official_post.outside_jurisdiction',
+
+  // participation.*
+  PARTICIPATION_CONTEXT_REQUIRES_AFFECTED:
+    'participation.context_requires_affected',
+  PARTICIPATION_CONTEXT_WINDOW_EXPIRED:
+    'participation.context_window_expired',
+  PARTICIPATION_RESTORATION_REQUIRES_AFFECTED:
+    'participation.restoration_requires_affected',
+
+  // places.*
+  PLACES_QUERY_TOO_LONG: 'places.query_too_long',
+  PLACES_QUERY_TOO_SHORT: 'places.query_too_short',
+  PLACES_REVERSE_RATE_LIMITED: 'places.reverse_rate_limited',
+  PLACES_SEARCH_RATE_LIMITED: 'places.search_rate_limited',
+
+  // rate_limit.*
+  RATE_LIMIT_EXCEEDED: 'rate_limit.exceeded',
+
+  // server.*
+  SERVER_INTERNAL_ERROR: 'server.internal_error',
+
+  // signal.*
+  SIGNAL_DUPLICATE: 'signal.duplicate',
+
+  // validation.*
+  VALIDATION_DEVICE_NOT_FOUND: 'validation.device_not_found',
+  VALIDATION_FAILED: 'validation.failed',
+  VALIDATION_INVALID_CATEGORY: 'validation.invalid_category',
+  VALIDATION_INVALID_COORDINATES: 'validation.invalid_coordinates',
+  VALIDATION_INVALID_LOCATION_SOURCE: 'validation.invalid_location_source',
+  VALIDATION_INVALID_PARTICIPATION_TYPE:
+    'validation.invalid_participation_type',
+  VALIDATION_INVALID_RESTORATION_RESPONSE:
+    'validation.invalid_restoration_response',
+  VALIDATION_INVALID_SECTION: 'validation.invalid_section',
+  VALIDATION_LOCALITY_UNRESOLVED: 'validation.locality_unresolved',
+  VALIDATION_LOCATION_LABEL_REQUIRED: 'validation.location_label_required',
+  VALIDATION_LOCATION_LABEL_TOO_LONG: 'validation.location_label_too_long',
+  VALIDATION_MAX_FOLLOWED_LOCALITIES_EXCEEDED:
+    'validation.max_followed_localities_exceeded',
+  VALIDATION_MISSING_COORDINATES: 'validation.missing_coordinates',
+  VALIDATION_MISSING_FIELD: 'validation.missing_field',
+} as const;
+
+/**
+ * Discriminated union of every known backend wire code. Derived from
+ * `ERROR_CODES` so the union and the constants table cannot drift.
+ */
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+const KNOWN_ERROR_CODES: ReadonlySet<string> = new Set<string>(
+  Object.values(ERROR_CODES),
+);
+
+/**
+ * Mobile-side sentinels emitted by `src/api/client.ts`. These are NOT
+ * codes the backend ever sends — they represent client-local conditions
+ * surfaced through the same `ApiError` shape so call sites only deal
+ * with one error type:
+ *   - `unknown_error`     — parser fallback when the body is malformed,
+ *                           empty, or carries a non-string `code` field
+ *   - `network_error`     — fetch threw (offline, DNS, TLS, abort)
+ *   - `no_refresh_token`  — silent-refresh path with no stored refresh
+ *   - `session_expired`   — silent-refresh attempt failed
+ */
+export type ClientErrorCode =
+  | 'unknown_error'
+  | 'network_error'
+  | 'no_refresh_token'
+  | 'session_expired';
+
+/**
+ * Type guard that narrows an arbitrary value to the known wire-visible
+ * `ErrorCode` set. Returns `false` for:
+ *   - mobile-side `ClientErrorCode` sentinels
+ *   - unknown / future backend codes the app version hasn't learned yet
+ *   - non-string values (`null`, `undefined`, numbers, objects)
+ *
+ * Use this BEFORE comparing `error.code` to a specific `ERROR_CODES.*`
+ * literal so unknown-code paths are explicit at the call site:
+ *
+ * ```ts
+ * if (isKnownErrorCode(err.code) && err.code === ERROR_CODES.RATE_LIMIT_EXCEEDED) { … }
+ * ```
+ *
+ * Runtime truth is preserved: the parser stores `error.code` verbatim
+ * so unknown future backend codes pass through end-to-end. This guard
+ * is the explicit opt-in for safe narrowing.
+ */
+export function isKnownErrorCode(value: unknown): value is ErrorCode {
+  return typeof value === 'string' && KNOWN_ERROR_CODES.has(value);
+}
+
+/**
  * Normalised error shape surfaced by the mobile API client.
  *
  * The wire contract is the canonical backend envelope:
@@ -11,15 +164,21 @@
  * `code: 'unknown_error'` and a generic message. `traceId` and `details`
  * are only set when the canonical envelope provides them.
  *
+ * `code` is typed as `ErrorCode | ClientErrorCode | (string & {})`. The
+ * `(string & {})` escape hatch keeps the union open at runtime so a
+ * backend code unknown to this app version is still representable
+ * verbatim — preserving truth over a forced-exhaustive lie. Autocomplete
+ * still surfaces the named literals; use `isKnownErrorCode(code)` to
+ * narrow safely before branching on a specific `ERROR_CODES.*` value.
+ *
  * `details` is `unknown` on purpose: today it can be a keyed field-errors
  * object (`{ fields: { fieldName: [...] } }` from `ValidationException`),
  * a string, an array, or absent. Consumers that need to read it should
- * narrow it at the use site — do not widen this type into a union here
- * (that is tracked separately; see the mobile `ErrorCode` follow-up).
+ * narrow it at the use site — do not widen this type into a union here.
  */
 export interface ApiError {
   status: number;
-  code: string;
+  code: ErrorCode | ClientErrorCode | (string & {});
   message: string;
   traceId?: string;
   details?: unknown;

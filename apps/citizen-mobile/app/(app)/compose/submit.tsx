@@ -19,6 +19,7 @@ import type {
   SignalSubmitRequest,
   SignalPreviewResponse,
 } from '../../../src/types/api';
+import { ERROR_CODES, isKnownErrorCode } from '../../../src/types/api';
 
 type ScreenState = 'idle' | 'loading' | 'error';
 
@@ -132,6 +133,24 @@ function SubmitScreenContent({
     if (result.ok) { onSuccess(result.value.clusterId); return; }
     setScreenState('error');
     if (result.error.status === 409) { onSuccess(undefined); return; }
+
+    // Discriminable validation messaging — branch on the typed wire code
+    // first so the user sees a specific call-to-action for the two
+    // composer-affecting validation failures, then fall back to status
+    // and finally the server message.
+    if (isKnownErrorCode(result.error.code)) {
+      switch (result.error.code) {
+        case ERROR_CODES.VALIDATION_LOCALITY_UNRESOLVED:
+          setErrorMessage('We could not match this report to a ward. Tap back and refine the location.');
+          return;
+        case ERROR_CODES.VALIDATION_INVALID_CATEGORY:
+          setErrorMessage('The selected category is not recognised. Tap back and choose a different one.');
+          return;
+        case ERROR_CODES.RATE_LIMIT_EXCEEDED:
+          setErrorMessage('Too many signals submitted. Please wait a moment and try again.');
+          return;
+      }
+    }
     if (result.error.status === 429) {
       setErrorMessage('Too many signals submitted. Please wait a moment and try again.');
     } else if (result.error.status === 422) {

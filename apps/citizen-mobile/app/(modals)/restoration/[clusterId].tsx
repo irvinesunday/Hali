@@ -37,6 +37,7 @@ import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { submitRestorationResponse } from '../../../src/api/clusters';
 import type { RestorationResponseValue } from '../../../src/types/api';
+import { ERROR_CODES, isKnownErrorCode } from '../../../src/types/api';
 
 type ScreenState = 'idle' | 'loading' | 'error';
 
@@ -136,7 +137,10 @@ export default function RestorationPromptModal(): React.ReactElement {
 
       setScreenState('error');
       setPendingKey(null);
-      if (result.error.code === 'invalid_restoration_response') {
+      if (
+        isKnownErrorCode(result.error.code) &&
+        result.error.code === ERROR_CODES.VALIDATION_INVALID_RESTORATION_RESPONSE
+      ) {
         setErrorMessage(
           'That response is no longer valid. Please try again.',
         );
