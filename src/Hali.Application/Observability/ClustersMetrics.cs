@@ -190,9 +190,15 @@ public sealed class ClustersMetrics : IDisposable
     public const string OutcomeDependencyError = "dependency_error";
 
     // ── State tag values ────────────────────────────────────────────────────
-    // Kept in lockstep with the `from_state` / `to_state` strings that the
-    // outbox event payload already uses for cluster_state_changed events.
-    // Only the three states that participate in lifecycle transitions are
+    // Canonical snake_case values used by the cluster_lifecycle_transitions
+    // counter. These are deliberately NOT derived from SignalState.ToString()
+    // because `SignalState.PossibleRestoration.ToString().ToLowerInvariant()`
+    // yields "possiblerestoration" (no underscore) — the existing outbox
+    // event payload for cluster_state_changed currently uses that form, but
+    // the metric tag stays snake_case so dashboards and alerts remain
+    // readable and human-friendly. Normalizing the outbox payload is a
+    // separate, out-of-scope change.
+    // Only the four states that participate in lifecycle transitions are
     // listed here — Expired and Suppressed are not produced by any of the
     // instrumented code paths and are omitted from the tag catalog to keep
     // cardinality honest.

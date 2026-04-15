@@ -165,14 +165,14 @@ public class ClustersController : ControllerBase
                         ["type"] = ["type is required."]
                     });
             }
-            bool flag = !Enum.TryParse<ParticipationType>(dto.Type, ignoreCase: true, out var type);
-            bool flag2 = flag;
-            if (!flag2)
-            {
-                bool flag3 = (uint)type <= 2u;
-                flag2 = !flag3;
-            }
-            if (flag2)
+            // Reject when the string is not a valid ParticipationType name
+            // OR when the parsed value falls outside the three endpoint-
+            // visible types (0–2). Values 3–5 (RestorationYes / RestorationNo
+            // / RestorationUnsure) are persisted via /restoration-response,
+            // not /participation, so accepting them here would let clients
+            // bypass the server-side "requires affected" gate in
+            // ParticipationService.
+            if (!Enum.TryParse<ParticipationType>(dto.Type, ignoreCase: true, out var type) || (uint)type > 2u)
             {
                 outcome = ClustersMetrics.OutcomeRejectedValidation;
                 throw new ValidationException("Invalid participation type.",
@@ -386,8 +386,13 @@ public class ClustersController : ControllerBase
                         ["device_hash"] = ["device_hash is required."]
                     });
             }
-            HashSet<string> validResponses = new HashSet<string> { "still_affected", "restored", "not_sure" };
-            if (string.IsNullOrWhiteSpace(dto.Response) || !validResponses.Contains(dto.Response))
+            // Pattern-match avoids allocating a HashSet per request. The
+            // three valid values are stable and part of the wire contract;
+            // ParticipationService.RecordRestorationResponseAsync re-maps
+            // the same strings to the RestorationYes / RestorationNo /
+            // RestorationUnsure enum values.
+            bool isValidResponse = dto.Response is "still_affected" or "restored" or "not_sure";
+            if (string.IsNullOrWhiteSpace(dto.Response) || !isValidResponse)
             {
                 outcome = ClustersMetrics.OutcomeRejectedValidation;
                 throw new ValidationException("Invalid response value.",
