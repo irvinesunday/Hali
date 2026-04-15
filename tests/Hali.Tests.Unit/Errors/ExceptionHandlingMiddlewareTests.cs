@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Errors;
+using Hali.Tests.Unit.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,14 +15,32 @@ using Xunit;
 
 namespace Hali.Tests.Unit.Errors;
 
-public class ExceptionHandlingMiddlewareTests
+public class ExceptionHandlingMiddlewareTests : IDisposable
 {
-    private static ExceptionHandlingMiddleware CreateMiddleware(RequestDelegate next)
+    // xUnit instantiates the test class once per [Fact], so tracking scopes on
+    // the instance gives a per-test lifetime. Dispose() runs after each test
+    // and tears down the TestMetricsScope(s) (ApiMetrics + ServiceProvider)
+    // created by CreateMiddleware — otherwise a fresh ServiceProvider would
+    // leak for every test in the class.
+    private readonly List<IDisposable> _disposables = new();
+
+    private ExceptionHandlingMiddleware CreateMiddleware(RequestDelegate next)
     {
+        var scope = TestMetrics.Create();
+        _disposables.Add(scope);
         return new ExceptionHandlingMiddleware(
             next,
             NullLogger<ExceptionHandlingMiddleware>.Instance,
-            new ExceptionToApiErrorMapper());
+            new ExceptionToApiErrorMapper(),
+            scope.Metrics);
+    }
+
+    public void Dispose()
+    {
+        foreach (var d in _disposables)
+        {
+            d.Dispose();
+        }
     }
 
     private static DefaultHttpContext CreateContext()

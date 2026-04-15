@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Hali.Api.Errors;
+using Hali.Api.Observability;
 using Hali.Application.Errors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,15 +15,18 @@ public class ExceptionHandlingMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
     private readonly ExceptionToApiErrorMapper _mapper;
+    private readonly ApiMetrics _metrics;
 
     public ExceptionHandlingMiddleware(
         RequestDelegate next,
         ILogger<ExceptionHandlingMiddleware> logger,
-        ExceptionToApiErrorMapper mapper)
+        ExceptionToApiErrorMapper mapper,
+        ApiMetrics metrics)
     {
         _next = next;
         _logger = logger;
         _mapper = mapper;
+        _metrics = metrics;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -33,7 +38,8 @@ public class ExceptionHandlingMiddleware
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
             // Client disconnected — not an error. Let the framework handle
-            // the abort without emitting a 500 envelope or error-level log.
+            // the abort without emitting a 500 envelope, error-level log, or
+            // metric: the cancellation is not a handled API exception.
         }
         catch (Exception ex)
         {
@@ -56,6 +62,13 @@ public class ExceptionHandlingMiddleware
             context.Items["CorrelationId"] as string
             ?? context.TraceIdentifier);
 
+        // Emit the metric before writing the response so an exception during
+        // serialization does not drop the observation. Tags are read from
+        // `mapping` (the post-redaction wire outcome) so internal-only codes
+        // never appear as metric values — they bucket into `server.internal_error`
+        // just like the wire body.
+        RecordExceptionMetric(mapping);
+
         LogException(exception, mapping);
 
         var response = new ApiErrorResponse
@@ -72,6 +85,20 @@ public class ExceptionHandlingMiddleware
         context.Response.StatusCode = mapping.StatusCode;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(JsonSerializer.Serialize(response, ApiErrorJsonOptions.Default));
+    }
+
+    private void RecordExceptionMetric(ApiErrorMapping mapping)
+    {
+        // Lowercase the category for a stable cardinality-controlled tag
+        // value ("unexpected", "validation", ...) so consumers aren't split
+        // across casing variants over time.
+        var tags = new TagList
+        {
+            { ApiMetrics.TagErrorCode, mapping.Code },
+            { ApiMetrics.TagErrorCategory, mapping.Category.ToString().ToLowerInvariant() },
+            { ApiMetrics.TagStatusCode, mapping.StatusCode }
+        };
+        _metrics.ApiExceptionsTotal.Add(1, tags);
     }
 
     /// <summary>
