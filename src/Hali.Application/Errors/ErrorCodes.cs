@@ -24,7 +24,9 @@ public static class ErrorCodes
     /// <summary>
     /// Emitted by the JwtBearer challenge handler for missing/invalid/expired
     /// tokens on <c>[Authorize]</c> endpoints. No controller throws this
-    /// directly — it is produced by <c>CustomJwtBearerEvents</c>.
+    /// directly — it is produced by the inline
+    /// <c>JwtBearerEvents.OnChallenge</c> handler configured in
+    /// <c>src/Hali.Api/Program.cs</c>.
     /// </summary>
     public const string AuthUnauthenticated = "auth.unauthenticated";
     public const string AuthUnauthorized = "auth.unauthorized";

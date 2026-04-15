@@ -149,16 +149,15 @@ public class ErrorCodeCatalogTests
                 foreach (var exName in TypedExceptionNames)
                 {
                     // Match: throw new XxxException(
-                    //           <first-arg>  <- code-position
-                    // where <first-arg> can be either a positional string
-                    // literal or a named argument (`code: "..."` or
-                    // `message: "..."`). We reject the case where a bare
-                    // string literal is passed as the code position
-                    // (positional first arg, or named `code: "..."`).
-                    // ValidationException places `message` first and `code`
-                    // second, so we also look for `code: "literal"`.
+                    //           <first-arg>  <- code-position for most
+                    // where the code value can reach the throw in one of
+                    // three syntactic shapes. Each shape must use an
+                    // ErrorCodes.* reference (or any non-literal expression),
+                    // never a bare string literal.
 
-                    // Flag: code: "literal"
+                    // Shape A: `code: "literal"` — named argument.
+                    // Applies to every exception class that has a `code`
+                    // parameter, regardless of its ordinal position.
                     var namedCode = new Regex(
                         $@"throw\s+new\s+{Regex.Escape(exName)}\s*\([^;]{{0,1500}}?\bcode\s*:\s*""[^""]+""",
                         RegexOptions.Multiline | RegexOptions.Singleline);
@@ -167,19 +166,39 @@ public class ErrorCodeCatalogTests
                         violations.Add($"{rel}: bare literal in `code:` named arg -> {Snippet(m.Value)}");
                     }
 
-                    // Flag: positional first-arg literal for types whose
-                    // first ctor parameter is the code (NotFoundException,
-                    // ConflictException, DependencyException,
-                    // InvariantViolationException).
-                    if (exName is "NotFoundException"
-                        or "ConflictException"
-                        or "DependencyException"
-                        or "InvariantViolationException")
+                    // Shape B: positional first-arg literal. For every
+                    // AppException subclass except ValidationException,
+                    // `code` is the first ctor parameter, so a positional
+                    // call `new XxxException("literal.code", ...)` passes
+                    // the literal as the code. ValidationException is
+                    // excluded here because its ctor is
+                    // `(string message, string code = ..., ...)` and the
+                    // first positional argument is the message — not the
+                    // code. Shape C below covers ValidationException's
+                    // second positional slot.
+                    if (exName != "ValidationException")
                     {
                         var positional = new Regex(
                             $@"throw\s+new\s+{Regex.Escape(exName)}\s*\(\s*""[^""]+""",
                             RegexOptions.Multiline | RegexOptions.Singleline);
                         foreach (Match m in positional.Matches(content))
+                        {
+                            violations.Add($"{rel}: bare literal in positional code arg -> {Snippet(m.Value)}");
+                        }
+                    }
+
+                    // Shape C: ValidationException-specific — positional
+                    // 2nd-arg literal (message first, code second). Matches
+                    // `new ValidationException("msg", "literal.code", ...)`.
+                    if (exName == "ValidationException")
+                    {
+                        // Use \\"[^\"]*\\"  for the first (message) slot,
+                        // then a comma, then a literal in the second slot.
+                        // Allow whitespace/newlines between slots.
+                        var validationPositional = new Regex(
+                            $@"throw\s+new\s+ValidationException\s*\(\s*""[^""]*""\s*,\s*""[^""]+""",
+                            RegexOptions.Multiline | RegexOptions.Singleline);
+                        foreach (Match m in validationPositional.Matches(content))
                         {
                             violations.Add($"{rel}: bare literal in positional code arg -> {Snippet(m.Value)}");
                         }
@@ -306,9 +325,13 @@ public class ErrorCodeCatalogTests
                 continue;
             }
 
-            // Enum items are `        - some.code`
-            var m = Regex.Match(line, @"^\s{8}-\s*([A-Za-z0-9_.]+)\s*$");
-            if (m.Success)
+            // Enum items are `        - some.code`. Accept any non-whitespace
+            // token on the value side and then validate against the canonical
+            // wire-code format, so the parity test proves both that the spec's
+            // enum items are discovered AND that they conform to the
+            // `namespace.reason` snake_case convention.
+            var m = Regex.Match(line, @"^\s{8}-\s*(\S+)\s*$");
+            if (m.Success && CodeFormat.IsMatch(m.Groups[1].Value))
             {
                 result.Add(m.Groups[1].Value);
                 continue;

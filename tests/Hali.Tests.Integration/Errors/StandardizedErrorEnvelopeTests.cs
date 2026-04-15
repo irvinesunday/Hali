@@ -138,23 +138,32 @@ public sealed class StandardizedErrorEnvelopeTests : IntegrationTestBase
         // rename. The preview endpoint caps anonymous callers at 10/IP/10min;
         // the 11th call is the first to cross the threshold.
         //
-        // Redis state persists across tests in this collection, so clear any
-        // residual preview-rate-limit counter before counting — otherwise the
-        // outcome depends on the order xunit happens to pick.
+        // Redis state persists across tests in this collection. Clear any
+        // residual preview-rate-limit counter before AND after the test, so
+        // (a) this test is deterministic regardless of run order, and
+        // (b) the counter left behind at 11+ does not cause subsequent
+        // preview-using tests to spuriously return 429.
         await ClearPreviewRateLimitKeysAsync();
 
-        HttpResponseMessage? last = null;
-        for (var i = 0; i < 11; i++)
+        try
         {
-            last = await Client.PostAsJsonAsync("/v1/signals/preview", new
+            HttpResponseMessage? last = null;
+            for (var i = 0; i < 11; i++)
             {
-                freeText = $"rate-limit-probe-{i} there is no water in my area",
-            });
-        }
+                last = await Client.PostAsJsonAsync("/v1/signals/preview", new
+                {
+                    freeText = $"rate-limit-probe-{i} there is no water in my area",
+                });
+            }
 
-        Assert.NotNull(last);
-        Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
-        AssertErrorEnvelope(await last.Content.ReadFromJsonAsync<JsonElement>(_json), "rate_limit.exceeded");
+            Assert.NotNull(last);
+            Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
+            AssertErrorEnvelope(await last.Content.ReadFromJsonAsync<JsonElement>(_json), "rate_limit.exceeded");
+        }
+        finally
+        {
+            await ClearPreviewRateLimitKeysAsync();
+        }
     }
 
     private async Task ClearPreviewRateLimitKeysAsync()
