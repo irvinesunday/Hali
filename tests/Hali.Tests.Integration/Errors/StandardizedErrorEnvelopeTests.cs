@@ -114,12 +114,18 @@ public sealed class StandardizedErrorEnvelopeTests : IntegrationTestBase
         // participation endpoint validates the request body before looking up
         // the cluster, so a random cluster id is sufficient — the validation
         // path is the only thing exercised.
+        //
+        // We populate `type` with a non-empty value so positional-record model
+        // binding succeeds, then leave `deviceHash` blank so the controller's
+        // in-method guard — not framework-level ModelState validation — is the
+        // first check to fire. That guard is the one whose code migrated
+        // from `validation.failed` to `validation.missing_field`.
         var jwt = MintJwt(Guid.NewGuid());
         using var authed = CreateAuthenticatedClient(jwt);
 
         var response = await authed.PostAsJsonAsync(
             $"/v1/clusters/{Guid.NewGuid()}/participation",
-            new { });
+            new { type = "affected", deviceHash = "", idempotencyKey = "irrelevant-for-pre-validation" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         AssertErrorEnvelope(await response.Content.ReadFromJsonAsync<JsonElement>(_json), "validation.missing_field");
