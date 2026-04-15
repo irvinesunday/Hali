@@ -67,7 +67,7 @@ public sealed class ExceptionToApiErrorMapper
             _ => new ApiErrorMapping
             {
                 StatusCode = 500,
-                Code = "server.internal_error",
+                Code = ErrorCodes.ServerInternalError,
                 Message = "An unexpected error occurred.",
                 LogLevel = LogLevel.Error
             }
@@ -76,6 +76,22 @@ public sealed class ExceptionToApiErrorMapper
 
     private static ApiErrorMapping MapByCategory(AppException ae)
     {
+        // ErrorCategory.Unexpected represents an internal invariant violation
+        // carried by a typed AppException (e.g. InvariantViolationException).
+        // The typed form preserves ae.Code for logs/traces, but the wire MUST
+        // NOT leak the internal code — it is redacted to ServerInternalError,
+        // matching the behaviour of the unmapped-exception fallback above.
+        if (ae.Category == ErrorCategory.Unexpected)
+        {
+            return new ApiErrorMapping
+            {
+                StatusCode = 500,
+                Code = ErrorCodes.ServerInternalError,
+                Message = "An unexpected error occurred.",
+                LogLevel = LogLevel.Error
+            };
+        }
+
         var (statusCode, logLevel) = ae.Category switch
         {
             ErrorCategory.Validation => (400, LogLevel.Information),

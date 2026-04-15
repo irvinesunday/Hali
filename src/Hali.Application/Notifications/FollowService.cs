@@ -70,7 +70,7 @@ public class FollowService : IFollowService
         if (deduped.Count > MaxFollowedLocalities)
             throw new ValidationException(
                 "You may follow at most 5 localities.",
-                code: "validation.max_followed_localities_exceeded");
+                code: ErrorCodes.ValidationMaxFollowedLocalitiesExceeded);
 
         await _repo.ReplaceFollowsAsync(accountId, deduped, ct);
     }

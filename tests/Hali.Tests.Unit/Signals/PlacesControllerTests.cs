@@ -184,7 +184,10 @@ public class PlacesControllerTests
 
         var ex = await Assert.ThrowsAsync<ValidationException>(
             () => controller.Reverse(lat, lng, CancellationToken.None));
-        Assert.Equal("places.invalid_coordinates", ex.Code);
+        // H3 (#153): `places.invalid_coordinates` collapsed to the canonical
+        // `validation.invalid_coordinates` alongside the parallel
+        // `locality.invalid_coordinates` site.
+        Assert.Equal(ErrorCodes.ValidationInvalidCoordinates, ex.Code);
     }
 
     [Fact]
@@ -196,7 +199,9 @@ public class PlacesControllerTests
         PlacesController controller = CreateController();
         var ex = await Assert.ThrowsAsync<NotFoundException>(
             () => controller.Reverse(-1.3, 36.8, CancellationToken.None));
-        Assert.Equal("places.locality_not_found", ex.Code);
+        // H3 (#153): `places.locality_not_found` collapsed to the canonical
+        // `locality.not_found` (same concept as the locality-resolve endpoint).
+        Assert.Equal(ErrorCodes.LocalityNotFound, ex.Code);
         await _geocoding.DidNotReceive().ReverseGeocodeAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>());
     }
 

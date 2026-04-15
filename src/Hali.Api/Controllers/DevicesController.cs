@@ -38,7 +38,7 @@ public class DevicesController : ControllerBase
         {
             throw new ValidationException(
                 "expo_push_token and device_hash are required.",
-                code: "device.missing_fields",
+                code: ErrorCodes.DeviceMissingFields,
                 fieldErrors: missing);
         }
 
@@ -49,7 +49,7 @@ public class DevicesController : ControllerBase
             // "no matching device" is semantically a missing resource. The
             // client is expected to re-register the device before retrying.
             throw new NotFoundException(
-                code: "device.not_found",
+                code: ErrorCodes.DeviceNotFound,
                 message: "Device not recognised.");
         }
 

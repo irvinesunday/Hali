@@ -236,7 +236,8 @@ public class SignalIngestionServiceTests
         _repo.IsRateLimitAllowedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
         SignalIngestionService svc = CreateService();
         var ex = await Assert.ThrowsAsync<RateLimitException>(() => svc.SubmitAsync(MakeSubmitRequest(), null, null));
-        Assert.Equal("integrity.rate_limited", ex.Code);
+        // H3 (#153): renamed from `integrity.rate_limited`.
+        Assert.Equal(ErrorCodes.RateLimitExceeded, ex.Code);
     }
 
     [Fact]

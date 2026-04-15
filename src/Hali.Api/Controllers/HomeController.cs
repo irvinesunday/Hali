@@ -107,7 +107,7 @@ public class HomeController : ControllerBase
                     _logger?.LogInformation(
                         "{EventName} section={Section} statusCode={StatusCode} durationMs={DurationMs}",
                         ObservabilityEvents.HomeRequestCompleted, safeSection, 400, sw.ElapsedMilliseconds);
-                    throw new ValidationException("Unknown section name.", code: "validation.invalid_section");
+                    throw new ValidationException("Unknown section name.", code: ErrorCodes.ValidationInvalidSection);
                 }
 
                 sw.Stop();

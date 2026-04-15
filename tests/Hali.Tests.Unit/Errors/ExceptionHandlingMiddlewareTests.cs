@@ -126,7 +126,9 @@ public class ExceptionHandlingMiddlewareTests
 
         Assert.Equal(429, context.Response.StatusCode);
         var doc = await ReadResponseBody(context);
-        Assert.Equal("integrity.rate_limited", doc.RootElement.GetProperty("error").GetProperty("code").GetString());
+        // H3 (#153): default RateLimitException code renamed from
+        // `integrity.rate_limited` to `rate_limit.exceeded`.
+        Assert.Equal(ErrorCodes.RateLimitExceeded, doc.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]

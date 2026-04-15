@@ -82,13 +82,13 @@ public class PlacesController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
         {
-            throw new ValidationException("Query must be at least 2 characters.", code: "places.query_too_short");
+            throw new ValidationException("Query must be at least 2 characters.", code: ErrorCodes.PlacesQueryTooShort);
         }
 
         string query = q.Trim();
         if (query.Length > MaxSearchQueryLength)
         {
-            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: "places.query_too_long");
+            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: ErrorCodes.PlacesQueryTooLong);
         }
 
         string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -97,7 +97,7 @@ public class PlacesController : ControllerBase
         if (!allowed)
         {
             throw new RateLimitException(
-                code: "places.search_rate_limited",
+                code: ErrorCodes.PlacesSearchRateLimited,
                 message: "Too many requests.");
         }
 
@@ -183,7 +183,7 @@ public class PlacesController : ControllerBase
     {
         if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
         {
-            throw new ValidationException("Invalid coordinates.", code: "places.invalid_coordinates");
+            throw new ValidationException("Invalid coordinates.", code: ErrorCodes.ValidationInvalidCoordinates);
         }
 
         string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -192,7 +192,7 @@ public class PlacesController : ControllerBase
         if (!allowed)
         {
             throw new RateLimitException(
-                code: "places.reverse_rate_limited",
+                code: ErrorCodes.PlacesReverseRateLimited,
                 message: "Too many requests.");
         }
 
@@ -215,7 +215,7 @@ public class PlacesController : ControllerBase
         LocalitySummary? locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
         {
-            throw new NotFoundException(code: "places.locality_not_found", message: "No locality found for the given coordinates.");
+            throw new NotFoundException(code: ErrorCodes.LocalityNotFound, message: "No locality found for the given coordinates.");
         }
 
         // Label-only cache. Keyed by quantized coords AND the resolved

@@ -36,7 +36,7 @@ public class UsersController : ControllerBase
         var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
             throw new NotFoundException(
-                code: "account.not_found",
+                code: ErrorCodes.AccountNotFound,
                 message: "Account not found.");
 
         var settings = ParseNotificationSettings(account.NotificationSettings);
@@ -64,7 +64,7 @@ public class UsersController : ControllerBase
         var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
             throw new NotFoundException(
-                code: "account.not_found",
+                code: ErrorCodes.AccountNotFound,
                 message: "Account not found.");
 
         account.NotificationSettings = JsonSerializer.Serialize(dto);

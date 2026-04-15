@@ -76,13 +76,13 @@ public class InstitutionService : IInstitutionService
         DateTime now = DateTime.UtcNow;
 
         if (invite == null)
-            throw new ValidationException("Invalid invite token.", code: "invite.invalid");
+            throw new ValidationException("Invalid invite token.", code: ErrorCodes.InviteInvalid);
 
         if (invite.ExpiresAt <= now)
-            throw new ValidationException("Invite token has expired.", code: "invite.expired");
+            throw new ValidationException("Invite token has expired.", code: ErrorCodes.InviteExpired);
 
         if (invite.AcceptedAt != null)
-            throw new ConflictException("invite.already_accepted", "Invite has already been accepted.");
+            throw new ConflictException(ErrorCodes.InviteAlreadyAccepted, "Invite has already been accepted.");
 
         // Create account with institution role
         Account? existing = await _authRepo.FindAccountByPhoneAsync(request.PhoneNumber, ct);

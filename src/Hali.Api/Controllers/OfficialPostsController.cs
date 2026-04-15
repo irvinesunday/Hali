@@ -35,7 +35,7 @@ public class OfficialPostsController : ControllerBase
         {
             throw new ValidationException(
                 "type, category, title, and body are required.",
-                code: "official_post.missing_fields",
+                code: ErrorCodes.OfficialPostMissingFields,
                 fieldErrors: missing);
         }
 
@@ -47,7 +47,7 @@ public class OfficialPostsController : ControllerBase
         if (string.IsNullOrEmpty(institutionClaim) || !Guid.TryParse(institutionClaim, out var institutionId))
         {
             throw new ForbiddenException(
-                code: "auth.institution_id_missing",
+                code: ErrorCodes.AuthInstitutionIdMissing,
                 message: "Institution identity required.");
         }
 

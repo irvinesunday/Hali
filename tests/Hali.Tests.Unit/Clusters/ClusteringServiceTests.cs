@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Errors;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
 using Hali.Domain.Enums;
@@ -83,8 +84,12 @@ public class ClusteringServiceTests
         var (svc, repo, h3, civis) = Build();
         var signal = MakeSignal(spatialCellId: null);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RouteSignalAsync(signal));
-        Assert.Equal("CLUSTERING_NO_SPATIAL_CELL", ex.Message);
+        // H3 (#153): retyped from InvalidOperationException to a typed
+        // InvariantViolationException carrying ErrorCodes.ClusteringNoSpatialCell.
+        // Wire behaviour is unchanged (redacted to server.internal_error by
+        // ExceptionToApiErrorMapper for ErrorCategory.Unexpected).
+        var ex = await Assert.ThrowsAsync<InvariantViolationException>(() => svc.RouteSignalAsync(signal));
+        Assert.Equal(ErrorCodes.ClusteringNoSpatialCell, ex.Code);
 
         h3.DidNotReceive().GetKRingCells(Arg.Any<string>(), Arg.Any<int>());
         await repo.DidNotReceive().FindCandidateClustersAsync(

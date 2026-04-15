@@ -53,7 +53,7 @@ public class ClustersController : ControllerBase
         SignalCluster cluster = await _clusters.GetClusterByIdAsync(id, ct);
         if (cluster == null)
         {
-            throw new NotFoundException("cluster.not_found", "Cluster not found.");
+            throw new NotFoundException(ErrorCodes.ClusterNotFound, "Cluster not found.");
         }
         var officialPosts = await _officialPosts.GetByClusterIdAsync(id, ct);
 
@@ -130,7 +130,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
             throw new ValidationException("device_hash is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["device_hash is required."]
@@ -139,7 +139,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Type))
         {
             throw new ValidationException("type is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["type"] = ["type is required."]
@@ -155,7 +155,7 @@ public class ClustersController : ControllerBase
         if (flag2)
         {
             throw new ValidationException("Invalid participation type.",
-                code: "validation.invalid_participation_type",
+                code: ErrorCodes.ValidationInvalidParticipationType,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["type"] = ["Invalid participation type."]
@@ -165,7 +165,7 @@ public class ClustersController : ControllerBase
         if (device == null)
         {
             throw new ValidationException("Device not recognised.",
-                code: "validation.device_not_found",
+                code: ErrorCodes.ValidationDeviceNotFound,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["Device not recognised."]
@@ -187,7 +187,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
             throw new ValidationException("device_hash is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["device_hash is required."]
@@ -196,7 +196,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Text))
         {
             throw new ValidationException("text is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["text"] = ["text is required."]
@@ -206,7 +206,7 @@ public class ClustersController : ControllerBase
         if (device == null)
         {
             throw new ValidationException("Device not recognised.",
-                code: "validation.device_not_found",
+                code: ErrorCodes.ValidationDeviceNotFound,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["Device not recognised."]
@@ -224,7 +224,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
             throw new ValidationException("device_hash is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["device_hash is required."]
@@ -234,7 +234,7 @@ public class ClustersController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Response) || !validResponses.Contains(dto.Response))
         {
             throw new ValidationException("Invalid response value.",
-                code: "validation.invalid_restoration_response",
+                code: ErrorCodes.ValidationInvalidRestorationResponse,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["response"] = ["Invalid response value. Must be one of: still_affected, restored, not_sure."]
@@ -244,7 +244,7 @@ public class ClustersController : ControllerBase
         if (device == null)
         {
             throw new ValidationException("Device not recognised.",
-                code: "validation.device_not_found",
+                code: ErrorCodes.ValidationDeviceNotFound,
                 fieldErrors: new Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["Device not recognised."]

@@ -163,11 +163,11 @@ public class LocalitiesController : ControllerBase
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
-            throw new ValidationException("Query must be at least 2 characters.", code: "locality.query_too_short");
+            throw new ValidationException("Query must be at least 2 characters.", code: ErrorCodes.LocalityQueryTooShort);
 
         var query = q.Trim();
         if (query.Length > MaxSearchQueryLength)
-            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: "locality.query_too_long");
+            throw new ValidationException($"Query must be at most {MaxSearchQueryLength} characters.", code: ErrorCodes.LocalityQueryTooLong);
 
         // Anonymous endpoint — rate limit per client IP to bound DoS surface
         // (each call may trigger an upstream Nominatim request + PostGIS lookup).
@@ -177,7 +177,7 @@ public class LocalitiesController : ControllerBase
         if (!allowed)
         {
             throw new RateLimitException(
-                code: "locality.search_rate_limited",
+                code: ErrorCodes.LocalitySearchRateLimited,
                 message: "Too many requests.");
         }
 
@@ -257,11 +257,11 @@ public class LocalitiesController : ControllerBase
         CancellationToken ct)
     {
         if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
-            throw new ValidationException("Invalid coordinates.", code: "locality.invalid_coordinates");
+            throw new ValidationException("Invalid coordinates.", code: ErrorCodes.ValidationInvalidCoordinates);
 
         var locality = await _localities.FindByPointAsync(latitude, longitude, ct);
         if (locality is null)
-            throw new NotFoundException(code: "locality.not_found", message: "No locality found for the given coordinates.");
+            throw new NotFoundException(code: ErrorCodes.LocalityNotFound, message: "No locality found for the given coordinates.");
 
         return Ok(new LocalitySummaryDto
         {

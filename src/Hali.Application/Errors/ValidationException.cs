@@ -10,7 +10,7 @@ public class ValidationException : AppException
 
     public ValidationException(
         string message,
-        string code = "validation.failed",
+        string code = ErrorCodes.ValidationFailed,
         IReadOnlyDictionary<string, string[]>? fieldErrors = null,
         IReadOnlyDictionary<string, object?>? metadata = null)
         : base(code, message, ErrorCategory.Validation, metadata: metadata)

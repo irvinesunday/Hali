@@ -62,7 +62,9 @@ public class ExceptionToApiErrorMapperTests
         var ex = new RateLimitException();
         var result = _mapper.Map(ex);
         Assert.Equal(429, result.StatusCode);
-        Assert.Equal("integrity.rate_limited", result.Code);
+        // H3 (#153): default RateLimitException code renamed from
+        // `integrity.rate_limited` to `rate_limit.exceeded`.
+        Assert.Equal(ErrorCodes.RateLimitExceeded, result.Code);
         Assert.Equal(LogLevel.Warning, result.LogLevel);
     }
 
