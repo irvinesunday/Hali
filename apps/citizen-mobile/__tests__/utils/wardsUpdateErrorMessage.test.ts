@@ -7,7 +7,10 @@
 // proves the over-capacity toast now fires on the canonical
 // `validation.max_followed_localities_exceeded` code.
 
-import { mapWardsUpdateErrorToToast } from '../../src/utils/wardsUpdateErrorMessage';
+import {
+  formatCapacityToastMessage,
+  mapWardsUpdateErrorToToast,
+} from '../../src/utils/wardsUpdateErrorMessage';
 import { ERROR_CODES, type ApiError } from '../../src/types/api';
 
 const MAX = 5;
@@ -21,6 +24,18 @@ function makeError(overrides: Partial<ApiError> = {}): ApiError {
   };
 }
 
+describe('formatCapacityToastMessage', () => {
+  // Pinned so the client-side at-capacity guard in wards.tsx and
+  // the server-side error branch in mapWardsUpdateErrorToToast
+  // cannot drift on copy tweaks — both call sites read from this
+  // single source of truth.
+  it('returns the canonical over-capacity toast for the configured max', () => {
+    expect(formatCapacityToastMessage(MAX)).toBe(
+      `You can follow up to ${MAX} areas.`,
+    );
+  });
+});
+
 describe('mapWardsUpdateErrorToToast', () => {
   it('returns the over-capacity toast for the canonical wire code', () => {
     expect(
@@ -30,7 +45,7 @@ describe('mapWardsUpdateErrorToToast', () => {
         }),
         { maxFollowedWards: MAX },
       ),
-    ).toBe(`You can follow up to ${MAX} areas.`);
+    ).toBe(formatCapacityToastMessage(MAX));
   });
 
   it('does NOT branch on the stale pre-PR158 literal', () => {
@@ -47,7 +62,7 @@ describe('mapWardsUpdateErrorToToast', () => {
       { maxFollowedWards: MAX },
     );
     expect(result).toBe('server-supplied fallback');
-    expect(result).not.toBe(`You can follow up to ${MAX} areas.`);
+    expect(result).not.toBe(formatCapacityToastMessage(MAX));
   });
 
   it('falls back to the server message for an unrelated known error code', () => {

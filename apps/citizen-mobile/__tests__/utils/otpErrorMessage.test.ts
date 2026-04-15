@@ -29,12 +29,20 @@ describe('mapOtpVerifyErrorToMessage', () => {
     ).toBe(STRINGS.AUTH.OTP_INVALID);
   });
 
-  it('returns OTP_INVALID for HTTP 401 regardless of code (defence in depth)', () => {
+  it('does NOT branch on HTTP 401 alone (verify endpoint never emits 401)', () => {
+    // The backend's verify path throws `ValidationException`, which
+    // `ExceptionToApiErrorMapper` maps to HTTP 400 — never 401. A
+    // bare 401 with an unrelated code must fall through to the
+    // generic message rather than being misclassified as bad-OTP.
     expect(
       mapOtpVerifyErrorToMessage(
-        makeError({ status: 401, code: 'unknown_error' }),
+        makeError({
+          status: 401,
+          code: 'unknown_error',
+          message: 'unrelated',
+        }),
       ),
-    ).toBe(STRINGS.AUTH.OTP_INVALID);
+    ).toBe('unrelated');
   });
 
   it('does NOT branch on the stale pre-PR158 literal "invalid_otp"', () => {

@@ -2,7 +2,7 @@
 //
 // Ward following — view, search, add, remove. Max 5 enforced both
 // client-side (search disabled at capacity) and server-side
-// (422 max_followed_localities_exceeded).
+// (validation.max_followed_localities_exceeded).
 //
 // PUT /v1/localities/followed replaces the full set, so add and remove
 // both send the entire updated array of items in one call.
@@ -34,7 +34,10 @@ import {
   FEATURE_GPS_LOCALITY_OPT_IN,
   MAX_FOLLOWED_WARDS,
 } from '../../../src/config/constants';
-import { mapWardsUpdateErrorToToast } from '../../../src/utils/wardsUpdateErrorMessage';
+import {
+  formatCapacityToastMessage,
+  mapWardsUpdateErrorToToast,
+} from '../../../src/utils/wardsUpdateErrorMessage';
 import {
   Colors,
   FontFamily,
@@ -128,7 +131,7 @@ export default function WardsSettingsScreen(): React.ReactElement {
       return;
     }
     if (atCapacity) {
-      setToast(`You can follow up to ${MAX_FOLLOWED_WARDS} areas.`);
+      setToast(formatCapacityToastMessage(MAX_FOLLOWED_WARDS));
       return;
     }
     setToast(null);

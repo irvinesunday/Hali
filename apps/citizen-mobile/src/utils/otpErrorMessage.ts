@@ -4,16 +4,15 @@
 // the OTP screen renders. Extracted so the branch logic can be unit
 // tested without React Native (mirrors the `composerGates` pattern).
 //
-// Backend contract (post-#158):
+// Backend contract (post-PR158):
 //   - `auth.otp_invalid` is emitted for both wrong AND expired OTPs;
-//     `AuthService.AuthenticateAsync` folds them together with the
-//     message "Invalid or expired OTP." There is no distinct
-//     `otp_expired` wire code in the canonical catalog
-//     (`02_openapi.yaml#/components/schemas/ErrorCode`).
-//   - HTTP 401 from the verify endpoint is treated as the same
-//     class of failure (defence in depth — the framework auth
-//     pipeline never serves the verify route, but the belt-and-braces
-//     check matches the prior screen behavior).
+//     `AuthService.AuthenticateAsync` throws `ValidationException`
+//     with the message "Invalid or expired OTP." which the server
+//     maps to HTTP 400 via `ExceptionToApiErrorMapper`. There is no
+//     distinct `otp_expired` wire code in the canonical catalog
+//     (`02_openapi.yaml#/components/schemas/ErrorCode`) and HTTP 401
+//     is never emitted for the verify endpoint, so the canonical
+//     code is the single source of truth for this branch.
 
 import { STRINGS } from '../config/strings';
 import {
@@ -23,10 +22,10 @@ import {
 } from '../types/api';
 
 export function mapOtpVerifyErrorToMessage(error: ApiError): string {
-  const isInvalidOtpCode =
-    isKnownErrorCode(error.code) && error.code === ERROR_CODES.AUTH_OTP_INVALID;
-
-  if (error.status === 401 || isInvalidOtpCode) {
+  if (
+    isKnownErrorCode(error.code) &&
+    error.code === ERROR_CODES.AUTH_OTP_INVALID
+  ) {
     return STRINGS.AUTH.OTP_INVALID;
   }
 
