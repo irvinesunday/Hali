@@ -2,6 +2,7 @@ using System;
 using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
+using Hali.Application.Feedback;
 using Hali.Application.Home;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
@@ -19,6 +20,7 @@ using Hali.Infrastructure.Data.Feedback;
 using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
 using Hali.Infrastructure.Data.Signals;
+using Hali.Infrastructure.Feedback;
 using Hali.Infrastructure.Notifications;
 using Hali.Infrastructure.Participation;
 using Hali.Infrastructure.Signals;
@@ -132,6 +134,7 @@ public static class ServiceCollectionExtensions
 		// Feedback
 		services.AddDbContext<FeedbackDbContext>((sp, opts) =>
 			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Feedback));
+		services.AddScoped<IFeedbackService, FeedbackService>();
 
 		return services;
 	}
