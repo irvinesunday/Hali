@@ -92,6 +92,12 @@ export async function clearTokens(): Promise<void> {
  * Exported for targeted unit coverage; no runtime caller outside this module.
  */
 export function buildApiError(status: number, body: unknown): ApiError {
+  // A field counts as "present" only when it is a non-empty string. An empty
+  // string is treated as absent so `ApiError.code` / `.message` always carry
+  // a meaningful value — same contract `traceId` uses below.
+  const nonEmptyString = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.length > 0 ? v : undefined;
+
   if (body !== null && typeof body === 'object') {
     const b = body as Record<string, unknown>;
 
@@ -103,15 +109,10 @@ export function buildApiError(status: number, body: unknown): ApiError {
       !Array.isArray(b.error)
     ) {
       const e = b.error as Record<string, unknown>;
-      const code = typeof e.code === 'string' ? e.code : 'unknown_error';
+      const code = nonEmptyString(e.code) ?? 'unknown_error';
       const message =
-        typeof e.message === 'string'
-          ? e.message
-          : 'An unexpected error occurred.';
-      const traceId =
-        typeof e.traceId === 'string' && e.traceId.length > 0
-          ? e.traceId
-          : undefined;
+        nonEmptyString(e.message) ?? 'An unexpected error occurred.';
+      const traceId = nonEmptyString(e.traceId);
       // Preserve any non-null details value (object, array, or string).
       // Null is treated as absent to avoid leaking a "present but empty"
       // signal into consumers.
@@ -125,13 +126,12 @@ export function buildApiError(status: number, body: unknown): ApiError {
     }
 
     // Legacy fallbacks — pre-H1 shapes still accepted defensively.
-    const code = typeof b.code === 'string' ? b.code : 'unknown_error';
+    // Same non-empty-string invariant applied here.
+    const code = nonEmptyString(b.code) ?? 'unknown_error';
     const message =
-      typeof b.message === 'string'
-        ? b.message
-        : typeof b.error === 'string'
-          ? b.error
-          : 'An unexpected error occurred.';
+      nonEmptyString(b.message) ??
+      nonEmptyString(b.error) ??
+      'An unexpected error occurred.';
     return { status, code, message };
   }
   return {

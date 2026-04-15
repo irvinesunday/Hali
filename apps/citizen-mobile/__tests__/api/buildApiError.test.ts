@@ -163,6 +163,36 @@ describe('buildApiError — canonical envelope', () => {
     expect(result.message).toBe('An unexpected error occurred.');
   });
 
+  it('treats empty-string `code` as absent and degrades to unknown_error', () => {
+    const body = {
+      error: {
+        code: '',
+        message: 'Something went wrong.',
+        traceId: 'abc',
+      },
+    };
+
+    const result = buildApiError(400, body);
+
+    expect(result.code).toBe('unknown_error');
+    expect(result.message).toBe('Something went wrong.');
+    expect(result.traceId).toBe('abc');
+  });
+
+  it('treats empty-string `message` as absent and degrades to generic message', () => {
+    const body = {
+      error: {
+        code: 'auth.otp_invalid',
+        message: '',
+      },
+    };
+
+    const result = buildApiError(400, body);
+
+    expect(result.code).toBe('auth.otp_invalid');
+    expect(result.message).toBe('An unexpected error occurred.');
+  });
+
   it('ignores non-string code/message/traceId values', () => {
     const body = {
       error: {
@@ -232,6 +262,26 @@ describe('buildApiError — legacy fallbacks', () => {
 
     expect(result.code).toBe('legacy.code');
     expect(result.message).toBe('m');
+  });
+
+  it('applies the empty-string invariant on the legacy path (empty top-level code)', () => {
+    // A drifted endpoint sending `{ code: "", message: "Bad." }` must still
+    // degrade `code` to `unknown_error` rather than surface `""`.
+    const body = { code: '', message: 'Bad.' };
+
+    const result = buildApiError(400, body);
+
+    expect(result.code).toBe('unknown_error');
+    expect(result.message).toBe('Bad.');
+  });
+
+  it('applies the empty-string invariant on the legacy path (empty error string)', () => {
+    const body = { error: '' };
+
+    const result = buildApiError(400, body);
+
+    expect(result.code).toBe('unknown_error');
+    expect(result.message).toBe('An unexpected error occurred.');
   });
 
   it('treats null `error` as non-canonical and falls back', () => {
