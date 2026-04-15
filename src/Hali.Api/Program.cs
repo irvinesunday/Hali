@@ -51,6 +51,10 @@ builder.Services.AddSingleton<HomeMetrics>();
 // SignalsController / AnthropicNlpExtractionService / ClusteringService /
 // CivisEvaluationService. Same singleton lifetime as the other meters.
 builder.Services.AddSingleton<Hali.Application.Observability.SignalsMetrics>();
+// ClustersMetrics owns the Hali.Clusters Meter + the participation actions
+// counter and cluster lifecycle transitions counter emitted from
+// ClustersController / ParticipationService / CivisEvaluationService.
+builder.Services.AddSingleton<Hali.Application.Observability.ClustersMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -186,6 +190,7 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
             .AddMeter(ApiMetrics.MeterName)
             .AddMeter(HomeMetrics.MeterName)
             .AddMeter(Hali.Application.Observability.SignalsMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.ClustersMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 
