@@ -29,8 +29,6 @@ export const STRINGS = {
     OTP_SUBMIT_LABEL: 'Verify one-time code',
     OTP_VERIFYING: 'Verifying your code…',
     OTP_INVALID: 'That code is incorrect. Please try again.',
-    OTP_EXPIRED:
-      'That code has expired. Please go back and request a new one.',
     OTP_VERIFY_FAILED:
       'Verification failed. Please check your code and try again.',
     OTP_MISSING_DESTINATION:

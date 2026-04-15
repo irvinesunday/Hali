@@ -34,6 +34,7 @@ import {
   FEATURE_GPS_LOCALITY_OPT_IN,
   MAX_FOLLOWED_WARDS,
 } from '../../../src/config/constants';
+import { mapWardsUpdateErrorToToast } from '../../../src/utils/wardsUpdateErrorMessage';
 import {
   Colors,
   FontFamily,
@@ -110,11 +111,11 @@ export default function WardsSettingsScreen(): React.ReactElement {
     },
     onError: (err) => {
       if (err instanceof ApiResultError) {
-        if (err.apiError.code === 'max_followed_localities_exceeded') {
-          setToast(`You can follow up to ${MAX_FOLLOWED_WARDS} areas.`);
-          return;
-        }
-        setToast(err.apiError.message);
+        setToast(
+          mapWardsUpdateErrorToToast(err.apiError, {
+            maxFollowedWards: MAX_FOLLOWED_WARDS,
+          }),
+        );
         return;
       }
       setToast('Could not update followed wards. Please try again.');
