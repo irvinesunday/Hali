@@ -704,9 +704,11 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            Outside institution jurisdiction
-            (official_post.outside_jurisdiction) or missing/malformed
-            institution_id claim on the JWT (auth.institution_id_missing).
+            Authenticated caller does not hold the institution role
+            (auth.role_insufficient), is outside the institution's
+            jurisdiction (official_post.outside_jurisdiction), or is
+            missing/has a malformed institution_id claim on the JWT
+            (auth.institution_id_missing).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -895,6 +897,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Authenticated caller does not hold the admin role
+            (auth.role_insufficient).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/admin/institutions/{id}/access:
     delete:
       tags: [Admin]
@@ -916,6 +925,13 @@ paths:
                 description: Empty object on success.
         '401':
           description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Authenticated caller does not hold the admin role
+            (auth.role_insufficient).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
