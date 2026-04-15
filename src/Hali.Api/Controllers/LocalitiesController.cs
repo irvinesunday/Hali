@@ -202,7 +202,7 @@ public class LocalitiesController : ControllerBase
         {
             candidates = (await _geocoding.SearchAsync(query, ct)).ToList();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Locality search geocoding failed for query (length={QueryLength})", query.Length);
             return Ok(Array.Empty<LocalitySearchResultDto>());
