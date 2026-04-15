@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,12 +24,15 @@ public class ParticipationService : IParticipationService
 
     private readonly ILogger<ParticipationService>? _logger;
 
-    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null)
+    private readonly ClustersMetrics? _metrics;
+
+    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null, ClustersMetrics? metrics = null)
     {
         _participationRepo = participationRepo;
         _clusterRepo = clusterRepo;
         _options = options.Value;
         _logger = logger;
+        _metrics = metrics;
     }
 
     public async Task RecordParticipationAsync(Guid clusterId, Guid deviceId, Guid? accountId, ParticipationType type, string? idempotencyKey, CancellationToken ct)
@@ -145,6 +149,25 @@ public class ParticipationService : IParticipationService
                 _logger?.LogInformation(
                     "{EventName} clusterId={ClusterId} restorationYes={RestorationYes} totalResponses={TotalResponses}",
                     ObservabilityEvents.ClusterPossibleRestoration, clusterId, restorationYes, totalResponses);
+
+                // Lifecycle counter (R3.c / #168) — fires at the same
+                // transition point as the outbox event above. This is the
+                // active→possible_restoration transition driven by citizen
+                // restoration votes; the decay-driven counterpart in
+                // CivisEvaluationService.ApplyDecay emits the same
+                // (from=active,to=possible_restoration) pair when the
+                // transition is driven by inactivity instead. Operators
+                // correlate the two sources via the already-existing
+                // CivisDecision.ReasonCodes field (restoration_ratio_met
+                // vs decay_below_threshold) when the split matters.
+                _metrics?.ClusterLifecycleTransitionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(
+                        ClustersMetrics.TagFromState,
+                        ClustersMetrics.StateActive),
+                    new KeyValuePair<string, object?>(
+                        ClustersMetrics.TagToState,
+                        ClustersMetrics.StatePossibleRestoration));
             }
         }
     }

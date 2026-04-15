@@ -8,6 +8,7 @@ using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Observability;
 using Hali.Application.Participation;
 using Hali.Contracts.Clusters;
 using Hali.Domain.Entities.Auth;
@@ -29,6 +30,7 @@ public class ClustersController : ControllerBase
     private readonly IAuthRepository _auth;
     private readonly IOfficialPostsService _officialPosts;
     private readonly CivisOptions _civisOptions;
+    private readonly ClustersMetrics? _metrics;
 
     public ClustersController(
         IParticipationService participation,
@@ -36,7 +38,8 @@ public class ClustersController : ControllerBase
         IClusterRepository clusters,
         IAuthRepository auth,
         IOfficialPostsService officialPosts,
-        IOptions<CivisOptions> civisOptions)
+        IOptions<CivisOptions> civisOptions,
+        ClustersMetrics? metrics = null)
     {
         _participation = participation;
         _participationRepo = participationRepo;
@@ -44,6 +47,7 @@ public class ClustersController : ControllerBase
         _auth = auth;
         _officialPosts = officialPosts;
         _civisOptions = civisOptions.Value;
+        _metrics = metrics;
     }
 
     [HttpGet("{id:guid}")]
@@ -127,135 +131,335 @@ public class ClustersController : ControllerBase
     [Authorize]
     public async Task<IActionResult> RecordParticipation(Guid id, [FromBody] ParticipationRequestDto dto, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+        // action_type is "unknown" until the `type` field is successfully
+        // parsed — validation errors before that point still emit, bucketed
+        // as unknown/rejected_validation so operators see the full slice of
+        // rejected traffic. outcome defaults to dependency_error and is
+        // tightened by catch clauses on known exception kinds; the happy
+        // path sets it to accepted just before the NoContent return. True
+        // caller cancellation (ct.IsCancellationRequested at catch time)
+        // flips `emit` to false so client disconnects do not skew the
+        // taxonomy — mirrors the SignalsController pattern from #167.
+        string actionType = ClustersMetrics.ActionTypeUnknown;
+        string outcome = ClustersMetrics.OutcomeDependencyError;
+        bool emit = true;
+        try
         {
-            throw new ValidationException("device_hash is required.",
-                code: ErrorCodes.ValidationMissingField,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["device_hash is required."]
-                });
+            if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("device_hash is required.",
+                    code: ErrorCodes.ValidationMissingField,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["device_hash is required."]
+                    });
+            }
+            if (string.IsNullOrWhiteSpace(dto.Type))
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("type is required.",
+                    code: ErrorCodes.ValidationMissingField,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["type"] = ["type is required."]
+                    });
+            }
+            // Reject when the string is not a valid ParticipationType name
+            // OR when the parsed value falls outside the three endpoint-
+            // visible types (0–2). Values 3–5 (RestorationYes / RestorationNo
+            // / RestorationUnsure) are persisted via /restoration-response,
+            // not /participation, so accepting them here would let clients
+            // bypass the server-side "requires affected" gate in
+            // ParticipationService.
+            if (!Enum.TryParse<ParticipationType>(dto.Type, ignoreCase: true, out var type) || (uint)type > 2u)
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("Invalid participation type.",
+                    code: ErrorCodes.ValidationInvalidParticipationType,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["type"] = ["Invalid participation type."]
+                    });
+            }
+            // Type parsed and in range — tag with the normalised value.
+            actionType = ActionTypeFor(type);
+            Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
+            if (device == null)
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("Device not recognised.",
+                    code: ErrorCodes.ValidationDeviceNotFound,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["Device not recognised."]
+                    });
+            }
+            Guid? accountId = null;
+            if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
+            {
+                accountId = parsed;
+            }
+            await _participation.RecordParticipationAsync(id, device.Id, accountId, type, dto.IdempotencyKey, ct);
+            outcome = ClustersMetrics.OutcomeAccepted;
+            return NoContent();
         }
-        if (string.IsNullOrWhiteSpace(dto.Type))
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            throw new ValidationException("type is required.",
-                code: ErrorCodes.ValidationMissingField,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["type"] = ["type is required."]
-                });
+            emit = false;
+            throw;
         }
-        bool flag = !Enum.TryParse<ParticipationType>(dto.Type, ignoreCase: true, out var type);
-        bool flag2 = flag;
-        if (!flag2)
+        catch (OperationCanceledException)
         {
-            bool flag3 = (uint)type <= 2u;
-            flag2 = !flag3;
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
         }
-        if (flag2)
+        catch (ValidationException)
         {
-            throw new ValidationException("Invalid participation type.",
-                code: ErrorCodes.ValidationInvalidParticipationType,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["type"] = ["Invalid participation type."]
-                });
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
         }
-        Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
-        if (device == null)
+        catch (ConflictException)
         {
-            throw new ValidationException("Device not recognised.",
-                code: ErrorCodes.ValidationDeviceNotFound,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["Device not recognised."]
-                });
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
         }
-        Guid? accountId = null;
-        if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
+        catch (RateLimitException)
         {
-            accountId = parsed;
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
         }
-        await _participation.RecordParticipationAsync(id, device.Id, accountId, type, dto.IdempotencyKey, ct);
-        return NoContent();
+        catch (DependencyException)
+        {
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
+        }
+        catch
+        {
+            throw;
+        }
+        finally
+        {
+            if (emit)
+            {
+                _metrics?.ParticipationActionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagActionType, actionType),
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagOutcome, outcome));
+            }
+        }
     }
+
+    /// <summary>
+    /// Maps the parsed <see cref="ParticipationType"/> to the
+    /// <c>action_type</c> tag value used by
+    /// <see cref="ClustersMetrics.ParticipationActionsTotal"/>. Only the
+    /// three endpoint-visible participation types (0–2) are mapped — the
+    /// restoration_* types (3–5) are persisted via
+    /// <see cref="RecordRestorationResponse"/> and therefore never reach
+    /// this endpoint, so their action_type is <c>restoration_response</c>
+    /// (set at that endpoint's call site).
+    /// </summary>
+    private static string ActionTypeFor(ParticipationType type) => type switch
+    {
+        ParticipationType.Affected => ClustersMetrics.ActionTypeAffected,
+        ParticipationType.Observing => ClustersMetrics.ActionTypeObserving,
+        ParticipationType.NoLongerAffected => ClustersMetrics.ActionTypeNoLongerAffected,
+        _ => ClustersMetrics.ActionTypeUnknown,
+    };
 
     [HttpPost("{id:guid}/context")]
     [Authorize]
     public async Task<IActionResult> AddContext(Guid id, [FromBody] ContextRequestDto dto, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+        // action_type is fixed by the route — this endpoint is only ever a
+        // "context" action. ConflictException (context_requires_affected,
+        // context_window_expired) is bucketed with other user-input
+        // rejections; see ClustersMetrics.OutcomeRejectedValidation for the
+        // full taxonomy.
+        const string actionType = ClustersMetrics.ActionTypeContext;
+        string outcome = ClustersMetrics.OutcomeDependencyError;
+        bool emit = true;
+        try
         {
-            throw new ValidationException("device_hash is required.",
-                code: ErrorCodes.ValidationMissingField,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["device_hash is required."]
-                });
-        }
-        if (string.IsNullOrWhiteSpace(dto.Text))
-        {
-            throw new ValidationException("text is required.",
-                code: ErrorCodes.ValidationMissingField,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["text"] = ["text is required."]
-                });
-        }
-        Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
-        if (device == null)
-        {
-            throw new ValidationException("Device not recognised.",
-                code: ErrorCodes.ValidationDeviceNotFound,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["Device not recognised."]
-                });
-        }
+            if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("device_hash is required.",
+                    code: ErrorCodes.ValidationMissingField,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["device_hash is required."]
+                    });
+            }
+            if (string.IsNullOrWhiteSpace(dto.Text))
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("text is required.",
+                    code: ErrorCodes.ValidationMissingField,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["text"] = ["text is required."]
+                    });
+            }
+            Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
+            if (device == null)
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("Device not recognised.",
+                    code: ErrorCodes.ValidationDeviceNotFound,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["Device not recognised."]
+                    });
+            }
 
-        await _participation.AddContextAsync(id, device.Id, dto.Text, ct);
-        return NoContent();
+            await _participation.AddContextAsync(id, device.Id, dto.Text, ct);
+            outcome = ClustersMetrics.OutcomeAccepted;
+            return NoContent();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            emit = false;
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
+        }
+        catch (ValidationException)
+        {
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
+        }
+        catch (ConflictException)
+        {
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
+        }
+        catch (DependencyException)
+        {
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
+        }
+        catch
+        {
+            throw;
+        }
+        finally
+        {
+            if (emit)
+            {
+                _metrics?.ParticipationActionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagActionType, actionType),
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagOutcome, outcome));
+            }
+        }
     }
 
     [HttpPost("{id:guid}/restoration-response")]
     [Authorize]
     public async Task<IActionResult> RecordRestorationResponse(Guid id, [FromBody] RestorationResponseRequestDto dto, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+        // action_type is fixed by the route — every call to this endpoint
+        // attempts a restoration_response regardless of the specific vote
+        // value (restored / still_affected / not_sure). The vote value
+        // deliberately does not become a tag: it's already one of three
+        // bounded values, but making it a dimension would double this
+        // instrument's series count with no operational lift (the
+        // restoration-transition signal is better answered by
+        // cluster_lifecycle_transitions_total).
+        const string actionType = ClustersMetrics.ActionTypeRestorationResponse;
+        string outcome = ClustersMetrics.OutcomeDependencyError;
+        bool emit = true;
+        try
         {
-            throw new ValidationException("device_hash is required.",
-                code: ErrorCodes.ValidationMissingField,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["device_hash is required."]
-                });
+            if (string.IsNullOrWhiteSpace(dto.DeviceHash))
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("device_hash is required.",
+                    code: ErrorCodes.ValidationMissingField,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["device_hash is required."]
+                    });
+            }
+            // Pattern-match avoids allocating a HashSet per request. The
+            // three valid values are stable and part of the wire contract;
+            // ParticipationService.RecordRestorationResponseAsync re-maps
+            // the same strings to the RestorationYes / RestorationNo /
+            // RestorationUnsure enum values.
+            bool isValidResponse = dto.Response is "still_affected" or "restored" or "not_sure";
+            if (string.IsNullOrWhiteSpace(dto.Response) || !isValidResponse)
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("Invalid response value.",
+                    code: ErrorCodes.ValidationInvalidRestorationResponse,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["response"] = ["Invalid response value. Must be one of: still_affected, restored, not_sure."]
+                    });
+            }
+            Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
+            if (device == null)
+            {
+                outcome = ClustersMetrics.OutcomeRejectedValidation;
+                throw new ValidationException("Device not recognised.",
+                    code: ErrorCodes.ValidationDeviceNotFound,
+                    fieldErrors: new Dictionary<string, string[]>
+                    {
+                        ["device_hash"] = ["Device not recognised."]
+                    });
+            }
+            Guid? accountId = null;
+            if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
+            {
+                accountId = parsed;
+            }
+            await _participation.RecordRestorationResponseAsync(id, device.Id, accountId, dto.Response, ct);
+            outcome = ClustersMetrics.OutcomeAccepted;
+            return NoContent();
         }
-        HashSet<string> validResponses = new HashSet<string> { "still_affected", "restored", "not_sure" };
-        if (string.IsNullOrWhiteSpace(dto.Response) || !validResponses.Contains(dto.Response))
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            throw new ValidationException("Invalid response value.",
-                code: ErrorCodes.ValidationInvalidRestorationResponse,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["response"] = ["Invalid response value. Must be one of: still_affected, restored, not_sure."]
-                });
+            emit = false;
+            throw;
         }
-        Device device = await _auth.FindDeviceByFingerprintAsync(dto.DeviceHash, ct);
-        if (device == null)
+        catch (OperationCanceledException)
         {
-            throw new ValidationException("Device not recognised.",
-                code: ErrorCodes.ValidationDeviceNotFound,
-                fieldErrors: new Dictionary<string, string[]>
-                {
-                    ["device_hash"] = ["Device not recognised."]
-                });
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
         }
-        Guid? accountId = null;
-        if (Guid.TryParse(User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"), out var parsed))
+        catch (ValidationException)
         {
-            accountId = parsed;
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
         }
-        await _participation.RecordRestorationResponseAsync(id, device.Id, accountId, dto.Response, ct);
-        return NoContent();
+        catch (ConflictException)
+        {
+            outcome = ClustersMetrics.OutcomeRejectedValidation;
+            throw;
+        }
+        catch (DependencyException)
+        {
+            outcome = ClustersMetrics.OutcomeDependencyError;
+            throw;
+        }
+        catch
+        {
+            throw;
+        }
+        finally
+        {
+            if (emit)
+            {
+                _metrics?.ParticipationActionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagActionType, actionType),
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagOutcome, outcome));
+            }
+        }
     }
 }

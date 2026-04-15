@@ -24,16 +24,20 @@ public class CivisEvaluationService : ICivisEvaluationService
 
     private readonly SignalsMetrics? _metrics;
 
+    private readonly ClustersMetrics? _clustersMetrics;
+
     public CivisEvaluationService(IClusterRepository repo, IOptions<CivisOptions> options,
         INotificationQueueService? notificationQueue = null,
         ILogger<CivisEvaluationService>? logger = null,
-        SignalsMetrics? metrics = null)
+        SignalsMetrics? metrics = null,
+        ClustersMetrics? clustersMetrics = null)
     {
         _repo = repo;
         _options = options.Value;
         _notificationQueue = notificationQueue;
         _logger = logger;
         _metrics = metrics;
+        _clustersMetrics = clustersMetrics;
     }
 
     public async Task EvaluateClusterAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
@@ -110,6 +114,23 @@ public class CivisEvaluationService : ICivisEvaluationService
                         SignalsMetrics.TagOutcome,
                         SignalsMetrics.JoinOutcomeActivatedCluster));
 
+                // Lifecycle counter (R3.c / #168) — cluster-scoped companion
+                // to the signal-scoped activated_cluster outcome above. Both
+                // agree on cardinality for this transition (one increment
+                // per unconfirmed→active flip) but the lifecycle counter is
+                // the canonical source across all three state transitions
+                // (active→possible_restoration and
+                // possible_restoration→resolved are covered in ApplyDecay
+                // and ParticipationService.EvaluateRestorationAsync).
+                _clustersMetrics?.ClusterLifecycleTransitionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(
+                        ClustersMetrics.TagFromState,
+                        ClustersMetrics.StateUnconfirmed),
+                    new KeyValuePair<string, object?>(
+                        ClustersMetrics.TagToState,
+                        ClustersMetrics.StateActive));
+
                 if (_notificationQueue != null)
                 {
                     try
@@ -132,6 +153,21 @@ public class CivisEvaluationService : ICivisEvaluationService
             }
         }
     }
+
+    /// <summary>
+    /// Maps a <see cref="SignalState"/> to the canonical snake_case tag
+    /// value used by <see cref="ClustersMetrics.ClusterLifecycleTransitionsTotal"/>.
+    /// Only the three lifecycle states that participate in transitions
+    /// emitted by this service are mapped.
+    /// </summary>
+    private static string ToStateTag(SignalState state) => state switch
+    {
+        SignalState.Active => ClustersMetrics.StateActive,
+        SignalState.PossibleRestoration => ClustersMetrics.StatePossibleRestoration,
+        SignalState.Resolved => ClustersMetrics.StateResolved,
+        SignalState.Unconfirmed => ClustersMetrics.StateUnconfirmed,
+        _ => state.ToString().ToLowerInvariant(),
+    };
 
     public async Task ApplyDecayAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
     {
@@ -193,6 +229,24 @@ public class CivisEvaluationService : ICivisEvaluationService
                 }),
                 OccurredAt = now
             }, ct);
+
+            // Lifecycle counter (R3.c / #168) — fires at the same
+            // transition point as the outbox event and the
+            // ClusterPossibleRestoration / ClusterResolvedByDecay log
+            // events below. Tag values come from the ClustersMetrics
+            // state catalog (canonical snake_case) rather than the raw
+            // enum ToString, because `SignalState.PossibleRestoration`
+            // lowercases to "possiblerestoration" without an underscore —
+            // using the catalog keeps metric tags uniform and alertable
+            // (`to_state="possible_restoration"`).
+            _clustersMetrics?.ClusterLifecycleTransitionsTotal.Add(
+                1,
+                new KeyValuePair<string, object?>(
+                    ClustersMetrics.TagFromState,
+                    ToStateTag(fromState)),
+                new KeyValuePair<string, object?>(
+                    ClustersMetrics.TagToState,
+                    ToStateTag(toState)));
 
             if (_notificationQueue != null)
             {
