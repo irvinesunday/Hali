@@ -14,6 +14,7 @@ import { previewSignal } from '../../../src/api/signals';
 import { useComposerContext } from '../../../src/context/ComposerContext';
 import { Button } from '../../../src/components/common/Button';
 import { SIGNAL_TEXT_MAX_LENGTH } from '../../../src/config/constants';
+import { ERROR_CODES, isKnownErrorCode } from '../../../src/types/api';
 import {
   Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH,
 } from '../../../src/theme';
@@ -70,7 +71,14 @@ export default function ComposerTextScreen(): React.ReactElement {
       return;
     }
     setScreenState('error');
-    if (result.error.status === 429 || result.error.code === 'rate_limited') {
+    // Branch on the canonical wire code first; status 429 stays as a
+    // belt-and-braces fallback for any rate-limited response that does
+    // not carry the typed code.
+    const isRateLimited =
+      (isKnownErrorCode(result.error.code) &&
+        result.error.code === ERROR_CODES.RATE_LIMIT_EXCEEDED) ||
+      result.error.status === 429;
+    if (isRateLimited) {
       setErrorMessage('Too many preview requests. Please wait a moment and try again.');
     } else if (result.error.status === 502) {
       setErrorMessage('The signal analysis service is temporarily unavailable. Please try again shortly.');
