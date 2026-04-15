@@ -23,12 +23,15 @@ using Xunit;
 
 namespace Hali.Tests.Unit.Observability;
 
-public class HomeObservabilityTests
+public class HomeObservabilityTests : IDisposable
 {
     private readonly IHomeFeedQueryService _feedQuery = Substitute.For<IHomeFeedQueryService>();
     private readonly IFollowService _follows = Substitute.For<IFollowService>();
     private readonly IDatabase _redis = Substitute.For<IDatabase>();
     private readonly RecordingLogger<HomeController> _logger = new();
+    private readonly TestHomeMetricsScope _metricsScope = TestHomeMetrics.Create();
+
+    public void Dispose() => _metricsScope.Dispose();
 
     private HomeController CreateController(bool authenticated = true, Guid? accountId = null)
     {
@@ -37,6 +40,7 @@ public class HomeObservabilityTests
             _follows,
             _redis,
             Microsoft.Extensions.Options.Options.Create(new Microsoft.AspNetCore.Mvc.JsonOptions()),
+            _metricsScope.Metrics,
             _logger);
         var context = new DefaultHttpContext();
         if (authenticated)

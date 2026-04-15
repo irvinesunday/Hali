@@ -50,3 +50,45 @@ internal static class TestMetrics
         return new TestMetricsScope(provider, new ApiMetrics(factory));
     }
 }
+
+/// <summary>
+/// Disposable wrapper around a test-owned <see cref="HomeMetrics"/> and the
+/// <see cref="ServiceProvider"/> that hosts its <see cref="IMeterFactory"/>.
+/// Mirrors <see cref="TestMetricsScope"/> for the home-feed meter so each
+/// test gets an isolated <see cref="System.Diagnostics.Metrics.Meter"/>
+/// instance and <see cref="System.Diagnostics.Metrics.MeterListener"/>
+/// observations stay scoped to that test.
+/// </summary>
+internal sealed class TestHomeMetricsScope : IDisposable
+{
+    private readonly ServiceProvider _provider;
+    public HomeMetrics Metrics { get; }
+
+    internal TestHomeMetricsScope(ServiceProvider provider, HomeMetrics metrics)
+    {
+        _provider = provider;
+        Metrics = metrics;
+    }
+
+    public void Dispose()
+    {
+        Metrics.Dispose();
+        _provider.Dispose();
+    }
+}
+
+/// <summary>
+/// Factory for <see cref="TestHomeMetricsScope"/>. Callers own the returned
+/// scope and must dispose it (via <c>using</c> or a fixture).
+/// </summary>
+internal static class TestHomeMetrics
+{
+    public static TestHomeMetricsScope Create()
+    {
+        var services = new ServiceCollection();
+        services.AddMetrics();
+        var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IMeterFactory>();
+        return new TestHomeMetricsScope(provider, new HomeMetrics(factory));
+    }
+}

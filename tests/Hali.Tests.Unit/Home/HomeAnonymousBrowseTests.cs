@@ -11,6 +11,7 @@ using Hali.Contracts.Home;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Notifications;
 using Hali.Domain.Enums;
+using Hali.Tests.Unit.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,7 +25,7 @@ namespace Hali.Tests.Unit.Home;
 /// Tests verifying B8 anonymous browse behavior on the HomeController.
 /// Anonymous users can pass ?localityId to scope the feed.
 /// </summary>
-public class HomeAnonymousBrowseTests
+public class HomeAnonymousBrowseTests : IDisposable
 {
     private static readonly Guid TestLocalityId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     private static readonly Guid TestClusterId = Guid.Parse("11111111-2222-3333-4444-555555555555");
@@ -32,6 +33,9 @@ public class HomeAnonymousBrowseTests
     private readonly IHomeFeedQueryService _feedQuery = Substitute.For<IHomeFeedQueryService>();
     private readonly IFollowService _follows = Substitute.For<IFollowService>();
     private readonly IDatabase _redis = Substitute.For<IDatabase>();
+    private readonly TestHomeMetricsScope _metricsScope = TestHomeMetrics.Create();
+
+    public void Dispose() => _metricsScope.Dispose();
 
     private HomeController CreateController(ClaimsPrincipal? user = null)
     {
@@ -40,6 +44,7 @@ public class HomeAnonymousBrowseTests
             _follows,
             _redis,
             Microsoft.Extensions.Options.Options.Create(new Microsoft.AspNetCore.Mvc.JsonOptions()),
+            _metricsScope.Metrics,
             NullLogger<HomeController>.Instance);
 
         controller.ControllerContext = new ControllerContext
