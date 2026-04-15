@@ -34,7 +34,7 @@ public class AuthService : IAuthService
     {
         if (!(await _otpService.ConsumeOtpAsync(request.Destination, request.Otp, ct)))
         {
-            throw new ValidationException("Invalid or expired OTP.", code: "auth.otp_invalid");
+            throw new ValidationException("Invalid or expired OTP.", code: ErrorCodes.AuthOtpInvalid);
         }
         DateTime now = DateTime.UtcNow;
         Account account = await _repo.FindAccountByPhoneAsync(request.Destination, ct);
@@ -61,7 +61,7 @@ public class AuthService : IAuthService
         if (stored == null)
         {
             throw new UnauthorizedException(
-                code: "auth.refresh_token_invalid",
+                code: ErrorCodes.AuthRefreshTokenInvalid,
                 message: "Invalid or expired refresh token.");
         }
         await _repo.RevokeRefreshTokenAsync(stored, now, ct);

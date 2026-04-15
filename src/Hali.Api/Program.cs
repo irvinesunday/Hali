@@ -4,6 +4,7 @@ using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -94,7 +95,7 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
             {
                 Error = new ApiErrorBody
                 {
-                    Code = "auth.unauthenticated",
+                    Code = ErrorCodes.AuthUnauthenticated,
                     Message = "Authentication required.",
                     TraceId = traceId
                 }
@@ -135,7 +136,7 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
             {
                 Error = new ApiErrorBody
                 {
-                    Code = "auth.role_insufficient",
+                    Code = ErrorCodes.AuthRoleInsufficient,
                     Message = "Access to this resource is not permitted.",
                     TraceId = traceId
                 }

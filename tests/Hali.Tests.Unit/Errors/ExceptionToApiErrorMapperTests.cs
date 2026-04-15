@@ -62,7 +62,9 @@ public class ExceptionToApiErrorMapperTests
         var ex = new RateLimitException();
         var result = _mapper.Map(ex);
         Assert.Equal(429, result.StatusCode);
-        Assert.Equal("integrity.rate_limited", result.Code);
+        // H3 (#153): default RateLimitException code renamed from
+        // `integrity.rate_limited` to `rate_limit.exceeded`.
+        Assert.Equal(ErrorCodes.RateLimitExceeded, result.Code);
         Assert.Equal(LogLevel.Warning, result.LogLevel);
     }
 
@@ -116,5 +118,30 @@ public class ExceptionToApiErrorMapperTests
         Assert.Equal(401, result.StatusCode);
         Assert.Equal("auth.unauthorized", result.Code);
         Assert.Equal(LogLevel.Warning, result.LogLevel);
+    }
+
+    [Fact]
+    public void Map_InvariantViolationException_RedactsInternalCodeOnTheWire()
+    {
+        // H3 (#153): typed AppException carrying ErrorCategory.Unexpected
+        // (internal invariant violation) MUST be redacted on the wire to
+        // server.internal_error — the typed Code is a log/trace identifier
+        // only and must never leak the internal invariant name (e.g.
+        // clustering.no_spatial_cell) to clients. This is security-sensitive
+        // and the catch-all unknown-exception path does the same thing
+        // (Map_UnknownException_Returns500WithSafeMessage above); this test
+        // pins the typed-exception path specifically so regressions here
+        // can't be masked by that one.
+        var ex = new InvariantViolationException(
+            ErrorCodes.ClusteringNoSpatialCell,
+            "Signal reached clustering without spatial cell.");
+
+        var result = _mapper.Map(ex);
+
+        Assert.Equal(500, result.StatusCode);
+        Assert.Equal(ErrorCodes.ServerInternalError, result.Code);
+        Assert.NotEqual(ErrorCodes.ClusteringNoSpatialCell, result.Code);
+        Assert.Equal("An unexpected error occurred.", result.Message);
+        Assert.Equal(LogLevel.Error, result.LogLevel);
     }
 }

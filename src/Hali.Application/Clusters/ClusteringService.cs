@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Application.Observability;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
@@ -37,7 +38,17 @@ public class ClusteringService : IClusteringService
     {
         if (signal.SpatialCellId is null)
         {
-            throw new InvalidOperationException("CLUSTERING_NO_SPATIAL_CELL");
+            // H3 retype (#153): was a bare InvalidOperationException deferred
+            // from PR #134. The typed InvariantViolationException preserves
+            // the structured `clustering.no_spatial_cell` code on logs/traces
+            // (see ErrorCodes.InternalOnlyCodes) while
+            // ExceptionToApiErrorMapper redacts ErrorCategory.Unexpected on
+            // the wire to ServerInternalError. No public-wire change: the
+            // response remains 500 with `server.internal_error`, identical
+            // to the pre-H3 mapper-fallback behaviour.
+            throw new InvariantViolationException(
+                ErrorCodes.ClusteringNoSpatialCell,
+                "Signal reached the clustering pipeline without a derived spatial cell.");
         }
         string[] searchCells = _h3.GetKRingCells(signal.SpatialCellId, 1);
         IReadOnlyList<SignalCluster> candidates = await _repo.FindCandidateClustersAsync(searchCells, signal.Category, ct);

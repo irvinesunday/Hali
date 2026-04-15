@@ -34,7 +34,7 @@ public class OtpService : IOtpService
         if (!(await _rateLimiter.IsAllowedAsync(key, _opts.MaxRequestsPerWindow, TimeSpan.FromMinutes(_opts.WindowMinutes), ct)))
         {
             throw new RateLimitException(
-                code: "auth.otp_rate_limited",
+                code: ErrorCodes.AuthOtpRateLimited,
                 message: "Too many OTP requests. Please try again later.");
         }
         string otp = GenerateOtp(_opts.Length);

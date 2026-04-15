@@ -52,12 +52,12 @@ public class ParticipationService : IParticipationService
         Hali.Domain.Entities.Participation.Participation? participation = await _participationRepo.GetByDeviceAsync(clusterId, deviceId, ct);
         if (participation == null || participation.ParticipationType != ParticipationType.Affected)
         {
-            throw new ConflictException("participation.context_requires_affected", "Context requires an active affected participation.");
+            throw new ConflictException(ErrorCodes.ParticipationContextRequiresAffected, "Context requires an active affected participation.");
         }
         DateTime windowExpiry = participation.CreatedAt.AddMinutes(_options.ContextEditWindowMinutes);
         if (DateTime.UtcNow > windowExpiry)
         {
-            throw new ConflictException("participation.context_window_expired", "Context edit window has expired.");
+            throw new ConflictException(ErrorCodes.ParticipationContextWindowExpired, "Context edit window has expired.");
         }
         await _participationRepo.UpdateContextAsync(participation.Id, contextText, ct);
     }
@@ -75,7 +75,7 @@ public class ParticipationService : IParticipationService
         }
         if (current == null || current.ParticipationType != ParticipationType.Affected)
         {
-            throw new ConflictException("participation.restoration_requires_affected", "Restoration response requires an active affected participation.");
+            throw new ConflictException(ErrorCodes.ParticipationRestorationRequiresAffected, "Restoration response requires an active affected participation.");
         }
 
         ParticipationType participationType = response switch
@@ -83,7 +83,7 @@ public class ParticipationService : IParticipationService
             "restored" => ParticipationType.RestorationYes,
             "still_affected" => ParticipationType.RestorationNo,
             "not_sure" => ParticipationType.RestorationUnsure,
-            _ => throw new ValidationException("Invalid restoration response value.", code: "validation.invalid_restoration_response"),
+            _ => throw new ValidationException("Invalid restoration response value.", code: ErrorCodes.ValidationInvalidRestorationResponse),
         };
         await RecordParticipationAsync(clusterId, deviceId, accountId, participationType, null, ct);
         await EvaluateRestorationAsync(clusterId, ct);

@@ -39,12 +39,12 @@ public class SignalsController : ControllerBase
         var _previewCount = await _previewDb.StringIncrementAsync(_previewKey);
         if (_previewCount == 1) await _previewDb.KeyExpireAsync(_previewKey, TimeSpan.FromMinutes(10));
         if (_previewCount > 10)
-            throw new RateLimitException("integrity.rate_limited", "Too many preview requests.");
+            throw new RateLimitException(ErrorCodes.RateLimitExceeded, "Too many preview requests.");
 
         if (string.IsNullOrWhiteSpace(dto.FreeText))
         {
             throw new ValidationException("free_text is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new System.Collections.Generic.Dictionary<string, string[]>
                 {
                     ["free_text"] = ["free_text is required."]
@@ -61,7 +61,7 @@ public class SignalsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.IdempotencyKey))
         {
             throw new ValidationException("idempotency_key is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new System.Collections.Generic.Dictionary<string, string[]>
                 {
                     ["idempotency_key"] = ["idempotency_key is required."]
@@ -70,7 +70,7 @@ public class SignalsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.DeviceHash))
         {
             throw new ValidationException("device_hash is required.",
-                code: "validation.failed",
+                code: ErrorCodes.ValidationMissingField,
                 fieldErrors: new System.Collections.Generic.Dictionary<string, string[]>
                 {
                     ["device_hash"] = ["device_hash is required."]

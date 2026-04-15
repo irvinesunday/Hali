@@ -51,11 +51,11 @@ public class SignalIngestionService : ISignalIngestionService
         NlpExtractionResultDto result = await _nlp.ExtractAsync(nlpRequest, ct);
         if ((object)result == null)
         {
-            throw new DependencyException("dependency.nlp_unavailable", "NLP extraction service is currently unavailable.");
+            throw new DependencyException(ErrorCodes.DependencyNlpUnavailable, "NLP extraction service is currently unavailable.");
         }
         if (!AllowedCategories.Contains(result.Category))
         {
-            throw new ValidationException("NLP returned an unrecognised category.", code: "validation.invalid_category");
+            throw new ValidationException("NLP returned an unrecognised category.", code: ErrorCodes.ValidationInvalidCategory);
         }
         bool requiresLocationFallback = LocationFallbackPolicy.RequiresFallback(result.Location);
         // C11: normalize the NLP-emitted locationSource through the
@@ -99,29 +99,29 @@ public class SignalIngestionService : ISignalIngestionService
             string idemKey = "idem:signal-submit:" + request.IdempotencyKey;
             if (await _repo.IdempotencyKeyExistsAsync(idemKey, ct))
             {
-                throw new ConflictException("signal.duplicate", "Signal already submitted with this idempotency key.");
+                throw new ConflictException(ErrorCodes.SignalDuplicate, "Signal already submitted with this idempotency key.");
             }
             if (!(await _repo.IsRateLimitAllowedAsync(request.DeviceHash, ct)))
             {
-                throw new RateLimitException("integrity.rate_limited", "Too many signals submitted. Please try again later.");
+                throw new RateLimitException(ErrorCodes.RateLimitExceeded, "Too many signals submitted. Please try again later.");
             }
             if (!AllowedCategories.Contains(request.Category))
             {
-                throw new ValidationException("Invalid signal category.", code: "validation.invalid_category");
+                throw new ValidationException("Invalid signal category.", code: ErrorCodes.ValidationInvalidCategory);
             }
             if (!Enum.TryParse<CivicCategory>(request.Category, ignoreCase: true, out var category))
             {
-                throw new ValidationException("Invalid signal category.", code: "validation.invalid_category");
+                throw new ValidationException("Invalid signal category.", code: ErrorCodes.ValidationInvalidCategory);
             }
             if (!request.Latitude.HasValue || !request.Longitude.HasValue)
             {
-                throw new ValidationException("latitude and longitude are required.", code: "validation.missing_coordinates");
+                throw new ValidationException("latitude and longitude are required.", code: ErrorCodes.ValidationMissingCoordinates);
             }
             double lat = request.Latitude.Value;
             double lng = request.Longitude.Value;
             if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
             {
-                throw new ValidationException("Latitude must be between -90 and 90, longitude between -180 and 180.", code: "validation.invalid_coordinates");
+                throw new ValidationException("Latitude must be between -90 and 90, longitude between -180 and 180.", code: ErrorCodes.ValidationInvalidCoordinates);
             }
 
             string spatialCellId;
@@ -132,13 +132,13 @@ public class SignalIngestionService : ISignalIngestionService
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalSpatialFailed);
-                throw new DependencyException("dependency.spatial_derivation_failed", "Unable to derive spatial cell from provided coordinates.", innerException: ex);
+                throw new DependencyException(ErrorCodes.DependencySpatialDerivationFailed, "Unable to derive spatial cell from provided coordinates.", innerException: ex);
             }
 
             if (string.IsNullOrEmpty(spatialCellId))
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalSpatialFailed);
-                throw new DependencyException("dependency.spatial_derivation_failed", "Unable to derive spatial cell from provided coordinates.");
+                throw new DependencyException(ErrorCodes.DependencySpatialDerivationFailed, "Unable to derive spatial cell from provided coordinates.");
             }
 
             _logger?.LogInformation("{EventName} spatialCellId={SpatialCellId}",
@@ -148,7 +148,7 @@ public class SignalIngestionService : ISignalIngestionService
             if (locality is null)
             {
                 _logger?.LogWarning("{EventName}", ObservabilityEvents.SignalLocalityFailed);
-                throw new ValidationException("The provided coordinates do not fall within a known locality.", code: "validation.locality_unresolved");
+                throw new ValidationException("The provided coordinates do not fall within a known locality.", code: ErrorCodes.ValidationLocalityUnresolved);
             }
 
             _logger?.LogInformation("{EventName} localityId={LocalityId}",
@@ -158,7 +158,7 @@ public class SignalIngestionService : ISignalIngestionService
             {
                 throw new ValidationException(
                     $"Location label must not exceed {MaxLocationLabelLength} characters.",
-                    code: "validation.location_label_too_long");
+                    code: ErrorCodes.ValidationLocationLabelTooLong);
             }
 
             // C11: canonical LocationSource allowlist. Unknown values would
@@ -168,7 +168,7 @@ public class SignalIngestionService : ISignalIngestionService
             {
                 throw new ValidationException(
                     "locationSource must be one of: nlp, user_edit, place_search, map_pin.",
-                    code: "validation.invalid_location_source");
+                    code: ErrorCodes.ValidationInvalidLocationSource);
             }
 
             // C11 + C11.1: when the user selected a place from the fallback
@@ -184,7 +184,7 @@ public class SignalIngestionService : ISignalIngestionService
             {
                 throw new ValidationException(
                     $"locationLabel is required when locationSource is {request.LocationSource}.",
-                    code: "validation.location_label_required");
+                    code: ErrorCodes.ValidationLocationLabelRequired);
             }
 
             string temporalType = (AllowedTemporalTypes.Contains(request.TemporalType ?? "") ? request.TemporalType : "episodic_unknown");

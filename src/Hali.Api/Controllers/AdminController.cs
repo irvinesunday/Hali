@@ -32,7 +32,7 @@ public class AdminController : ControllerBase
         {
             throw new ValidationException(
                 "name is required.",
-                code: "institution.missing_fields",
+                code: ErrorCodes.InstitutionMissingFields,
                 fieldErrors: new Dictionary<string, string[]> { ["name"] = new[] { "name is required" } });
         }
 

@@ -977,6 +977,79 @@ components:
         platform: { type: string, enum: [ios, android], nullable: true }
         sessionId: { type: string, format: uuid, nullable: true }
 
+    ErrorCode:
+      type: string
+      description: |
+        Stable, programmatic identifier for an application-level error
+        condition emitted by the Hali API. Codes follow the
+        `namespace.reason` snake_case convention (e.g. `auth.otp_invalid`,
+        `validation.locality_unresolved`, `signal.duplicate`).
+
+        The canonical source of truth on the server is
+        `Hali.Application.Errors.ErrorCodes`; this enum is the wire-visible
+        subset. Internal-only codes used for log/trace correlation (e.g.
+        `clustering.no_spatial_cell`) are redacted to
+        `server.internal_error` by the exception mapper and are NOT listed
+        here.
+
+        Client applications should treat an unknown code as equivalent to
+        `server.internal_error` for UX fallback purposes, but log the
+        received code verbatim for forward-compatible debugging.
+
+        Drift between this enum and the server-side catalog is enforced by
+        a unit test (`ErrorCodeCatalogTests`).
+      enum:
+        - account.not_found
+        - auth.forbidden
+        - auth.institution_id_missing
+        - auth.otp_invalid
+        - auth.otp_rate_limited
+        - auth.refresh_token_invalid
+        - auth.role_insufficient
+        - auth.unauthenticated
+        - auth.unauthorized
+        - cluster.not_found
+        - dependency.nlp_unavailable
+        - dependency.spatial_derivation_failed
+        - device.missing_fields
+        - device.not_found
+        - institution.missing_fields
+        - invite.already_accepted
+        - invite.expired
+        - invite.invalid
+        - locality.not_found
+        - locality.query_too_long
+        - locality.query_too_short
+        - locality.search_rate_limited
+        - official_post.invalid_category
+        - official_post.invalid_type
+        - official_post.missing_fields
+        - official_post.outside_jurisdiction
+        - participation.context_requires_affected
+        - participation.context_window_expired
+        - participation.restoration_requires_affected
+        - places.query_too_long
+        - places.query_too_short
+        - places.reverse_rate_limited
+        - places.search_rate_limited
+        - rate_limit.exceeded
+        - server.internal_error
+        - signal.duplicate
+        - validation.device_not_found
+        - validation.failed
+        - validation.invalid_category
+        - validation.invalid_coordinates
+        - validation.invalid_location_source
+        - validation.invalid_participation_type
+        - validation.invalid_restoration_response
+        - validation.invalid_section
+        - validation.locality_unresolved
+        - validation.location_label_required
+        - validation.location_label_too_long
+        - validation.max_followed_localities_exceeded
+        - validation.missing_coordinates
+        - validation.missing_field
+
     ErrorResponse:
       type: object
       description: |
@@ -991,16 +1064,15 @@ components:
         emit this envelope, with `code = "auth.unauthenticated"` distinct
         from the application-layer `auth.unauthorized` thrown by controllers
         when a token is valid but an expected claim is missing.
-        Framework-generated `403` responses from role/policy denial still
-        short-circuit before the exception middleware runs and currently
-        return an empty body; that symmetric fix is tracked in issue #147.
-        Documented `403` entries that reference this schema today describe
-        failures surfaced as typed `ForbiddenException` from application
-        code.
+        Framework-generated `403` responses from role/policy denial emit
+        this envelope with `code = "auth.role_insufficient"` (see
+        `OnForbidden` handler in `Program.cs`). Documented `403` entries
+        that reference this schema from controller logic describe failures
+        surfaced as typed `ForbiddenException` (`auth.forbidden`).
 
-          * `error.code` — stable, snake_case_with_dot-namespacing identifier
-            for programmatic handling (e.g. `auth.otp_invalid`,
-            `validation.locality_unresolved`, `signal.duplicate`).
+          * `error.code` — stable `ErrorCode` identifier for programmatic
+            handling (see the named `ErrorCode` enum schema for the full
+            published set).
           * `error.message` — short human-readable summary safe to surface
             in UI. Not localized; treat wording as unstable between versions.
           * `error.details` — optional. When present on 400 responses it
@@ -1015,7 +1087,7 @@ components:
           type: object
           required: [code, message, traceId]
           properties:
-            code: { type: string }
+            code: { $ref: '#/components/schemas/ErrorCode' }
             message: { type: string }
             details: { type: object, nullable: true, additionalProperties: true }
             traceId: { type: string }
