@@ -104,6 +104,47 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
+        },
+
+        // Mirror of OnChallenge for the 403 path: when an authenticated caller
+        // fails a role-gated [Authorize(Roles = ...)] check, the authorization
+        // stage short-circuits with a 403 that bypasses
+        // ExceptionHandlingMiddleware, producing a bare empty body. This hook
+        // emits the canonical ApiErrorResponse envelope instead so role-gated
+        // endpoints match the wire contract used everywhere else.
+        //
+        // Code is "auth.role_insufficient" — distinct from:
+        //   - "auth.unauthenticated" (OnChallenge above — no/invalid token)
+        //   - "auth.unauthorized" (application-layer, claim missing in logic)
+        //   - "auth.refresh_token_invalid" (refresh-endpoint-specific)
+        // Message is deliberately opaque: we do NOT leak the required role,
+        // policy, or claim name, because that information exposes the shape
+        // of the authorization graph to unauthorized callers.
+        OnForbidden = async context =>
+        {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            var traceId = context.HttpContext.Items["CorrelationId"] as string
+                ?? context.HttpContext.TraceIdentifier
+                ?? string.Empty;
+
+            var envelope = new ApiErrorResponse
+            {
+                Error = new ApiErrorBody
+                {
+                    Code = "auth.role_insufficient",
+                    Message = "Access to this resource is not permitted.",
+                    TraceId = traceId
+                }
+            };
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
         }
     };
 });
