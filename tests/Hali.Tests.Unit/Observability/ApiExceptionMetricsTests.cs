@@ -75,12 +75,12 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task ValidationException_EmitsCounter_WithMappedCodeAndValidationCategory()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new ValidationException("Bad input", code: ErrorCodes.ValidationMissingField),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -94,12 +94,12 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task NotFoundException_EmitsCounter_With404()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new NotFoundException(ErrorCodes.ClusterNotFound, "Cluster not found."),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -112,10 +112,10 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task RateLimitException_EmitsCounter_With429()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
-        var middleware = CreateMiddleware(_ => throw new RateLimitException(), metrics);
+        var middleware = CreateMiddleware(_ => throw new RateLimitException(), scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -128,12 +128,12 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task DependencyException_EmitsCounter_With503()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new DependencyException(ErrorCodes.DependencyNlpUnavailable, "NLP down."),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -150,12 +150,12 @@ public class ApiExceptionMetricsTests
         // the mapper returns ServerInternalError with ErrorCategory.Unexpected.
         // The metric must reflect the redacted wire view, not the raw
         // exception type, so dashboards count what users actually observed.
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new Exception("Internal DB password leak: Host=secret.db;Password=abc"),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -173,14 +173,14 @@ public class ApiExceptionMetricsTests
         // The mapper redacts it to ServerInternalError on the wire; the
         // metric MUST bucket with the wire outcome so alerts/dashboards stay
         // truthful — an internal-only code never appears as a metric value.
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new InvariantViolationException(
                 ErrorCodes.ClusteringNoSpatialCell,
                 "Signal reached clustering with no spatial cell."),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -193,14 +193,14 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task SuccessfulRequest_DoesNotEmitCounter()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(ctx =>
         {
             ctx.Response.StatusCode = 200;
             return Task.CompletedTask;
-        }, metrics);
+        }, scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
 
@@ -213,15 +213,15 @@ public class ApiExceptionMetricsTests
         // Client disconnects surface as OperationCanceledException when
         // context.RequestAborted is signalled. That path is intentionally
         // not a handled API exception — it must not pollute error metrics.
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var cts = new CancellationTokenSource();
         cts.Cancel();
         var context = CreateContext();
         context.RequestAborted = cts.Token;
 
-        var middleware = CreateMiddleware(_ => throw new OperationCanceledException(), metrics);
+        var middleware = CreateMiddleware(_ => throw new OperationCanceledException(), scope.Metrics);
 
         await middleware.InvokeAsync(context);
 
@@ -231,12 +231,12 @@ public class ApiExceptionMetricsTests
     [Fact]
     public async Task TwoExceptions_EmitTwoMeasurements()
     {
-        using var metrics = TestMetrics.Create();
-        using var capture = new MetricCapture(metrics);
+        using var scope = TestMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
 
         var middleware = CreateMiddleware(
             _ => throw new ValidationException("bad", code: ErrorCodes.ValidationFailed),
-            metrics);
+            scope.Metrics);
 
         await middleware.InvokeAsync(CreateContext());
         await middleware.InvokeAsync(CreateContext());
