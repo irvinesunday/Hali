@@ -46,6 +46,11 @@ builder.Services.AddSingleton<ApiMetrics>();
 // cache-hit/miss counters used by HomeController. Registered alongside
 // ApiMetrics so both meters export through the same OTel pipeline.
 builder.Services.AddSingleton<HomeMetrics>();
+// SignalsMetrics owns the Hali.Signals Meter + the signal ingestion counters,
+// NLP extraction latency histogram, and join-outcome counter emitted from
+// SignalsController / AnthropicNlpExtractionService / ClusteringService /
+// CivisEvaluationService. Same singleton lifetime as the other meters.
+builder.Services.AddSingleton<Hali.Application.Observability.SignalsMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -180,6 +185,7 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
             .AddAspNetCoreInstrumentation()
             .AddMeter(ApiMetrics.MeterName)
             .AddMeter(HomeMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.SignalsMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 

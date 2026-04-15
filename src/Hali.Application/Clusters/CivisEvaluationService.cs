@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,14 +22,18 @@ public class CivisEvaluationService : ICivisEvaluationService
 
     private readonly ILogger<CivisEvaluationService>? _logger;
 
+    private readonly SignalsMetrics? _metrics;
+
     public CivisEvaluationService(IClusterRepository repo, IOptions<CivisOptions> options,
         INotificationQueueService? notificationQueue = null,
-        ILogger<CivisEvaluationService>? logger = null)
+        ILogger<CivisEvaluationService>? logger = null,
+        SignalsMetrics? metrics = null)
     {
         _repo = repo;
         _options = options.Value;
         _notificationQueue = notificationQueue;
         _logger = logger;
+        _metrics = metrics;
     }
 
     public async Task EvaluateClusterAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
@@ -92,6 +97,18 @@ public class CivisEvaluationService : ICivisEvaluationService
                 _logger?.LogInformation(
                     "{EventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
                     ObservabilityEvents.ClusterActivated, clusterId, cluster.LocalityId, cluster.Category);
+
+                // Activation counter fires at the same decision point as the
+                // structured ClusterActivated log — once per unconfirmed →
+                // active transition. Operators can compute the activation
+                // rate directly (no need to derive it from log joins), and
+                // the bucket stays consistent with the join-outcome counter
+                // emitted earlier in ClusteringService.
+                _metrics?.SignalJoinOutcomeTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(
+                        SignalsMetrics.TagOutcome,
+                        SignalsMetrics.JoinOutcomeActivatedCluster));
 
                 if (_notificationQueue != null)
                 {

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Observability;
 using Hali.Application.Signals;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -23,20 +25,34 @@ public class AnthropicNlpExtractionService : INlpExtractionService
 
 	private readonly ILogger<AnthropicNlpExtractionService> _logger;
 
+	private readonly SignalsMetrics? _metrics;
+
 	private static readonly HashSet<string> AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "roads", "transport", "electricity", "water", "environment", "safety", "governance", "infrastructure" };
 
 	private static readonly HashSet<string> AllowedTemporalTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "temporary", "continuous", "recurring", "scheduled", "episodic_unknown" };
 
-	public AnthropicNlpExtractionService(HttpClient http, IConfiguration config, ILogger<AnthropicNlpExtractionService> logger)
+	public AnthropicNlpExtractionService(
+		HttpClient http,
+		IConfiguration config,
+		ILogger<AnthropicNlpExtractionService> logger,
+		SignalsMetrics? metrics = null)
 	{
 		_http = http;
 		_apiKey = config["Anthropic:ApiKey"] ?? throw new InvalidOperationException("Anthropic:ApiKey is required");
 		_model = config["Anthropic:Model"] ?? "claude-sonnet-4-6";
 		_logger = logger;
+		_metrics = metrics;
 	}
 
 	public async Task<NlpExtractionResultDto?> ExtractAsync(NlpExtractionRequest request, CancellationToken ct = default(CancellationToken))
 	{
+		// The histogram timer wraps the HTTP send + body-parse span only —
+		// prompt construction is deterministic and sub-millisecond so
+		// including it would muddy the "composer thinking time" signal the
+		// metric is supposed to represent. The outcome tag is set to a
+		// default of `fallback` and refined to `success` on a clean parse or
+		// `timeout` if HttpClient surfaces a TaskCanceledException that was
+		// not caused by the caller's cancellation token.
 		string prompt = BuildPrompt(request);
 		var body = new
 		{
@@ -56,23 +72,62 @@ public class AnthropicNlpExtractionService : INlpExtractionService
 		req.Headers.Add("x-api-key", _apiKey);
 		req.Headers.Add("anthropic-version", "2023-06-01");
 		req.Content = JsonContent.Create(body);
-		HttpResponseMessage response;
+
+		// Outcome ladder for the histogram:
+		//   - success  : ParseAndValidate returned a non-null result.
+		//   - timeout  : OperationCanceledException (includes TaskCanceledException,
+		//                which HttpClient raises on its own timeout budget) with
+		//                an UNSIGNALED caller token — regardless of whether it
+		//                fires from SendAsync, ReadAsStringAsync, or later.
+		//   - fallback : any other failure path (non-2xx, network error, parse
+		//                error, unknown category).
+		// A true caller-initiated cancellation (ct.IsCancellationRequested is
+		// true) is propagated without recording so dashboards don't conflate
+		// client disconnects with NLP latency. Matches SignalsController.
+		string outcome = SignalsMetrics.NlpOutcomeFallback;
+		bool record = true;
+		var sw = Stopwatch.StartNew();
 		try
 		{
-			response = await _http.SendAsync(req, ct);
+			HttpResponseMessage response = await _http.SendAsync(req, ct);
+			if (!response.IsSuccessStatusCode)
+			{
+				_logger.LogError("Anthropic API returned {Status}", response.StatusCode);
+				return null;
+			}
+			var result = ParseAndValidate(await response.Content.ReadAsStringAsync(ct));
+			if (result is not null)
+			{
+				outcome = SignalsMetrics.NlpOutcomeSuccess;
+			}
+			return result;
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			record = false;
+			throw;
+		}
+		catch (OperationCanceledException ex)
+		{
+			outcome = SignalsMetrics.NlpOutcomeTimeout;
+			_logger.LogError(ex, "Anthropic API request timed out");
+			return null;
 		}
 		catch (Exception ex)
 		{
-			Exception ex2 = ex;
-			_logger.LogError(ex2, "Anthropic API request failed");
+			_logger.LogError(ex, "Anthropic API request failed");
 			return null;
 		}
-		if (!response.IsSuccessStatusCode)
+		finally
 		{
-			_logger.LogError("Anthropic API returned {Status}", response.StatusCode);
-			return null;
+			sw.Stop();
+			if (record)
+			{
+				_metrics?.NlpExtractionDuration.Record(
+					sw.Elapsed.TotalSeconds,
+					new KeyValuePair<string, object?>(SignalsMetrics.TagOutcome, outcome));
+			}
 		}
-		return ParseAndValidate(await response.Content.ReadAsStringAsync(ct));
 	}
 
 	private NlpExtractionResultDto? ParseAndValidate(string rawBody)

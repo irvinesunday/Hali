@@ -25,13 +25,22 @@ public class ClusteringService : IClusteringService
 
     private readonly ILogger<ClusteringService>? _logger;
 
-    public ClusteringService(IClusterRepository repo, IH3CellService h3, ICivisEvaluationService civis, IOptions<CivisOptions> options, ILogger<ClusteringService>? logger = null)
+    private readonly SignalsMetrics? _metrics;
+
+    public ClusteringService(
+        IClusterRepository repo,
+        IH3CellService h3,
+        ICivisEvaluationService civis,
+        IOptions<CivisOptions> options,
+        ILogger<ClusteringService>? logger = null,
+        SignalsMetrics? metrics = null)
     {
         _repo = repo;
         _h3 = h3;
         _civis = civis;
         _options = options.Value;
         _logger = logger;
+        _metrics = metrics;
     }
 
     public async Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
@@ -108,6 +117,17 @@ public class ClusteringService : IClusteringService
                 "{EventName} clusterId={ClusterId} outcome={Outcome} joinScore={JoinScore} candidateCount={CandidateCount}",
                 ObservabilityEvents.SignalRouted, bestCluster.Id, "joined", bestScore, candidates.Count);
 
+            // Join-outcome counter fires once here — at the true decision
+            // point — so the metric reflects what actually happened rather
+            // than inferring from downstream state. The activation bucket is
+            // incremented separately in CivisEvaluationService if and only if
+            // the submission flipped the cluster to Active.
+            _metrics?.SignalJoinOutcomeTotal.Add(
+                1,
+                new KeyValuePair<string, object?>(
+                    SignalsMetrics.TagOutcome,
+                    SignalsMetrics.JoinOutcomeJoinedExisting));
+
             return new ClusterRoutingResult(
                 bestCluster.Id,
                 WasCreated: false,
@@ -157,6 +177,12 @@ public class ClusteringService : IClusteringService
             _logger?.LogInformation(
                 "{EventName} clusterId={ClusterId} outcome={Outcome} candidateCount={CandidateCount}",
                 ObservabilityEvents.SignalRouted, newCluster.Id, "created", candidates.Count);
+
+            _metrics?.SignalJoinOutcomeTotal.Add(
+                1,
+                new KeyValuePair<string, object?>(
+                    SignalsMetrics.TagOutcome,
+                    SignalsMetrics.JoinOutcomeCreatedNew));
 
             return new ClusterRoutingResult(
                 newCluster.Id,

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.Metrics;
 using Hali.Api.Observability;
+using Hali.Application.Observability;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Hali.Tests.Unit.Observability;
@@ -90,5 +91,47 @@ internal static class TestHomeMetrics
         var provider = services.BuildServiceProvider();
         var factory = provider.GetRequiredService<IMeterFactory>();
         return new TestHomeMetricsScope(provider, new HomeMetrics(factory));
+    }
+}
+
+/// <summary>
+/// Disposable wrapper around a test-owned <see cref="SignalsMetrics"/> and the
+/// <see cref="ServiceProvider"/> that hosts its <see cref="IMeterFactory"/>.
+/// Mirrors <see cref="TestHomeMetricsScope"/> for the signals meter so each
+/// test gets an isolated <see cref="System.Diagnostics.Metrics.Meter"/>
+/// instance and <see cref="System.Diagnostics.Metrics.MeterListener"/>
+/// observations stay scoped to that test.
+/// </summary>
+internal sealed class TestSignalsMetricsScope : IDisposable
+{
+    private readonly ServiceProvider _provider;
+    public SignalsMetrics Metrics { get; }
+
+    internal TestSignalsMetricsScope(ServiceProvider provider, SignalsMetrics metrics)
+    {
+        _provider = provider;
+        Metrics = metrics;
+    }
+
+    public void Dispose()
+    {
+        Metrics.Dispose();
+        _provider.Dispose();
+    }
+}
+
+/// <summary>
+/// Factory for <see cref="TestSignalsMetricsScope"/>. Callers own the returned
+/// scope and must dispose it (via <c>using</c> or a fixture).
+/// </summary>
+internal static class TestSignalsMetrics
+{
+    public static TestSignalsMetricsScope Create()
+    {
+        var services = new ServiceCollection();
+        services.AddMetrics();
+        var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IMeterFactory>();
+        return new TestSignalsMetricsScope(provider, new SignalsMetrics(factory));
     }
 }
