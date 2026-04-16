@@ -193,11 +193,13 @@ public sealed class ClustersMetrics : IDisposable
     // Canonical snake_case values used by the cluster_lifecycle_transitions
     // counter. These are deliberately NOT derived from SignalState.ToString()
     // because `SignalState.PossibleRestoration.ToString().ToLowerInvariant()`
-    // yields "possiblerestoration" (no underscore) — the existing outbox
-    // event payload for cluster_state_changed currently uses that form, but
-    // the metric tag stays snake_case so dashboards and alerts remain
-    // readable and human-friendly. Normalizing the outbox payload is a
-    // separate, out-of-scope change.
+    // yields "possiblerestoration" (no underscore), which violates
+    // `docs/arch/CODING_STANDARDS.md` §Enum serialization rules.
+    // The `cluster_state_changed` outbox payload emits the same canonical
+    // strings via `CivisEvaluationService.ToCanonicalStateString`, so
+    // dashboards, alerts, and downstream outbox consumers observe the same
+    // value for the same transition (see issue #178 for the fix that removed
+    // the prior `"possiblerestoration"` divergence in `ApplyDecayAsync`).
     // Only the four states that participate in lifecycle transitions are
     // listed here — Expired and Suppressed are not produced by any of the
     // instrumented code paths and are omitted from the tag catalog to keep
