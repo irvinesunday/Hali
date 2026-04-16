@@ -196,10 +196,15 @@ public sealed class ClustersMetrics : IDisposable
     // yields "possiblerestoration" (no underscore), which violates
     // `docs/arch/CODING_STANDARDS.md` §Enum serialization rules.
     // The `cluster_state_changed` outbox payload emits the same canonical
-    // strings via `CivisEvaluationService.ToCanonicalStateString`, so
-    // dashboards, alerts, and downstream outbox consumers observe the same
-    // value for the same transition (see issue #178 for the fix that removed
-    // the prior `"possiblerestoration"` divergence in `ApplyDecayAsync`).
+    // strings — the activation emission in
+    // `CivisEvaluationService.EvaluateClusterAsync` and the citizen-vote
+    // emission in `ParticipationService.EvaluateRestorationAsync` use string
+    // literals, and the decay-driven emission in
+    // `CivisEvaluationService.ApplyDecayAsync` uses the module's
+    // `SignalState` → snake_case mapper. Dashboards, alerts, and downstream
+    // outbox consumers therefore observe the same value for the same
+    // transition (see issue #178 for the fix that removed the prior
+    // `"possiblerestoration"` divergence in `ApplyDecayAsync`).
     // Only the four states that participate in lifecycle transitions are
     // listed here — Expired and Suppressed are not produced by any of the
     // instrumented code paths and are omitted from the tag catalog to keep
