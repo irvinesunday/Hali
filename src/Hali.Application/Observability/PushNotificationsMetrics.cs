@@ -23,9 +23,12 @@ namespace Hali.Application.Observability;
 ///   <item><description><c>push_send_duration_seconds</c> — latency histogram
 ///     covering exactly the outbound HTTP call to
 ///     <c>https://exp.host/--/api/v2/push/send</c> (request send +
-///     response header read + body parse). Tagged with a batch-level outcome
-///     bucket so the "upstream slow" vs "upstream broken" distinction stays
-///     visible without reaching for trace data.</description></item>
+///     response header read + response body read). Tagged with a
+///     batch-level outcome bucket so the "upstream slow" vs "upstream
+///     broken" distinction stays visible without reaching for trace data.
+///     JSON parse / per-ticket classification is deliberately excluded —
+///     it is local CPU work measured in microseconds and conflating it
+///     with upstream latency would muddy the SLO.</description></item>
 ///   <item><description><c>push_token_registrations_total</c> — one increment
 ///     per successful <c>POST /v1/devices/push-token</c> call, tagged with
 ///     the registration <c>result</c> (<c>new</c>, <c>updated</c>, or
@@ -192,12 +195,13 @@ public sealed class PushNotificationsMetrics : IDisposable
     /// <summary>
     /// <c>push_send_duration_seconds</c> — latency histogram covering the
     /// outbound Expo send call. The recorded span starts immediately before
-    /// <c>PostAsJsonAsync</c> and ends after the response body has been read
-    /// and parsed (the only portion of the worker pass whose latency
-    /// depends on upstream health). It deliberately does not include queue
-    /// fetch, payload parse, or database mark-as-sent work — those are
-    /// owned by the caller path and measured separately by the worker's
-    /// own structured logs.
+    /// <c>PostAsJsonAsync</c> and ends after the response body has been
+    /// read (<c>ReadAsStringAsync</c>) — i.e. the full HTTP round trip
+    /// whose latency depends on upstream health. It deliberately does not
+    /// include JSON parse / per-ticket classification (local CPU work,
+    /// microseconds), queue fetch, payload parse, or database
+    /// mark-as-sent work — those are owned by the caller path and
+    /// measured separately by the worker's own structured logs.
     ///
     /// Tag:
     /// <list type="bullet">

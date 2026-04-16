@@ -343,6 +343,50 @@ public class PushNotificationsMetricsTests
     }
 
     [Fact]
+    public async Task Send_DataArrayLengthMismatchesRequest_EmitsPerReturnedTicket()
+    {
+        // Expo's documented contract is one data[] element per request
+        // message. If Expo misbehaves and returns fewer or more tickets,
+        // the classifier reports the dispositions Expo actually returned
+        // rather than hiding them behind a blanket all-success rollup.
+        // This test documents that contract so a future refactor toward
+        // request-count-based fallback is a conscious decision, not a
+        // silent regression.
+        using var scope = TestPushNotificationsMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+
+        // Sent 3 messages, Expo returned 2 tickets (1 ok + 1 error).
+        string body = """
+        {
+          "data": [
+            { "status": "ok" },
+            { "status": "error", "details": { "error": "DeviceNotRegistered" } }
+          ]
+        }
+        """;
+        var svc = BuildService(new StubHttpMessageHandler(HttpStatusCode.OK, body), scope.Metrics);
+
+        await svc.SendBatchAsync(MakeBatch(3));
+
+        var byOutcome = new Dictionary<string, long>();
+        foreach (var m in capture.AttemptMeasurements)
+        {
+            var outcome = (string)m.Tags[PushNotificationsMetrics.TagOutcome]!;
+            byOutcome[outcome] = byOutcome.GetValueOrDefault(outcome) + m.Value;
+        }
+
+        // Per-ticket emission: two counts total, not three, reflecting
+        // exactly what Expo returned.
+        Assert.Equal(1L, byOutcome[PushNotificationsMetrics.OutcomeSuccess]);
+        Assert.Equal(1L, byOutcome[PushNotificationsMetrics.OutcomeDeviceInvalid]);
+        Assert.False(byOutcome.ContainsKey(PushNotificationsMetrics.OutcomeTransientError));
+        Assert.False(byOutcome.ContainsKey(PushNotificationsMetrics.OutcomePermanentError));
+
+        var duration = Assert.Single(capture.DurationMeasurements);
+        Assert.Equal(PushNotificationsMetrics.OutcomeSuccess, duration.Tags[PushNotificationsMetrics.TagOutcome]);
+    }
+
+    [Fact]
     public async Task Send_UnparseableResponseBody_FallsBackToSuccessPerRequestMessage()
     {
         // A 2xx with malformed body should not silently lose attempts —
