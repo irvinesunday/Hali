@@ -55,6 +55,10 @@ builder.Services.AddSingleton<Hali.Application.Observability.SignalsMetrics>();
 // counter and cluster lifecycle transitions counter emitted from
 // ClustersController / ParticipationService / CivisEvaluationService.
 builder.Services.AddSingleton<Hali.Application.Observability.ClustersMetrics>();
+// PushNotificationsMetrics owns the Hali.Notifications Meter + the push-send
+// attempt counter, push-send latency histogram, and push-token registration
+// counter emitted from ExpoPushNotificationService / DevicesController.
+builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -191,6 +195,7 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
             .AddMeter(HomeMetrics.MeterName)
             .AddMeter(Hali.Application.Observability.SignalsMetrics.MeterName)
             .AddMeter(Hali.Application.Observability.ClustersMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.PushNotificationsMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 

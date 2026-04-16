@@ -177,3 +177,46 @@ internal static class TestClustersMetrics
         return new TestClustersMetricsScope(provider, new ClustersMetrics(factory));
     }
 }
+
+/// <summary>
+/// Disposable wrapper around a test-owned <see cref="PushNotificationsMetrics"/>
+/// and the <see cref="ServiceProvider"/> that hosts its <see cref="IMeterFactory"/>.
+/// Mirrors <see cref="TestClustersMetricsScope"/> for the push-notifications
+/// meter so each test gets an isolated
+/// <see cref="System.Diagnostics.Metrics.Meter"/> instance and
+/// <see cref="System.Diagnostics.Metrics.MeterListener"/> observations stay
+/// scoped to that test.
+/// </summary>
+internal sealed class TestPushNotificationsMetricsScope : IDisposable
+{
+    private readonly ServiceProvider _provider;
+    public PushNotificationsMetrics Metrics { get; }
+
+    internal TestPushNotificationsMetricsScope(ServiceProvider provider, PushNotificationsMetrics metrics)
+    {
+        _provider = provider;
+        Metrics = metrics;
+    }
+
+    public void Dispose()
+    {
+        Metrics.Dispose();
+        _provider.Dispose();
+    }
+}
+
+/// <summary>
+/// Factory for <see cref="TestPushNotificationsMetricsScope"/>. Callers own
+/// the returned scope and must dispose it (via <c>using</c> or a fixture).
+/// </summary>
+internal static class TestPushNotificationsMetrics
+{
+    public static TestPushNotificationsMetricsScope Create()
+    {
+        var services = new ServiceCollection();
+        services.AddMetrics();
+        var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IMeterFactory>();
+        return new TestPushNotificationsMetricsScope(provider, new PushNotificationsMetrics(factory));
+    }
+}

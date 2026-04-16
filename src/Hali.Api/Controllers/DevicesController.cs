@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
+using Hali.Application.Observability;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,11 +19,16 @@ public class DevicesController : ControllerBase
 {
     private readonly IAuthRepository _auth;
     private readonly ILogger<DevicesController> _logger;
+    private readonly PushNotificationsMetrics _metrics;
 
-    public DevicesController(IAuthRepository auth, ILogger<DevicesController> logger)
+    public DevicesController(
+        IAuthRepository auth,
+        ILogger<DevicesController> logger,
+        PushNotificationsMetrics metrics)
     {
         _auth = auth;
         _logger = logger;
+        _metrics = metrics;
     }
 
     [HttpPost("push-token")]
@@ -53,9 +59,26 @@ public class DevicesController : ControllerBase
                 message: "Device not recognised.");
         }
 
+        // Snapshot the pre-write token so the registration result tag
+        // reflects the real state change (new / updated / unchanged) rather
+        // than the post-write state. The comparison is ordinal because
+        // Expo tokens are case-sensitive opaque strings.
+        var previousToken = device.ExpoPushToken;
+        var result = previousToken switch
+        {
+            null => PushNotificationsMetrics.ResultNew,
+            _ when string.Equals(previousToken, dto.ExpoPushToken, StringComparison.Ordinal)
+                => PushNotificationsMetrics.ResultUnchanged,
+            _ => PushNotificationsMetrics.ResultUpdated,
+        };
+
         var start = DateTime.UtcNow;
         await _auth.UpdateExpoPushTokenAsync(device.Id, dto.ExpoPushToken, ct);
         var durationMs = (DateTime.UtcNow - start).TotalMilliseconds;
+
+        _metrics.PushTokenRegistrationsTotal.Add(
+            1,
+            new KeyValuePair<string, object?>(PushNotificationsMetrics.TagResult, result));
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
         _logger.LogInformation(
