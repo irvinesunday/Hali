@@ -295,17 +295,17 @@ public sealed class FeedbackIntegrationTests : IntegrationTestBase
         // The controller keys anonymous callers by remote IP. Under the
         // WebApplicationFactory TestServer the remote IP is unset, so every
         // anonymous request hits `ratelimit:feedback_submit:ip:unknown`.
-        // The authenticated test paths key by account id; those account ids
-        // are freshly generated each test, so we only need to wipe the
-        // anonymous key plus the keys for any accounts this test touched.
+        // Deleting that single sentinel key is all the anonymous suite needs
+        // to be order-independent — mirrors the preview-limiter cleanup in
+        // StandardizedErrorEnvelopeTests.ClearPreviewRateLimitKeysAsync.
         //
-        // We pattern-match on :acct:* keys by walking the server's key space
-        // via SCAN — cheap at test-db scale and avoids requiring
-        // `allowAdmin` (KEYS pattern would, SCAN via IServer does not if we
-        // stream it). For simplicity and because the account-id key is
-        // always fresh per test, a single DEL of the anonymous sentinel is
-        // sufficient for the anonymous suite; the per-account keys naturally
-        // expire after RateLimitWindow and carry no cross-test leakage.
+        // The authenticated test paths key by account id (`:acct:{guid}`);
+        // those account ids are freshly generated each test via
+        // SeedVerifiedAccountAsync, so the per-account keys carry no
+        // cross-test leakage and are not explicitly cleared here. They
+        // naturally expire after RateLimitWindow. Using SCAN to wipe
+        // `ratelimit:feedback_submit:acct:*` would require a second Redis
+        // round-trip per test for no test-integrity gain.
         using var scope = Factory.Services.CreateScope();
         var mux = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
         var db = mux.GetDatabase();
