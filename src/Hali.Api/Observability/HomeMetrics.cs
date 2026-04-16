@@ -100,11 +100,11 @@ public sealed class HomeMetrics : IDisposable
     /// unwinds — specifically, an <see cref="OperationCanceledException"/>
     /// propagating while <c>HttpContext.RequestAborted.IsCancellationRequested</c>
     /// is <c>true</c>. This mirrors the <c>api_exceptions_total</c>
-    /// carve-out in <c>ExceptionHandlingMiddleware</c> (PR #171) so downstream
-    /// alerts and dashboards can correlate the two instruments under one
-    /// cancellation policy. Non-aborted <see cref="OperationCanceledException"/>
-    /// paths (e.g. server-side internal timeouts) still emit as ordinary
-    /// failure-path latency observations.
+    /// cancellation carve-out in <c>ExceptionHandlingMiddleware</c> so
+    /// downstream alerts and dashboards can correlate the two instruments
+    /// under one cancellation policy. Non-aborted
+    /// <see cref="OperationCanceledException"/> paths (e.g. server-side
+    /// internal timeouts) still emit as ordinary failure-path latency observations.
     /// </summary>
     public Histogram<double> HomeFeedRequestDuration { get; }
 

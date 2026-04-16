@@ -440,13 +440,13 @@ public class HomeMetricsTests
     [Fact]
     public async Task GetHome_ClientAborted_OperationCanceled_DoesNotEmitHistogram()
     {
-        // Client-disconnect carve-out (#174): when the caller aborts the
-        // request mid-flight, HttpContext.RequestAborted signals and the
-        // in-flight awaited work unwinds as OperationCanceledException.
-        // The controller's finally block must skip the histogram emission
-        // so the home-feed latency distribution stays consistent with
-        // ExceptionHandlingMiddleware's api_exceptions_total carve-out
-        // (PR #171) — downstream alerts assume the two instruments share
+        // Client-disconnect carve-out: when the caller aborts the request
+        // mid-flight, HttpContext.RequestAborted signals and the in-flight
+        // awaited work unwinds as OperationCanceledException. The
+        // controller's finally block must skip the histogram emission so
+        // the home-feed latency distribution stays consistent with
+        // ExceptionHandlingMiddleware's api_exceptions_total cancellation
+        // carve-out — downstream alerts assume the two instruments share
         // one cancellation policy.
         using var scope = TestHomeMetrics.Create();
         using var capture = new MetricCapture(scope.Metrics);

@@ -95,11 +95,12 @@ public class HomeController : ControllerBase
 
         // Tracks a client-disconnect unwind so the `finally` block can skip
         // histogram emission, mirroring the ExceptionHandlingMiddleware
-        // carve-out (#164 / PR #171). The catch filter matches the middleware
-        // pattern exactly: an OperationCanceledException *and* a signalled
-        // HttpContext.RequestAborted. A non-aborted OperationCanceledException
-        // (e.g. server-side internal timeout) does not flip this flag, so its
-        // latency is still observed as a normal failure-path measurement.
+        // client-disconnect carve-out. The catch filter matches the
+        // middleware pattern exactly: an OperationCanceledException *and* a
+        // signalled HttpContext.RequestAborted. A non-aborted
+        // OperationCanceledException (e.g. server-side internal timeout)
+        // does not flip this flag, so its latency is still observed as a
+        // normal failure-path measurement.
         bool clientAborted = false;
 
         try
@@ -206,12 +207,12 @@ public class HomeController : ControllerBase
         }
         catch (OperationCanceledException) when (HttpContext?.RequestAborted.IsCancellationRequested == true)
         {
-            // Client disconnected — mirror ExceptionHandlingMiddleware (PR #171):
-            // a caller-aborted request is not a handled API exception, and its
-            // latency must not contribute to the home-feed distribution. Flag
-            // the unwind so the `finally` block skips histogram emission; the
-            // exception still propagates so the middleware can drop the 500
-            // envelope.
+            // Client disconnected — mirror the ExceptionHandlingMiddleware
+            // client-disconnect carve-out: a caller-aborted request is not a
+            // handled API exception, and its latency must not contribute to
+            // the home-feed distribution. Flag the unwind so the `finally`
+            // block skips histogram emission; the exception still propagates
+            // so the middleware can drop the 500 envelope.
             clientAborted = true;
             throw;
         }
