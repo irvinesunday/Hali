@@ -155,18 +155,32 @@ public class CivisEvaluationService : ICivisEvaluationService
     }
 
     /// <summary>
-    /// Maps a <see cref="SignalState"/> to the canonical snake_case tag
-    /// value used by <see cref="ClustersMetrics.ClusterLifecycleTransitionsTotal"/>.
-    /// Only the three lifecycle states that participate in transitions
-    /// emitted by this service are mapped.
+    /// Maps a <see cref="SignalState"/> to its canonical snake_case wire
+    /// value. Used for both
+    /// <c>cluster_lifecycle_transitions_total</c> metric tags
+    /// (<see cref="ClustersMetrics.ClusterLifecycleTransitionsTotal"/>)
+    /// and the <c>cluster_state_changed</c> outbox payload's
+    /// <c>from_state</c> / <c>to_state</c> fields, so metric dashboards and
+    /// downstream outbox consumers observe the same string for the same
+    /// transition.
+    ///
+    /// Explicit mapping is deliberate. Using <c>state.ToString().ToLowerInvariant()</c>
+    /// collapses <c>PossibleRestoration</c> to <c>"possiblerestoration"</c>
+    /// (no underscore), which breaks the canonical snake_case contract
+    /// required by consumers matching on <c>to_state == "possible_restoration"</c>
+    /// (see <c>docs/arch/CODING_STANDARDS.md</c> §Enum serialization rules).
+    /// Only the four states that participate in transitions emitted by this
+    /// service are mapped; any other value indicates a caller bug and throws.
     /// </summary>
-    private static string ToStateTag(SignalState state) => state switch
+    private static string ToCanonicalStateString(SignalState state) => state switch
     {
+        SignalState.Unconfirmed => ClustersMetrics.StateUnconfirmed,
         SignalState.Active => ClustersMetrics.StateActive,
         SignalState.PossibleRestoration => ClustersMetrics.StatePossibleRestoration,
         SignalState.Resolved => ClustersMetrics.StateResolved,
-        SignalState.Unconfirmed => ClustersMetrics.StateUnconfirmed,
-        _ => state.ToString().ToLowerInvariant(),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(state), state,
+            "SignalState is not a lifecycle transition state emitted by CivisEvaluationService."),
     };
 
     public async Task ApplyDecayAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
@@ -221,11 +235,18 @@ public class CivisEvaluationService : ICivisEvaluationService
                 AggregateType = "cluster",
                 AggregateId = clusterId,
                 EventType = "cluster_state_changed",
+                // Canonical snake_case wire values via ToCanonicalStateString,
+                // matching the literal `"unconfirmed"` / `"active"` form used
+                // at the activation emission in EvaluateClusterAsync and the
+                // `"active"` / `"possible_restoration"` literals used in
+                // ParticipationService.EvaluateRestorationAsync. Using
+                // `ToString().ToLowerInvariant()` here previously produced
+                // `"possiblerestoration"` (no underscore) — see issue #178.
                 Payload = JsonSerializer.Serialize(new
                 {
                     cluster_id = clusterId,
-                    from_state = fromState.ToString().ToLowerInvariant(),
-                    to_state = toState.ToString().ToLowerInvariant()
+                    from_state = ToCanonicalStateString(fromState),
+                    to_state = ToCanonicalStateString(toState)
                 }),
                 OccurredAt = now
             }, ct);
@@ -233,20 +254,18 @@ public class CivisEvaluationService : ICivisEvaluationService
             // Lifecycle counter (R3.c / #168) — fires at the same
             // transition point as the outbox event and the
             // ClusterPossibleRestoration / ClusterResolvedByDecay log
-            // events below. Tag values come from the ClustersMetrics
-            // state catalog (canonical snake_case) rather than the raw
-            // enum ToString, because `SignalState.PossibleRestoration`
-            // lowercases to "possiblerestoration" without an underscore —
-            // using the catalog keeps metric tags uniform and alertable
-            // (`to_state="possible_restoration"`).
+            // events below. Tag values come from ToCanonicalStateString,
+            // the same helper used by the outbox payload above, so metric
+            // dashboards and downstream outbox consumers observe the same
+            // string for the same transition.
             _clustersMetrics?.ClusterLifecycleTransitionsTotal.Add(
                 1,
                 new KeyValuePair<string, object?>(
                     ClustersMetrics.TagFromState,
-                    ToStateTag(fromState)),
+                    ToCanonicalStateString(fromState)),
                 new KeyValuePair<string, object?>(
                     ClustersMetrics.TagToState,
-                    ToStateTag(toState)));
+                    ToCanonicalStateString(toState)));
 
             if (_notificationQueue != null)
             {

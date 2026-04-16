@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Domain.Entities.Clusters;
@@ -251,6 +252,68 @@ public class CivisEvaluationServiceTests
 		await svc.ApplyDecayAsync(cluster.Id);
 		Assert.Single(repo.OutboxEvents);
 		Assert.Equal("cluster_state_changed", repo.OutboxEvents[0].EventType);
+	}
+
+	// Issue #178 — the decay-driven active → possible_restoration outbox
+	// emission previously used `SignalState.ToString().ToLowerInvariant()`,
+	// producing `"possiblerestoration"` (no underscore) instead of the
+	// canonical `"possible_restoration"`. Lock the canonical snake_case
+	// values for both decay transitions and the activation transition so the
+	// broken formatting cannot silently reappear on any of the three
+	// `cluster_state_changed` emission paths in `CivisEvaluationService`.
+
+	[Fact]
+	public async Task ApplyDecay_ActiveToPossibleRestoration_WritesCanonicalSnakeCaseOutboxPayload()
+	{
+		SignalCluster cluster = ActiveRoadsCluster();
+		var (svc, repo) = BuildDecay(cluster);
+
+		await svc.ApplyDecayAsync(cluster.Id);
+
+		Assert.Single(repo.OutboxEvents);
+		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
+		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
+		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		Assert.Equal("active", fromState);
+		Assert.Equal("possible_restoration", toState);
+		// Regression guard: the broken `ToString().ToLowerInvariant()`
+		// format must never re-enter this payload (see issue #178).
+		Assert.DoesNotContain("possiblerestoration", repo.OutboxEvents[0].Payload);
+	}
+
+	[Fact]
+	public async Task ApplyDecay_PossibleRestorationToResolved_WritesCanonicalSnakeCaseOutboxPayload()
+	{
+		SignalCluster cluster = ActiveRoadsCluster();
+		cluster.State = SignalState.PossibleRestoration;
+		cluster.PossibleRestorationAt = DateTime.UtcNow.AddHours(-100.0);
+		var (svc, repo) = BuildDecay(cluster);
+
+		await svc.ApplyDecayAsync(cluster.Id);
+
+		Assert.Single(repo.OutboxEvents);
+		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
+		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
+		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		Assert.Equal("possible_restoration", fromState);
+		Assert.Equal("resolved", toState);
+		Assert.DoesNotContain("possiblerestoration", repo.OutboxEvents[0].Payload);
+	}
+
+	[Fact]
+	public async Task EvaluateCluster_UnconfirmedToActive_WritesCanonicalSnakeCaseOutboxPayload()
+	{
+		SignalCluster cluster = UnconfirmedRoadsCluster(3);
+		var (svc, repo) = Build(cluster, 3, 3, 2);
+
+		await svc.EvaluateClusterAsync(cluster.Id);
+
+		Assert.Single(repo.OutboxEvents);
+		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
+		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
+		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		Assert.Equal("unconfirmed", fromState);
+		Assert.Equal("active", toState);
 	}
 
 	// B-2: Deactivation threshold must be read from CivisOptions (not hardcoded).
