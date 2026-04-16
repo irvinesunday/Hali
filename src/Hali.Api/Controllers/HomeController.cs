@@ -93,6 +93,16 @@ public class HomeController : ControllerBase
                 ? HomeMetrics.LocalityScopeFallback
                 : HomeMetrics.LocalityScopeGuestEmpty;
 
+        // Tracks a client-disconnect unwind so the `finally` block can skip
+        // histogram emission, mirroring the ExceptionHandlingMiddleware
+        // client-disconnect carve-out. The catch filter matches the
+        // middleware pattern exactly: an OperationCanceledException *and* a
+        // signalled HttpContext.RequestAborted. A non-aborted
+        // OperationCanceledException (e.g. server-side internal timeout)
+        // does not flip this flag, so its latency is still observed as a
+        // normal failure-path measurement.
+        bool clientAborted = false;
+
         try
         {
             // Both authenticated and anonymous callers may scope the feed to
@@ -195,6 +205,17 @@ public class HomeController : ControllerBase
                 ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds);
             return Ok(fullResponse);
         }
+        catch (OperationCanceledException) when (HttpContext?.RequestAborted.IsCancellationRequested == true)
+        {
+            // Client disconnected — mirror the ExceptionHandlingMiddleware
+            // client-disconnect carve-out: a caller-aborted request is not a
+            // handled API exception, and its latency must not contribute to
+            // the home-feed distribution. Flag the unwind so the `finally`
+            // block skips histogram emission; the exception still propagates
+            // so the middleware can drop the 500 envelope.
+            clientAborted = true;
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex,
@@ -209,13 +230,24 @@ public class HomeController : ControllerBase
             // section-paged, validation/throw). Tag values are set above before
             // the request can branch; the defaults used if an exception fires
             // before the decision is made are still bounded by the catalog.
+            //
+            // The single carve-out: if the request is unwinding through a
+            // client-disconnect cancellation (caller-aborted OperationCanceledException
+            // with HttpContext.RequestAborted signalled), skip emission to stay
+            // consistent with ExceptionHandlingMiddleware's exception-metric
+            // cancellation policy. Ordinary success and error paths — including
+            // non-aborted OperationCanceledException (e.g. server-side timeout) —
+            // still emit.
             sw.Stop();
-            var tags = new TagList
+            if (!clientAborted)
             {
-                { HomeMetrics.TagAuthenticated, isAuthenticated ? "true" : "false" },
-                { HomeMetrics.TagLocalityScope, localityScope }
-            };
-            _metrics.HomeFeedRequestDuration.Record(sw.Elapsed.TotalSeconds, tags);
+                var tags = new TagList
+                {
+                    { HomeMetrics.TagAuthenticated, isAuthenticated ? "true" : "false" },
+                    { HomeMetrics.TagLocalityScope, localityScope }
+                };
+                _metrics.HomeFeedRequestDuration.Record(sw.Elapsed.TotalSeconds, tags);
+            }
         }
     }
 
