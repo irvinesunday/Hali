@@ -93,6 +93,11 @@ public class HomeController : ControllerBase
                 ? HomeMetrics.LocalityScopeFallback
                 : HomeMetrics.LocalityScopeGuestEmpty;
 
+        // Set to true when the request is aborted by the caller so the
+        // finally block can skip latency-histogram emission on that path,
+        // mirroring the ExceptionHandlingMiddleware policy from Issue #171.
+        bool requestAborted = false;
+
         try
         {
             // Both authenticated and anonymous callers may scope the feed to
@@ -195,6 +200,17 @@ public class HomeController : ControllerBase
                 ObservabilityEvents.HomeRequestCompleted, sw.ElapsedMilliseconds);
             return Ok(fullResponse);
         }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            // Client disconnected — not a server error. Skip latency-histogram
+            // emission to stay consistent with ExceptionHandlingMiddleware
+            // (Issue #171), which already suppresses error metrics and response
+            // writing on this path. Only caller-requested cancellation is
+            // suppressed; other OperationCanceledException paths (e.g. internal
+            // timeouts) fall through to the general catch and still emit.
+            requestAborted = true;
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger?.LogError(ex,
@@ -206,16 +222,21 @@ public class HomeController : ControllerBase
         {
             // Stop the stopwatch and emit the latency histogram exactly once
             // per request, on every path (cache-hit, cache-miss, full assembly,
-            // section-paged, validation/throw). Tag values are set above before
-            // the request can branch; the defaults used if an exception fires
-            // before the decision is made are still bounded by the catalog.
+            // section-paged, validation/throw). Skipped on RequestAborted
+            // cancellation paths to stay consistent with the middleware policy.
+            // Tag values are set above before the request can branch; the
+            // defaults used if an exception fires before the decision is made
+            // are still bounded by the catalog.
             sw.Stop();
-            var tags = new TagList
+            if (!requestAborted)
             {
-                { HomeMetrics.TagAuthenticated, isAuthenticated ? "true" : "false" },
-                { HomeMetrics.TagLocalityScope, localityScope }
-            };
-            _metrics.HomeFeedRequestDuration.Record(sw.Elapsed.TotalSeconds, tags);
+                var tags = new TagList
+                {
+                    { HomeMetrics.TagAuthenticated, isAuthenticated ? "true" : "false" },
+                    { HomeMetrics.TagLocalityScope, localityScope }
+                };
+                _metrics.HomeFeedRequestDuration.Record(sw.Elapsed.TotalSeconds, tags);
+            }
         }
     }
 
