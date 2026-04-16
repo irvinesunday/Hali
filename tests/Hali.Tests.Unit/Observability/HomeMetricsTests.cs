@@ -435,6 +435,83 @@ public class HomeMetricsTests
         Assert.Equal(2, capture.DurationMeasurements.Count);
     }
 
+    // ── Cancellation-policy tests ────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetHome_ClientAborted_OperationCanceled_DoesNotEmitHistogram()
+    {
+        // Client-disconnect carve-out (#174): when the caller aborts the
+        // request mid-flight, HttpContext.RequestAborted signals and the
+        // in-flight awaited work unwinds as OperationCanceledException.
+        // The controller's finally block must skip the histogram emission
+        // so the home-feed latency distribution stays consistent with
+        // ExceptionHandlingMiddleware's api_exceptions_total carve-out
+        // (PR #171) — downstream alerts assume the two instruments share
+        // one cancellation policy.
+        using var scope = TestHomeMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+
+        var feedQuery = Substitute.For<IHomeFeedQueryService>();
+        var follows = Substitute.For<IFollowService>();
+        var redis = Substitute.For<IDatabase>();
+        follows.GetFollowedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException("client disconnect"));
+
+        var controller = CreateController(scope.Metrics, feedQuery, follows, redis, authenticated: true);
+
+        // Mirror a real client-disconnect unwind: RequestAborted is
+        // signalled at the moment the OCE surfaces. The catch filter
+        // reads HttpContext.RequestAborted, not the exception's token,
+        // so assigning a cancelled token here is what the carve-out
+        // actually guards against.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        controller.ControllerContext.HttpContext.RequestAborted = cts.Token;
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => controller.GetHome(null, null, null, CancellationToken.None));
+
+        // Histogram must not record the cancelled request.
+        Assert.Empty(capture.DurationMeasurements);
+        // Cache counters are untouched because the throw precedes the
+        // Redis lookup on the follow-resolution path.
+        Assert.Empty(capture.CacheHitMeasurements);
+        Assert.Empty(capture.CacheMissMeasurements);
+    }
+
+    [Fact]
+    public async Task GetHome_NonAbortedOperationCanceled_StillEmitsHistogram()
+    {
+        // Server-side cancellation (e.g. an internal timeout CT unrelated
+        // to the client connection) surfaces as OperationCanceledException
+        // while HttpContext.RequestAborted is NOT signalled. The carve-out
+        // is scoped specifically to caller-aborted requests — a server-
+        // internal OCE is still a failure-path latency observation and
+        // must emit, tagged identically to any other exception path.
+        using var scope = TestHomeMetrics.Create();
+        using var capture = new MetricCapture(scope.Metrics);
+
+        var feedQuery = Substitute.For<IHomeFeedQueryService>();
+        var follows = Substitute.For<IFollowService>();
+        var redis = Substitute.For<IDatabase>();
+        follows.GetFollowedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException("server-side internal timeout"));
+
+        var controller = CreateController(scope.Metrics, feedQuery, follows, redis, authenticated: true);
+        // HttpContext.RequestAborted stays at its DefaultHttpContext
+        // default (not cancelled), so the inner catch filter evaluates
+        // false and the exception falls through to the finally block
+        // where clientAborted is still false — histogram emits.
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => controller.GetHome(null, null, null, CancellationToken.None));
+
+        var m = Assert.Single(capture.DurationMeasurements);
+        Assert.True(m.Value >= 0);
+        Assert.Equal("true", m.Tags[HomeMetrics.TagAuthenticated]);
+        Assert.Equal(HomeMetrics.LocalityScopeFallback, m.Tags[HomeMetrics.TagLocalityScope]);
+    }
+
     [Fact]
     public async Task GetHome_RedisThrows_HistogramStillEmitsOnce_NoCacheCountersFire()
     {
