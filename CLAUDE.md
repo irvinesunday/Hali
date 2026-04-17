@@ -86,8 +86,9 @@ is in the tree today.
     /design-system             # Tailwind + shadcn/ui (web only) — planned
 
   /src                         # C# modular monolith — six projects, module
-                               # boundaries live inside Hali.Application and
-                               # Hali.Domain (folder-level, not separate csproj)
+                               # boundaries live across Hali.Application,
+                               # Hali.Domain, and Hali.Infrastructure
+                               # (folder-level, not separate csproj)
     /Hali.Api                  # ASP.NET Core Web API composition root
     /Hali.Workers              # Background worker host
     /Hali.Domain               # Civic vocabulary, invariants, domain services
@@ -113,9 +114,9 @@ is in the tree today.
 
 Logical C# module names (`Hali.Modules.Auth`, `Hali.Modules.Signals`,
 `Hali.Modules.Civis`, etc.) that appear in older docs refer to folder-level
-boundaries **inside** `Hali.Application` / `Hali.Domain` / `Hali.Infrastructure`.
-There are no `Hali.Modules.*` csproj files — the six projects above are the
-complete solution layout.
+boundaries spread across `Hali.Application`, `Hali.Domain`, and
+`Hali.Infrastructure`. There are no `Hali.Modules.*` csproj files — the six
+projects above are the complete solution layout.
 
 ---
 
@@ -418,8 +419,11 @@ PostgreSQL + Redis — not Testcontainers). Historical detail is preserved in
 | Institution Admin Dashboard | Phase 2 | Planned — routes tracked under #196 |
 | Hali Ops Admin Dashboard | Phase 3 | Planned |
 
-Current priority is the Phase 1→Phase 2 backend + institution-web build.
-Open issues under the `feature:` label are the authoritative backlog.
+Current priority is closing out Phase 1 citizen-mobile polish plus
+foundation + preparatory work for Phase 2 (shared packages, design-system
+baseline, institution backend routes). See the Phase 2 gating rule below
+before beginning Phase 2 delivery work. Open issues under the `feature:`
+label are the authoritative backlog.
 
 ---
 
@@ -453,9 +457,14 @@ The backend API is available at `http://localhost:8080` for local development.
 
 ### Starting a Phase 2 session (institution dashboards)
 
-Do not start Phase 2 until the mobile app is in pilot state.
-When ready, read `docs/arch/08_phase2_institution.md` before anything else.
-Phase 2 requires schema migrations for: `institution_memberships`, `institution_user_scopes`, `official_update_templates`, `institution_notification_recipients`.
+Phase 2 backend foundations (auth, institution routes, authorization hardening)
+and the shared design-system / monorepo scaffolding may proceed in parallel
+with Phase 1 mobile polish. Full Phase 2 UI delivery (institution-web pages,
+production-wired dashboards) should not begin until the mobile app is in
+pilot state. When working on Phase 2, read `docs/arch/08_phase2_institution.md`
+before anything else. Phase 2 requires schema migrations for:
+`institution_memberships`, `institution_user_scopes`,
+`official_update_templates`, `institution_notification_recipients`.
 
 ---
 
