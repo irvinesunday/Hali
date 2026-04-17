@@ -29,12 +29,16 @@ region with a sticky topbar. Dimensions:
 
 | Region | Value | Token |
 |---|---|---|
-| Sidebar width | 224px (`w-56`) | `InstitutionShell.sidebarWidth` |
-| Sidebar brand header height | 64px | `InstitutionShell.topbarHeight` (aligned) |
-| Topbar height | 64px | `InstitutionShell.topbarHeight` |
+| Sidebar width | 224px (`w-56`) | inline value — no design-system token yet |
+| Sidebar brand header height | 64px | inline value (aligned with topbar height) |
+| Topbar height | 64px | inline value — no design-system token yet |
 | Content region horizontal padding | `Spacing.2xl` (24px) | shared |
 | Content region vertical padding | `Spacing.xl` (20px) top, `Spacing.4xl` (48px) bottom | shared |
 | Max content width | unbounded; grid columns cap at 4 | — |
+
+Layout dimensions that are currently inline (sidebar/topbar sizes)
+may graduate to design-system tokens in a future revision; the
+synthesis keeps them inline until there is a second consumer.
 
 The sidebar is `position: fixed`, full viewport height, `z-index: 40`,
 `border-right: 1px solid InstitutionColors.sidebarBorder`, background
@@ -87,7 +91,7 @@ above the sidebar), `z-index: 30`, background
 
 Routes are relative to the authenticated institution scope; the
 institution id is not in the URL — it is resolved server-side from
-the JWT claim (see `SECURITY_POSTURE.md` §2).
+the JWT claim (see `docs/arch/SECURITY_POSTURE.md` §2).
 
 ---
 
@@ -119,7 +123,7 @@ From left to right:
 8. **Account menu** — avatar / initials with dropdown.
 
 Every action above emits a `institution_web.*` event per
-`OBSERVABILITY_MODEL.md` §5.
+`docs/arch/OBSERVABILITY_MODEL.md` §5.
 
 ---
 
@@ -129,7 +133,7 @@ Every page follows this vertical rhythm:
 
 1. **Page header** — `<h1>` `FontSize.title` (20px)
    `FontWeight.semiBold` + subheader `FontSize.body` (14px)
-   `InstitutionColors.mutedForeground`.
+   `SharedSemanticColors.mutedForeground`.
    - Subheader always reflects the current scope filters (institution
      + area).
 2. **Primary content** — page-specific, scrolls vertically.
@@ -185,7 +189,7 @@ Vertical gap between blocks: `Spacing.2xl` (24px).
 
 - Page header: "Metrics" + subheader.
 - Dashboard tiles sourced from the observability pipeline (see
-  `OBSERVABILITY_MODEL.md` §8). Exact tile set is **requires-decision**
+  `docs/arch/OBSERVABILITY_MODEL.md` §8). Exact tile set is **requires-decision**
   — the Phase 2 implementation PR adds tiles incrementally.
 
 ---
@@ -197,11 +201,11 @@ Vertical gap between blocks: `Spacing.2xl` (24px).
 - `grid-template-columns: repeat(4, minmax(0, 1fr))`, gap `Spacing.lg`
   (16px).
 - Each card: padding `Spacing.lg`, `Radius.default` (12px),
-  border `InstitutionColors.border`, background
-  `InstitutionColors.card`.
+  border `SharedSemanticColors.border`, background
+  `SharedSemanticColors.card`.
 - Card contents: icon (20px) + title (`FontSize.badge` / 12px,
   `FontWeight.medium`, uppercase, tracking-wide,
-  `InstitutionColors.mutedForeground`) + value
+  `SharedSemanticColors.mutedForeground`) + value
   (`FontSize.title` / 20px, `FontWeight.semiBold`,
   `InstitutionColors.foreground`).
 - Drill-down affordance: entire card is clickable; chevron appears

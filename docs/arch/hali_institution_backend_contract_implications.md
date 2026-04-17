@@ -135,21 +135,24 @@ cache key to re-fetch.
 **Needs:**
 
 - Full signal fields (list item fields + description + citizen
-  summary + location string + affected areas).
-- Every posted official update for this signal, newest first.
-- Current restoration state (if applicable): ratio, affected-vote
-  count, window-expires-at.
+  summary + location).
+- Every posted official update for this signal in chronological
+  order (oldest first, rendered top→bottom in the timeline — the
+  server guarantees the order; the client renders as-returned).
+- Current restoration state (if applicable).
 
 **Consolidation decision:** the existing
-`GET /v1/clusters/{id}` endpoint carries everything needed — the
-updates timeline is returned inline as an array, and the restoration
-state is a nested object. A dedicated
-`/v1/institution/clusters/{id}/updates` endpoint would duplicate
-what the cluster-detail endpoint already carries; skip it in
-Phase 2 and expand `GET /v1/clusters/{id}` instead (see §3).
+`GET /v1/clusters/{id}` endpoint (see `02_openapi.yaml`
+`#/components/schemas/ClusterResponse`) already carries everything
+needed — `officialPosts[]` for the chronological update timeline,
+and `restorationRatio` / `restorationYesVotes` /
+`restorationTotalVotes` for the restoration aggregates. A new
+dedicated `/v1/institution/clusters/{id}/updates` endpoint would
+duplicate the cluster-detail response; skip it in Phase 2. Any
+additional fields (see §3) are added to this endpoint.
 
-**Endpoint:** `GET /v1/clusters/{id}` (existing, expanded via field
-additions).
+**Endpoint:** `GET /v1/clusters/{id}` (existing; expanded via the
+additive field changes in §3).
 
 ### 2.4 Areas page
 
@@ -195,22 +198,35 @@ needed for the web app.
 
 ### `GET /v1/clusters/{id}` (existing)
 
-- Add `responseStatus` field (enum — see §4).
-- Add `restoration` object when applicable: `{ ratio, affectedVoteCount,
-  windowExpiresAt }`.
-- Add `updates` array carrying the full chronological update timeline
-  for the cluster (newest first). This replaces the previously
-  proposed dedicated updates endpoint — per the Phase 1.5 "prefer
-  consolidation" guardrail, one cluster-detail request returns
-  everything the Signal Detail page needs.
+- Add `responseStatus` field (enum — see §4) as an additive
+  nullable field on `ClusterResponse`.
+- Preserve the existing restoration aggregate fields already
+  exposed on `ClusterResponse` — `restorationRatio`,
+  `restorationYesVotes`, `restorationTotalVotes`. The institution
+  Signal Detail consumes these directly; no parallel `restoration`
+  object is introduced. If a restoration window expiry is needed,
+  add it as a single additive nullable field `restorationWindowExpiresAt`
+  rather than a nested object.
+- Use the existing `officialPosts[]` collection to carry the
+  chronological update timeline for the cluster (oldest first,
+  newest last). Clients render that order directly.
 
 ### `POST /v1/official-posts` (existing)
 
 - Ensure the full canonical set of update kinds is supported:
   `live_update`, `scheduled_disruption`, `advisory_public_notice`.
-- Validate `affectedAreas[]` is a non-empty subset of the caller's
-  scope.
-- New optional field on `scheduled_disruption`: `severity`.
+- Validate the location selector fields already present on
+  `OfficialPostCreateRequest` — `localityId` and/or
+  `corridorName` — against the caller's scope server-side. Do
+  NOT introduce a new `affectedAreas[]` field unless it is first
+  proposed as a request-shape change and added to `02_openapi.yaml`.
+- `relatedClusterId` + `isRestorationClaim` (already on the
+  request) remain the canonical path for institution-authored
+  restoration claims.
+- **Proposed additive change:** a new optional `severity` field
+  for `scheduled_disruption`. If approved alongside Phase 2
+  implementation, update `OfficialPostCreateRequest` in
+  `02_openapi.yaml` in the same PR.
 
 These additions must keep the wire format backward-compatible —
 new fields are additive and nullable when absent.
@@ -220,7 +236,7 @@ new fields are additive and nullable when absent.
 ## 4. Canonical enum vocabularies (server decides)
 
 To avoid the v0 taxonomy mismatch documented in
-`phase-1.5-visual-audit.md` §8, Phase 2 backend enforces these
+`docs/reference-ui/v0/phase-1.5-visual-audit.md` §8, Phase 2 backend enforces these
 canonical lowercase snake_case wire values. The decision at the
 review gate: **use the backend's 8 canonical `CivicCategory` values**
 with an explicit mapping for the 6 v0 categories so implementation
@@ -315,9 +331,12 @@ Per `SECURITY_POSTURE.md` §8.b — every institution write endpoint
 ships with a rate limit or a documented reason for omission:
 
 - `POST /v1/official-posts` → per-institution-user rate limit,
-  budget TBD in the #195 implementation PR.
-- `POST /v1/clusters/{id}/restoration-response` → per-institution
-  rate limit.
+  including institution-authored restoration claims
+  (`isRestorationClaim=true`); budget TBD in the Phase 2
+  implementation PR. Note that
+  `POST /v1/clusters/{id}/restoration-response` is a citizen
+  participation endpoint and is rate-limited separately under its
+  existing citizen rules — it is NOT an institution write path.
 - `POST /v1/institution/notifications/read` → no rate limit (idempotent).
 
 ---
@@ -371,9 +390,15 @@ Open items from synthesis resolved at the Phase 1.5 review gate:
   activity feed is returned inline in
   `/v1/institution/overview`; the updates timeline is returned
   inline in `GET /v1/clusters/{id}` (see §2.1, §2.3, §3, §9).
-- **Restoration-claim** — reuse
-  `POST /v1/clusters/{id}/restoration-response` with an institution
-  actor; no new endpoint.
+- **Restoration-claim** — reuse the existing official-post write
+  path for institution-authored claims, setting
+  `isRestorationClaim = true` and
+  `relatedClusterId = <signal cluster id>` on the
+  `OfficialPostCreateRequest`. No new endpoint.
+  `POST /v1/clusters/{id}/restoration-response` remains the citizen
+  participation vote endpoint (carries `deviceHash` +
+  `still_affected | restored | not_sure`) and is not called by the
+  institution surface.
 - **Metrics** — no server-mediated read path in Phase 2. The
   institution Metrics page consumes Grafana / the existing OTLP
   pipeline directly. A dedicated route may land in Phase 3 if
@@ -382,7 +407,8 @@ Open items from synthesis resolved at the Phase 1.5 review gate:
   `institutionId` in URLs. The JWT `institution_id` claim is the
   single server-side scope anchor.
 
-Remaining open (owned by the #195 implementation PR, not this spec):
+Remaining open (owned by the Phase 2 implementation work, not
+this spec):
 
 - Exact rate-limit budgets for the new write endpoints.
 - Whether `/v1/institution/notifications` needs cursor pagination

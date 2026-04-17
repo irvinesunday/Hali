@@ -123,7 +123,7 @@ set of institutions and areas. In production:
   more than one institution. Single-institution users should see the
   institution name as a label, not a picker.
 - Area picker scope must be derived from the authenticated user's
-  jurisdiction scope (see SECURITY_POSTURE.md §2) rather than a
+  jurisdiction scope (see `docs/arch/SECURITY_POSTURE.md` §2) rather than a
   hardcoded list.
 
 ---
@@ -292,7 +292,7 @@ ambiguous, or absent:
 | Restoration "waiting on citizen confirmation" UX | v0 demo doesn't differentiate this state visually |
 | Scheduled Disruption + Advisory creation UX | v0 only covers response-stage updates |
 | Notification-centre exhaustive taxonomy | v0 ships 6 notification types; backend may emit more |
-| Dense-metrics dashboard tile set | v0 Metrics page is a demo; real metric set must map to SLO / alert dashboards per OBSERVABILITY_MODEL.md §8 |
+| Dense-metrics dashboard tile set | v0 Metrics page is a demo; real metric set must map to SLO / alert dashboards per `docs/arch/OBSERVABILITY_MODEL.md` §8 |
 | Sidebar collapse / responsive behaviour | Not demonstrated in v0 |
 | Keyboard + accessibility conventions | Not a v0 focus; Phase 3 implementation must add |
 | Session timeout / lock UX | Not present in v0 |

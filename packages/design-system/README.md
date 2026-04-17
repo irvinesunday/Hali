@@ -16,21 +16,29 @@ Per Phase 1.5 design intent clarification, divergent surface colours
 are **intentional theming**, not conflicts to unify. Tokens are
 organised into three layers:
 
-1. **`SharedSemanticColors`** — structural chrome + shared meaning
-   (border, muted, input, card, popover, destructive). Unified across
+1. **`SharedSemanticColors`** — structural chrome (border, muted,
+   input, card, popover) and their foreground pairs. Unified across
    surfaces.
 2. **`CitizenColors`** — surface override for the citizen mobile
    preview / future citizen web. Warmer, softer, empathetic register.
+   Carries surface-specific `background`, `foreground`, `primary`,
+   `secondary`, `accent`, `destructive`, `ring`, plus their
+   foreground pairs.
 3. **`InstitutionColors`** — surface override for the institution
-   dashboard. Cooler, sharper, decisive register.
+   dashboard. Cooler, sharper, decisive register. Same key set as
+   `CitizenColors` plus the sidebar-specific tokens.
 
-The package also exports pre-composed themes:
+The package also exports pre-composed themes (PascalCase with
+back-compat lowercase aliases):
 
-- `citizenTheme = { ...SharedSemanticColors, ...CitizenColors }`
-- `institutionTheme = { ...SharedSemanticColors, ...InstitutionColors }`
+- `CitizenTheme = { ...SharedSemanticColors, ...CitizenColors }`
+- `InstitutionTheme = { ...SharedSemanticColors, ...InstitutionColors }`
 
 Downstream consumers typically import the composed theme rather than
-mixing layers manually.
+mixing layers manually. `destructive` lives on the surface overrides
+(not in the shared base) so each surface renders it with a hue
+that matches its emotional register while retaining the same
+semantic meaning.
 
 ### Why the divergence is modelled this way
 
@@ -38,8 +46,8 @@ mixing layers manually.
 |---|---|---|---|
 | `primary` | `oklch(0.55 0.12 190)` — warmer, softer | `oklch(0.65 0.12 180)` — cooler, sharper | Intentional surface divergence per product doctrine |
 | `foreground` | `oklch(0.25 0.02 220)` | `oklch(0.2 0.02 200)` — darker | Institution surface is denser and needs higher-contrast body text |
-| `border`, `muted`, `input` | shared | shared | Structural chrome — no emotional register difference |
-| `destructive` | shared (converged to institution value) | shared | Error states need equal legibility on both surfaces |
+| `border`, `muted`, `input`, `card` | shared | shared | Structural chrome — no emotional register difference |
+| `destructive` | `oklch(0.60 0.15 30)` — warmer, softer | `oklch(0.577 0.245 27.325)` — sharper, more saturated | Shared **semantic** meaning (error / danger) with surface-specific rendering. Each surface keeps its v0 hue; `destructiveForeground` is converged to near-white for legibility on both. |
 | `sidebar*` | n/a | defined | Only the institution shell has a persistent sidebar |
 
 Full rationale: `docs/arch/hali_institution_ux_layout_spec.md` and
@@ -63,8 +71,8 @@ import {
   SharedSemanticColors,
   CitizenColors,
   InstitutionColors,
-  citizenTheme,
-  institutionTheme,
+  CitizenTheme,
+  InstitutionTheme,
   ConditionBadgeClassNames,
   Spacing,
   Radius,
@@ -74,12 +82,20 @@ import {
   DesignSystemVersion,
 } from "@hali/design-system";
 
-// Institution web consumer
-const theme = institutionTheme;
+// Institution web consumer — use the composed theme
+const theme = InstitutionTheme;
 
 // Or layer manually for a one-off override
-const theme = { ...SharedSemanticColors, ...InstitutionColors, primary: "custom-value" };
+const custom = {
+  ...SharedSemanticColors,
+  ...InstitutionColors,
+  primary: "custom-value",
+};
 ```
+
+`citizenTheme` and `institutionTheme` (camelCase) remain exported as
+aliases for back-compat but the PascalCase names match the rest of
+the public surface.
 
 Consumers feed these into Tailwind v4 (via CSS custom properties
 generated at build time) or CSS-in-JS. The package exports raw values

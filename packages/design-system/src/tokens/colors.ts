@@ -134,14 +134,18 @@ export type ConditionBadgeKey = keyof typeof ConditionBadgeClassNames;
  * Helpers that assemble a complete token set for a given surface by
  * layering a surface override on top of the shared base. Downstream
  * consumers typically import one of these rather than mixing base +
- * override manually.
+ * override manually. Exported PascalCase to match the rest of the
+ * token surface; lowercase aliases are kept for back-compat.
  */
-export const citizenTheme = {
+export const CitizenTheme = {
   ...SharedSemanticColors,
   ...CitizenColors,
 } as const;
 
-export const institutionTheme = {
+export const InstitutionTheme = {
   ...SharedSemanticColors,
   ...InstitutionColors,
 } as const;
+
+export const citizenTheme = CitizenTheme;
+export const institutionTheme = InstitutionTheme;

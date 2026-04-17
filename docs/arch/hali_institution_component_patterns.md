@@ -203,15 +203,24 @@ Semantic status chip.
 - **Events:** `onSubmit(payload)`, `onDismiss()`.
 - **Kinds:** `live_update`, `scheduled_disruption`,
   `advisory_public_notice` — the three canonical backend kinds.
-- **Fields by kind:**
-  - `live_update`: stage (response status), message, affected areas,
-    expected resolution (optional).
-  - `scheduled_disruption`: start + end time, affected areas,
-    message, severity.
-  - `advisory_public_notice`: topic, message, publish window.
-- **Behaviour:** form validates client-side; server call is
+- **Fields by kind** (aligned with the existing
+  `OfficialPostCreateRequest` in `02_openapi.yaml`):
+  - `live_update`: stage (response status), message, location
+    targeting via `localityId` and/or `corridorName`, with
+    `relatedClusterId` and (when applicable) `isRestorationClaim`
+    included for the signal this is being posted against.
+  - `scheduled_disruption`: `startsAt` + `endsAt`, location
+    targeting via `localityId` and/or `corridorName`, message.
+    **Proposed additive change:** a new optional `severity` field
+    on the request (and corresponding OpenAPI update) if approved
+    alongside the Phase 2 implementation.
+  - `advisory_public_notice`: topic, message, publish window
+    (`startsAt` / `endsAt`).
+- **Behaviour:** form validates client-side against the current
+  `POST /v1/official-posts` payload shape; server call is
   `POST /v1/official-posts`. On success, parent receives the new
-  update and prepends it to the timeline optimistically.
+  post and appends it to the timeline optimistically (chronological
+  order — oldest first, newest appended at the bottom).
 - **v0 origin:** `institution:components/dashboard/post-update-modal.tsx`.
   The v0 post-update only models the stage flow; the other two kinds
   are a Phase 1.5 extension carried into Phase 3.
@@ -223,13 +232,22 @@ Semantic status chip.
 - **Behaviour:**
   - Shown only when the server indicates the signal is in a
     restoration-eligible state.
-  - Clicking `onClaimRestoration` calls
-    `POST /v1/clusters/{id}/restoration-response` (proposed —
-    see `hali_institution_backend_contract_implications.md` §3)
-    and transitions the cluster to `possible_restoration`.
-  - The `RestorationWaitingConfirmationBanner` then renders at the
-    top of the Signal Detail until the citizen confirmation
-    threshold resolves or the window expires.
+  - Clicking `onClaimRestoration` issues
+    `POST /v1/official-posts` with an `OfficialPostCreateRequest`
+    carrying `isRestorationClaim = true` and
+    `relatedClusterId = <signal cluster id>` (see
+    `02_openapi.yaml` `#/components/schemas/OfficialPostCreateRequest`).
+    The backend uses these flags to transition the cluster to
+    `possible_restoration`.
+  - On success, the institution timeline / activity stream reflects
+    the new official post, and the
+    `RestorationWaitingConfirmationBanner` renders at the top of the
+    Signal Detail until the citizen confirmation threshold resolves
+    or the window expires.
+  - `POST /v1/clusters/{id}/restoration-response` is a **citizen
+    participation** endpoint (it carries `deviceHash` +
+    `still_affected | restored | not_sure`) and is never called
+    by the institution surface.
 - **v0 origin:** partial — v0 surfaces response-stage progression
   but doesn't isolate the post-claim wait state.
 
@@ -264,8 +282,8 @@ Consumed from shadcn/ui but with institution-scoped conventions:
   navigation (navigation lives in the sidebar).
 - `Popover` — used for notifications.
 - `Button` — variants: `primary`, `secondary`, `ghost`, `destructive`.
-  Destructive uses the converged destructive hue from the design
-  system, never inline colour.
+  Destructive uses the active surface theme's `destructive` token
+  from the design system, never inline colour.
 
 ---
 
@@ -286,8 +304,16 @@ Every interactive component must:
 
 Import these directly — never redeclare in the institution web app:
 
-- `InstitutionColors.*`, `CitizenColors.*` (for mobile preview
-  surfaces, not institution runtime)
+- `SharedSemanticColors.*` — shared structural tokens: `card`,
+  `cardForeground`, `border`, `input`, `muted`, `mutedForeground`,
+  `popover`, `popoverForeground`.
+- `InstitutionColors.*` — institution surface overrides: `primary`,
+  `foreground`, `background`, `destructive`, sidebar tokens, etc.
+  `CitizenColors.*` exists for mobile preview surfaces; do not
+  consume on the institution runtime.
+- `InstitutionTheme` (or the `institutionTheme` alias) for the
+  pre-composed institution token set when a single spread is
+  simpler than two.
 - `ConditionBadgeClassNames`
 - `Spacing`, `Radius`, `FontFamily`, `FontSize`, `FontWeight`,
   `LineHeight`, `LetterSpacing`
