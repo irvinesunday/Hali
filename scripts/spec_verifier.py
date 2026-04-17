@@ -14,7 +14,7 @@ from anthropic import Anthropic
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from anthropic import APIStatusError, APIConnectionError
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 CI_CONCLUSION     = os.environ.get("CI_CONCLUSION", "unknown")
 CI_RUN_URL        = os.environ.get("CI_RUN_URL", "")
 MODEL             = "claude-sonnet-4-6"
@@ -82,6 +82,11 @@ def append_lessons(lessons_text: str, source: str):
 
 def run():
     print(f"Post-CI Spec Verifier — CI conclusion: {CI_CONCLUSION}")
+
+    if not ANTHROPIC_API_KEY:
+        print("ANTHROPIC_API_KEY is not set — skipping spec verification (no-op).")
+        print("To enable post-CI analysis, add ANTHROPIC_API_KEY to repository secrets.")
+        sys.exit(0)
 
     test_summary  = read_trx_summary("ci-artifacts/**/*.trx")
     cov_summary   = read_coverage_summary()
