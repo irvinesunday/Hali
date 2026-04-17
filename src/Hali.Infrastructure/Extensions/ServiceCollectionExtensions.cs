@@ -20,6 +20,7 @@ using Hali.Infrastructure.Data;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
+using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Data.Feedback;
 using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
@@ -68,6 +69,14 @@ public static class ServiceCollectionExtensions
 				npgsql.MapEnum<AccountType>("account_type", null, Snake);
 				npgsql.MapEnum<AuthMethod>("auth_method", null, Snake);
 			}));
+
+		// Data Protection key ring (#243). Shares the Auth data source — the
+		// keys protect auth-owned material (TOTP secrets, see #197) and the
+		// table is small enough that a separate pool is not justified. The
+		// DbContext is registered here; the actual AddDataProtection wiring
+		// lives in Program.cs so it can react to IHostEnvironment.
+		services.AddDbContext<HaliDataProtectionDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth));
 
 		services.AddDbContext<SignalsDbContext>((sp, opts) =>
 			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Signals, npgsql =>
