@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Institutions;
 using Hali.Contracts.Advisories;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Clusters;
@@ -35,6 +36,34 @@ public class OfficialPostsService : IOfficialPostsService
         if (!Enum.TryParse<CivicCategory>(dto.Category.Replace("_", ""), ignoreCase: true, out var category))
             throw new ValidationException("Invalid category.", code: ErrorCodes.OfficialPostInvalidCategory);
 
+        // response_status is only valid on live_update posts; severity is only
+        // valid on scheduled_disruption posts. Rejecting here keeps the data
+        // model clean — we never persist a response_status on an advisory or
+        // a severity on a live_update. Null on the "correct" type is fine.
+        string? responseStatus = NormaliseOptional(dto.ResponseStatus);
+        if (responseStatus is not null)
+        {
+            if (postType != OfficialPostType.LiveUpdate
+                || !InstitutionVocabulary.ResponseStatuses.Contains(responseStatus))
+            {
+                throw new ValidationException(
+                    "Invalid response_status.",
+                    code: ErrorCodes.OfficialPostInvalidResponseStatus);
+            }
+        }
+
+        string? severity = NormaliseOptional(dto.Severity);
+        if (severity is not null)
+        {
+            if (postType != OfficialPostType.ScheduledDisruption
+                || !InstitutionVocabulary.Severities.Contains(severity))
+            {
+                throw new ValidationException(
+                    "Invalid severity.",
+                    code: ErrorCodes.OfficialPostInvalidSeverity);
+            }
+        }
+
         // Geo-scope enforcement BEFORE insert — no out-of-jurisdiction row ever lands in the DB
         bool allowed = await _repo.CheckJurisdictionForLocalityAsync(institutionId, dto.LocalityId, ct);
         if (!allowed)
@@ -56,6 +85,8 @@ public class OfficialPostsService : IOfficialPostsService
             Status = "published",
             RelatedClusterId = dto.RelatedClusterId,
             IsRestorationClaim = dto.IsRestorationClaim,
+            ResponseStatus = responseStatus,
+            Severity = severity,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -138,5 +169,12 @@ public class OfficialPostsService : IOfficialPostsService
         p.Status,
         p.RelatedClusterId,
         p.IsRestorationClaim,
-        p.CreatedAt);
+        p.CreatedAt)
+    {
+        ResponseStatus = p.ResponseStatus,
+        Severity = p.Severity,
+    };
+
+    private static string? NormaliseOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

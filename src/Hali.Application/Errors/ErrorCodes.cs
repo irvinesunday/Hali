@@ -56,6 +56,12 @@ public static class ErrorCodes
 
     // --- institution.* ---
     public const string InstitutionMissingFields = "institution.missing_fields";
+    /// <summary>
+    /// The <c>state</c> filter supplied on <c>GET /v1/institution/signals</c>
+    /// was not one of the canonical values (<c>active</c>, <c>growing</c>,
+    /// <c>needs_attention</c>, <c>restoration</c>).
+    /// </summary>
+    public const string InstitutionInvalidStateFilter = "institution.invalid_state_filter";
 
     // --- invite.* ---
     public const string InviteAlreadyAccepted = "invite.already_accepted";
@@ -73,6 +79,16 @@ public static class ErrorCodes
     public const string OfficialPostInvalidType = "official_post.invalid_type";
     public const string OfficialPostMissingFields = "official_post.missing_fields";
     public const string OfficialPostOutsideJurisdiction = "official_post.outside_jurisdiction";
+    /// <summary>
+    /// <c>response_status</c> on a <c>live_update</c> post was outside the
+    /// canonical set or was supplied on a non-live_update post.
+    /// </summary>
+    public const string OfficialPostInvalidResponseStatus = "official_post.invalid_response_status";
+    /// <summary>
+    /// <c>severity</c> on a <c>scheduled_disruption</c> post was outside the
+    /// canonical set or was supplied on a non-scheduled_disruption post.
+    /// </summary>
+    public const string OfficialPostInvalidSeverity = "official_post.invalid_severity";
 
     // --- participation.* ---
     public const string ParticipationContextRequiresAffected = "participation.context_requires_affected";

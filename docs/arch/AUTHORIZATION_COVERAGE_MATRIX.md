@@ -85,7 +85,17 @@ Columns:
 
 | Route | Controller | Decorator | Policy / scope | Tested? |
 |---|---|---|---|---|
-| `POST /v1/official-posts` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId` | ✓ |
+| `POST /v1/official-posts` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId`; validates optional `responseStatus` (live_update only) + `severity` (scheduled_disruption only) | ✓ |
+
+### Institution operational
+
+| Route | Controller | Decorator | Policy / scope | Tested? |
+|---|---|---|---|---|
+| `GET /v1/institution/overview` | InstitutionController | `[Authorize(Roles = "institution")]` (class-level) | `institution_id` from JWT (ForbiddenException when absent); optional `areaId` validated against caller's jurisdictions server-side | ✓ |
+| `GET /v1/institution/signals` | InstitutionController | class-level | `institution_id` from JWT; `state` filter validated against canonical enum; locality scope applied server-side before any rows leave the repository | ✓ |
+| `GET /v1/institution/signals/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe | ✓ |
+| `GET /v1/institution/areas` | InstitutionController | class-level | `institution_id` from JWT; rows bounded to `institution_jurisdictions` owned by the caller | ✓ |
+| `GET /v1/institution/activity` | InstitutionController | class-level | `institution_id` from JWT; activity feed bounded to caller's localities | ✓ |
 
 ### Admin
 
@@ -110,15 +120,11 @@ already defined in `docs/arch/hali_institution_backend_contract_implications.md`
 
 | Route | Planned decorator | Planned policy |
 |---|---|---|
-| `GET /v1/institution/overview` | `[Authorize(Roles = "institution")]` | institution_id from JWT; area filter from query validated against scope |
-| `GET /v1/institution/signals` | `[Authorize(Roles = "institution")]` | same |
-| `GET /v1/institution/areas` | `[Authorize(Roles = "institution")]` | same |
-| `GET /v1/institution/notifications` | `[Authorize(Roles = "institution")]` | same |
-| `POST /v1/institution/notifications/read` | `[Authorize(Roles = "institution")]` | same |
 | `/v1/institution-admin/*` | `[Authorize(Roles = "admin")]` (or a new `institution_admin` role — decided in #196) | Institution-admin scope, single institution |
 
-Adding these is the work of #195 + #196 and must include their
-matrix entries in the same PR.
+The five `/v1/institution/*` operational routes and the field additions
+on `/v1/clusters/{id}` + `/v1/official-posts` landed with #195 and are
+recorded above. The institution-admin surface remains pending on #196.
 
 ---
 

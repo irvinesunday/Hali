@@ -449,6 +449,10 @@ CREATE TABLE IF NOT EXISTS official_posts (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 )");
+        // Phase 2 institution backend (#195): additive nullable columns for
+        // live_update response status and scheduled_disruption severity.
+        await ExecAsync(conn, "ALTER TABLE official_posts ADD COLUMN IF NOT EXISTS response_status varchar(50) NULL");
+        await ExecAsync(conn, "ALTER TABLE official_posts ADD COLUMN IF NOT EXISTS severity varchar(20) NULL");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS official_post_scopes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

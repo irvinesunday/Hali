@@ -63,6 +63,8 @@ public class AdvisoriesDbContext : DbContext
 			e.Property((OfficialPost x) => x.Status).HasColumnName("status").HasMaxLength(20);
 			e.Property((OfficialPost x) => x.RelatedClusterId).HasColumnName("related_cluster_id");
 			e.Property((OfficialPost x) => x.IsRestorationClaim).HasColumnName("is_restoration_claim");
+			e.Property((OfficialPost x) => x.ResponseStatus).HasColumnName("response_status").HasMaxLength(50);
+			e.Property((OfficialPost x) => x.Severity).HasColumnName("severity").HasMaxLength(20);
 			e.Property((OfficialPost x) => x.CreatedAt).HasColumnName("created_at");
 			e.Property((OfficialPost x) => x.UpdatedAt).HasColumnName("updated_at");
 		});

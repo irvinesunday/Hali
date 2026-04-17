@@ -139,6 +139,16 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("related_cluster_id");
 
+                    b.Property<string>("ResponseStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("response_status");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("severity");
+
                     b.Property<DateTime?>("StartsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("starts_at");

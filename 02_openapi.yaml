@@ -19,6 +19,7 @@ tags:
   - name: Clusters
   - name: Participation
   - name: OfficialPosts
+  - name: Institution
   - name: Home
   - name: Users
   - name: Devices
@@ -703,8 +704,10 @@ paths:
         '400':
           description: |
             Missing fields (official_post.missing_fields),
-            invalid post type (official_post.invalid_type), or
-            invalid category (official_post.invalid_category).
+            invalid post type (official_post.invalid_type),
+            invalid category (official_post.invalid_category),
+            invalid response_status (official_post.invalid_response_status),
+            or invalid severity (official_post.invalid_severity).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -720,6 +723,233 @@ paths:
             jurisdiction (official_post.outside_jurisdiction), or is
             missing/has a malformed institution_id claim on the JWT
             (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Institution Operational (Phase 2) ──────────────────────────────
+  #
+  # All `/v1/institution/*` routes require a JWT with `role=institution`
+  # and an `institution_id` claim. The institution id is resolved from
+  # the JWT claim server-side — never from a query parameter or route
+  # segment. Area filtering, when supplied, is validated against the
+  # caller's jurisdiction server-side. List endpoints use the cursor
+  # pagination contract documented in
+  # `docs/arch/hali_institution_backend_contract_implications.md §5`.
+
+  /v1/institution/overview:
+    get:
+      tags: [Institution]
+      summary: Institution dashboard summary + area roll-up
+      description: |
+        Returns scoped summary counts (active, growing, updates-posted-
+        today, stabilised-today) and the top-ranked areas in the
+        caller's institution scope. Area list is capped at 6 rows for
+        the Overview page; the full list is served by
+        `GET /v1/institution/areas`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          description: |
+            Optional jurisdiction id to narrow the summary to one area.
+            Out-of-scope or unknown ids return a zero-scoped summary
+            (not a 403) to avoid revealing scope shape.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionOverviewResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/signals:
+    get:
+      tags: [Institution]
+      summary: Paginated signal list in institution scope
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, growing, needs_attention, restoration]
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Signals page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionSignalsResponse'
+        '400':
+          description: |
+            Invalid `state` filter value
+            (institution.invalid_state_filter).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/signals/{clusterId}:
+    get:
+      tags: [Institution]
+      summary: Signal detail (institution-scoped)
+      description: |
+        Returns the cluster detail shape as `/v1/clusters/{id}`, gated
+        by the caller's institution role AND bounded to clusters in
+        the caller's jurisdiction. Out-of-scope clusters return 404
+        (not 403) so an attacker cannot probe for cluster ids owned
+        by another institution.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: clusterId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Cluster detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClusterResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            Cluster not found OR cluster exists but is outside the
+            caller's jurisdiction (cluster.not_found).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/areas:
+    get:
+      tags: [Institution]
+      summary: Full institution area list
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Areas list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAreasResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/activity:
+    get:
+      tags: [Institution]
+      summary: Activity feed for institution scope
+      description: |
+        Returns recent cluster lifecycle events and institution-posted
+        official updates in reverse-chronological order. Default page
+        size is 15; max 100. Supply `cursor` to fetch the next page.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+      responses:
+        '200':
+          description: Activity page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionActivityResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1073,6 +1303,7 @@ components:
         - dependency.spatial_derivation_failed
         - device.missing_fields
         - device.not_found
+        - institution.invalid_state_filter
         - institution.missing_fields
         - invite.already_accepted
         - invite.expired
@@ -1082,6 +1313,8 @@ components:
         - locality.query_too_short
         - locality.search_rate_limited
         - official_post.invalid_category
+        - official_post.invalid_response_status
+        - official_post.invalid_severity
         - official_post.invalid_type
         - official_post.missing_fields
         - official_post.outside_jurisdiction
@@ -1395,6 +1628,21 @@ components:
             types restoration_yes + restoration_no + restoration_unsure).
             Populated only when state == possible_restoration. Aggregate count
             only.
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Additive nullable field. Derived server-side from the most recent
+            `live_update` official post on the cluster. Null when no
+            live_update has declared a status yet. Powers the institution
+            Signal Detail header and the citizen-visible response indicator.
     MyParticipation:
       type: object
       description: |
@@ -1471,6 +1719,29 @@ components:
         isRestorationClaim: { type: boolean, default: false }
         localityId: { type: string, format: uuid, nullable: true }
         corridorName: { type: string, nullable: true }
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Optional response status for `live_update` posts. Rejected with
+            `official_post.invalid_response_status` when supplied on any
+            non-live_update post, or when the value is outside the canonical
+            set. Null for other post types.
+        severity:
+          type: string
+          nullable: true
+          enum: [minor, moderate, major]
+          description: |
+            Optional severity for `scheduled_disruption` posts. Rejected with
+            `official_post.invalid_severity` when supplied on any non-scheduled
+            post, or when the value is outside the canonical set.
     OfficialPostResponse:
       type: object
       required:
@@ -1489,6 +1760,156 @@ components:
         relatedClusterId: { type: string, format: uuid, nullable: true }
         isRestorationClaim: { type: boolean }
         createdAt: { type: string, format: date-time }
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Response status for `live_update` posts. Null for other post types.
+        severity:
+          type: string
+          nullable: true
+          enum: [minor, moderate, major]
+          description: |
+            Severity for `scheduled_disruption` posts. Null for other post types.
+
+    # ── Institution (Phase 2) ────────────────────────────────────────
+    InstitutionArea:
+      type: object
+      description: |
+        Summary of one area (institution jurisdiction row) — display name,
+        active-signal count, top-category, last updated timestamp.
+      required: [id, name, condition, activeSignals, topCategory, lastUpdatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        condition:
+          type: string
+          enum: [active, elevated, calm]
+        activeSignals: { type: integer }
+        topCategory:
+          type: string
+          nullable: true
+          description: |
+            Snake-case category slug of the modal civic category in this area
+            across active clusters. Null when the area has no active clusters.
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Newest `last_seen_at` across active clusters in this area.
+    InstitutionAreaRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    InstitutionOverviewSummary:
+      type: object
+      required:
+        [activeSignals, growingSignals, updatesPostedToday, stabilisedToday]
+      properties:
+        activeSignals: { type: integer }
+        growingSignals: { type: integer }
+        updatesPostedToday: { type: integer }
+        stabilisedToday: { type: integer }
+    InstitutionOverviewResponse:
+      type: object
+      description: |
+        Overview page payload. Activity is served separately from
+        `GET /v1/institution/activity` so the two caches can rotate
+        independently.
+      required: [summary, areas]
+      properties:
+        summary: { $ref: '#/components/schemas/InstitutionOverviewSummary' }
+        areas:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/InstitutionArea' }
+    InstitutionSignalListItem:
+      type: object
+      required:
+        [id, title, area, category, condition, trend, responseStatus,
+         affectedCount, recentReports24h, timeActiveSeconds]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        area:
+          oneOf:
+            - $ref: '#/components/schemas/InstitutionAreaRef'
+            - type: 'null'
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        condition:
+          type: string
+          enum: [active, elevated, calm]
+        trend:
+          type: string
+          enum: [growing, stable, slowing, possible_restoration]
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+        affectedCount: { type: integer }
+        recentReports24h: { type: integer }
+        timeActiveSeconds: { type: integer, format: int64 }
+    InstitutionSignalsResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionSignalListItem' }
+        nextCursor:
+          type: string
+          nullable: true
+          description: |
+            Opaque cursor. Null when the current page is the final page.
+            Callers pass the value back as the `cursor` query parameter to
+            fetch the next page.
+    InstitutionAreasResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionArea' }
+    InstitutionActivityItem:
+      type: object
+      required: [id, type, message, timestamp, signalId]
+      properties:
+        id: { type: string, format: uuid }
+        type:
+          type: string
+          enum:
+            - new_signal
+            - growing
+            - stabilising
+            - update_posted
+            - restoration
+            - restored
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        signalId: { type: string, format: uuid, nullable: true }
+    InstitutionActivityResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionActivityItem' }
+        nextCursor: { type: string, nullable: true }
 
     # ── Users ────────────────────────────────────────────────────────
     NotificationSettings:
