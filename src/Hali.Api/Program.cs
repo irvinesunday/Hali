@@ -30,6 +30,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
+builder.Services.AddDataProtection();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -39,6 +41,10 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 // Institution operational dashboard read service (#195).
 builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
+// Phase 2 institution auth + session hardening (#197).
+builder.Services.AddScoped<ITotpService, TotpService>();
+builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
+builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
@@ -250,7 +256,16 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
+// Session cookie middleware runs AFTER authentication so Bearer-JWT flows
+// short-circuit it. The institution middleware only applies to requests
+// without a JWT header that target institution routes.
+app.UseMiddleware<InstitutionSessionMiddleware>();
 app.UseAuthorization();
+// CSRF enforcement must see the AuthorizationPolicy has already passed
+// for the current request — but runs before the controller so write
+// verbs are rejected before they touch domain code. We position it
+// after UseAuthorization to keep that ordering.
+app.UseMiddleware<InstitutionCsrfMiddleware>();
 app.MapControllers();
 
 // GET /health

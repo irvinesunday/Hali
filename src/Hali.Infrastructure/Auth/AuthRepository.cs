@@ -128,6 +128,16 @@ public class AuthRepository : IAuthRepository
 		return _db.Accounts.FindAsync(new object[] { accountId }, ct).AsTask();
 	}
 
+	public Task<Account?> FindAccountByEmailAsync(string email, CancellationToken ct = default(CancellationToken))
+	{
+		if (string.IsNullOrWhiteSpace(email))
+		{
+			return Task.FromResult<Account?>(null);
+		}
+		string normalised = email.Trim().ToLowerInvariant();
+		return _db.Accounts.FirstOrDefaultAsync(a => a.Email == normalised, ct);
+	}
+
 	public async Task UpdateAccountAsync(Account account, CancellationToken ct = default(CancellationToken))
 	{
 		_db.Accounts.Update(account);

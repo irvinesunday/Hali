@@ -165,6 +165,229 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ── Institution Auth + Session (Phase 2) ────────────────────────────
+  #
+  # All /v1/auth/institution/* endpoints issue or consume the
+  # `hali_institution_session` (httpOnly + Secure + SameSite=Strict)
+  # cookie and its paired `hali_institution_csrf` cookie. Writes on
+  # authenticated endpoints require an `X-CSRF-Token` header that
+  # matches the CSRF cookie (double-submit pattern). Server enforces
+  # idle + absolute session timeouts (30 min idle, 12 h absolute) and
+  # step-up auth for privileged actions.
+
+  /v1/auth/institution/magic-link/request:
+    post:
+      tags: [Auth]
+      summary: Request a magic-link email for institution login
+      description: |
+        Responds identically for registered and unknown emails to avoid
+        account enumeration. The link is single-use and expires after
+        15 minutes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MagicLinkRequest' }
+      responses:
+        '200':
+          description: Response is identical regardless of email registration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkRequestResponse' }
+        '400':
+          description: Validation failed (validation.failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/magic-link/verify:
+    post:
+      tags: [Auth]
+      summary: Consume magic-link token → establish institution session
+      description: |
+        Atomically consumes the token and — when the token resolves to an
+        institution account — issues the session + CSRF cookies. The
+        response body tells the client whether TOTP enrollment or
+        verification is still required before the session is treated
+        as fully authenticated.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MagicLinkVerifyRequest' }
+      responses:
+        '200':
+          description: Session established. Cookies are set on the response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkVerifyResponse' }
+        '401':
+          description: Invalid / expired / already-consumed token (auth.magic_link_invalid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/enroll:
+    post:
+      tags: [Auth]
+      summary: Begin TOTP enrollment for the current institution session
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '200':
+          description: Returns the otpauth URI + 10 recovery codes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TotpEnrollResponse' }
+        '401':
+          description: Institution session invalid / idle-timed-out / absolute-timed-out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF header missing or mismatched (auth.csrf_missing, auth.csrf_mismatch)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Account already has a confirmed TOTP enrollment (auth.totp_already_enrolled)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirm the pending TOTP enrollment (first successful code)
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: TOTP confirmed; step-up verified-at is stamped.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: No pending TOTP enrollment on the account (auth.totp_not_enrolled)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify TOTP code (promotes a magic-link session to fully-authenticated)
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: TOTP verified; session step-up stamped.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: TOTP not yet enrolled or not confirmed (auth.totp_not_confirmed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/refresh:
+    post:
+      tags: [Auth]
+      summary: Keep-alive the current institution session
+      description: |
+        Resets the idle timer server-side. The response echoes the fresh
+        last-activity timestamp + the idle / soft-warning thresholds in
+        seconds so the client's "session about to end" banner can reset
+        without a second round-trip.
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '200':
+          description: Session kept alive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionRefreshedResponse' }
+        '401':
+          description: Session idle-timed-out or absolute-timed-out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF header missing or mismatched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/step-up:
+    post:
+      tags: [Auth]
+      summary: Fresh TOTP verification for a privileged action
+      description: |
+        Consumers (e.g. institution-admin writes) require the session's
+        `step_up_verified_at` to be within the configured 5-minute
+        window. This endpoint re-stamps it after a successful TOTP code.
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: Step-up verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: TOTP not enrolled / not confirmed (auth.totp_not_confirmed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current institution session and clear cookies
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '204':
+          description: Session revoked; cookies cleared.
+        '401':
+          description: No session to revoke.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   # ── Localities ──────────────────────────────────────────────────────
   /v1/localities/followed:
     get:
@@ -1225,6 +1448,17 @@ components:
           - role (citizen | institution | admin)
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
+    institutionSessionAuth:
+      type: apiKey
+      in: cookie
+      name: hali_institution_session
+      description: |
+        Server-side web session for institution + institution-admin users.
+        Set by POST /v1/auth/institution/magic-link/verify and cleared by
+        POST /v1/auth/institution/session/logout. Cookie is httpOnly +
+        Secure + SameSite=Strict. A paired `hali_institution_csrf` cookie
+        is set alongside for the double-submit CSRF check — write verbs
+        require its value to be mirrored in the `X-CSRF-Token` header.
   schemas:
     CivicCategory:
       type: string
@@ -1290,12 +1524,23 @@ components:
         a unit test (`ErrorCodeCatalogTests`).
       enum:
         - account.not_found
+        - auth.csrf_missing
+        - auth.csrf_mismatch
         - auth.forbidden
         - auth.institution_id_missing
+        - auth.institution_session_absolute_timeout
+        - auth.institution_session_idle_timeout
+        - auth.institution_session_invalid
+        - auth.magic_link_invalid
         - auth.otp_invalid
         - auth.otp_rate_limited
         - auth.refresh_token_invalid
         - auth.role_insufficient
+        - auth.step_up_required
+        - auth.totp_already_enrolled
+        - auth.totp_invalid_code
+        - auth.totp_not_confirmed
+        - auth.totp_not_enrolled
         - auth.unauthenticated
         - auth.unauthorized
         - cluster.not_found
@@ -1982,3 +2227,88 @@ components:
           allOf:
             - $ref: '#/components/schemas/ClusterPagedSection'
           description: Active clusters outside followed localities (max 10)
+
+    # ── Institution Auth (Phase 2) ────────────────────────────────────
+    MagicLinkRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    MagicLinkRequestResponse:
+      type: object
+      required: [message, expiresAt]
+      properties:
+        message: { type: string }
+        expiresAt: { type: string, format: date-time }
+    MagicLinkVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 256 }
+    MagicLinkVerifyResponse:
+      type: object
+      required: [requiresTotpEnrollment, requiresTotpVerification, session]
+      properties:
+        requiresTotpEnrollment:
+          type: boolean
+          description: |
+            True when the account has no confirmed TOTP enrollment. The
+            client must complete enroll + confirm before the session is
+            treated as fully authenticated.
+        requiresTotpVerification:
+          type: boolean
+          description: |
+            True when the account has a confirmed TOTP enrollment but the
+            current session has not yet stamped step_up_verified_at. The
+            client must call /totp/verify before privileged actions.
+        session: { $ref: '#/components/schemas/SessionEstablishedResponse' }
+    SessionEstablishedResponse:
+      type: object
+      required: [createdAt, absoluteExpiresAt, softWarningSeconds, idleTimeoutSeconds]
+      properties:
+        createdAt: { type: string, format: date-time }
+        absoluteExpiresAt: { type: string, format: date-time }
+        softWarningSeconds: { type: integer }
+        idleTimeoutSeconds: { type: integer }
+    SessionRefreshedResponse:
+      type: object
+      required: [lastActivityAt, softWarningSeconds, idleTimeoutSeconds]
+      properties:
+        lastActivityAt: { type: string, format: date-time }
+        softWarningSeconds: { type: integer }
+        idleTimeoutSeconds: { type: integer }
+    TotpCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          pattern: '^\d{6}$'
+    TotpEnrollResponse:
+      type: object
+      required: [otpAuthUri, recoveryCodes]
+      properties:
+        otpAuthUri:
+          type: string
+          description: |
+            otpauth:// URI an authenticator app consumes to seed the
+            TOTP secret. Clients typically render this as a QR code.
+        recoveryCodes:
+          type: array
+          items: { type: string }
+          description: |
+            Single-use recovery codes. Shown to the user exactly once at
+            enrollment time — the server stores only SHA-256 hashes.
+    StepUpResponse:
+      type: object
+      required: [verifiedAt, windowSeconds]
+      properties:
+        verifiedAt: { type: string, format: date-time }
+        windowSeconds:
+          type: integer
+          description: |
+            Seconds during which the step-up verification remains fresh.
+            Privileged endpoints reject requests whose verifiedAt is
+            older than this window.

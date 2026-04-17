@@ -42,6 +42,14 @@ Columns:
 | `POST /v1/auth/refresh` | AuthController | `[AllowAnonymous]` | Server-side hashed-refresh-token rotation + theft detection | ✓ |
 | `POST /v1/auth/logout` | AuthController | `[Authorize]` | Revokes caller's current refresh token | ✓ |
 | `POST /v1/auth/institution/setup` | AuthController | `[AllowAnonymous]` | Invite token validated server-side | ~ (happy path only) |
+| `POST /v1/auth/institution/magic-link/request` | InstitutionAuthController | `[AllowAnonymous]` | Response shape identical for registered/unknown emails (no account enumeration) | ✓ |
+| `POST /v1/auth/institution/magic-link/verify` | InstitutionAuthController | `[AllowAnonymous]` | Atomic consume; citizen-account mis-issued links rejected as auth.magic_link_invalid | ✓ |
+| `POST /v1/auth/institution/totp/enroll` | InstitutionAuthController | `[Authorize]` | Requires active institution session (cookie); CSRF enforced; conflicts with confirmed enrollment | ✓ |
+| `POST /v1/auth/institution/totp/confirm` | InstitutionAuthController | `[Authorize]` | Session-authed; verifies code against encrypted secret; stamps step_up_verified_at | ✓ |
+| `POST /v1/auth/institution/totp/verify` | InstitutionAuthController | `[Authorize]` | Session-authed; stamps step_up_verified_at so the session satisfies the step-up window | ✓ |
+| `POST /v1/auth/institution/session/refresh` | InstitutionAuthController | `[Authorize]` | Session-authed; middleware touch occurs server-side; returns idle + soft-warning thresholds | ✓ |
+| `POST /v1/auth/institution/session/step-up` | InstitutionAuthController | `[Authorize]` | Session-authed; fresh TOTP gates the window; consumed by #196 | ~ (covered by totp/verify happy path; dedicated test deferred to #196) |
+| `POST /v1/auth/institution/session/logout` | InstitutionAuthController | `[Authorize]` | Session-authed; server revokes the session row and clears both cookies | ✓ |
 
 ### Clusters routes
 

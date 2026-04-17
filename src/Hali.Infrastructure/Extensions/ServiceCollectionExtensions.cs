@@ -96,6 +96,9 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
 		services.AddScoped<IAuthRepository, AuthRepository>();
 		services.AddScoped<IInstitutionRepository, InstitutionRepository>();
+		// Phase 2 institution auth + session hardening (#197).
+		services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
+		services.AddScoped<IInstitutionEmailSender, NoOpInstitutionEmailSender>();
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();
