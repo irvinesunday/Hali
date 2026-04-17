@@ -27,21 +27,23 @@ public sealed class InstitutionAuthHelperTests : IntegrationTestBase
         // Primary smoke test. Drives the full magic-link + verify path:
         // creates a fresh institution + institution account, issues a
         // magic link, POSTs to /v1/auth/institution/magic-link/verify,
-        // and returns a cookie-bearing HttpClient. A 200-class response
-        // from /v1/institution/overview proves:
+        // and returns a cookie-bearing HttpClient. A 200 OK from
+        // /v1/institution/overview proves:
         //   * The session cookie was set on the response
         //   * The InstitutionSessionMiddleware resolved it successfully
         //   * The claims principal the middleware built carries both
         //     role="institution" and the institution_id claim
-        // Any break in the helper's DB seeding, magic-link binding, or
-        // cookie capture surfaces here.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        //   * The underlying read path works end-to-end
+        // Asserting an exact 200 (not just "not 401/403") catches the
+        // degenerate cases where the controller returns 404 / 500 due
+        // to a wiring break elsewhere — a weaker assertion would let
+        // those silently mask as "passes".
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution");
 
         var response = await session.Client.GetAsync("/v1/institution/overview");
 
-        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.False(string.IsNullOrEmpty(session.CsrfPlaintext),
             "Helper must surface the plaintext CSRF token for write-verb tests.");
         Assert.False(string.IsNullOrEmpty(session.SessionPlaintext),
@@ -60,7 +62,7 @@ public sealed class InstitutionAuthHelperTests : IntegrationTestBase
         // proves both. The check is narrow — we do not assert on the
         // invite-id body beyond "parseable guid" because the shape of
         // the response is owned by #196, not by #241.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
 
         var response = await InstitutionAuthHelper.PostWithCsrfAsync(
@@ -77,16 +79,18 @@ public sealed class InstitutionAuthHelperTests : IntegrationTestBase
     public async Task InstitutionAuthHelper_BearerClient_AuthenticatesWithMintedJwt()
     {
         // Bearer-path smoke test. A minted institution JWT must reach
-        // InstitutionController.Overview without being rejected by the
-        // JwtBearer validator. 401 here would indicate a drift between
+        // InstitutionController.Overview and return 200 OK. Anything
+        // other than 200 indicates a drift between
         // TestConstants.JwtIssuer/JwtAudience/JwtSecret and the values
         // Program.cs binds — which is exactly the kind of regression
-        // a centralised helper is supposed to catch.
+        // a centralised helper is supposed to catch. (The bare
+        // institution has no jurisdiction, so /overview naturally
+        // returns an empty summary + zero-length areas, still 200.)
         using var client = InstitutionAuthHelper.CreateBearerClient(
             Factory, Guid.NewGuid(), role: "institution", institutionId: Guid.NewGuid());
 
         var response = await client.GetAsync("/v1/institution/overview");
 
-        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

@@ -40,7 +40,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Overview_InstitutionRole_ReturnsScopedSummary()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync("/v1/institution/overview");
@@ -81,7 +81,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         var seedA = await SeedInstitutionWithActiveClusterAsync();
         var seedB = await SeedEmptyInstitutionAsync();
 
-        var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
+        using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seedB.InstitutionId);
         var resp = await sessionB.Client.GetAsync("/v1/institution/signals");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -95,7 +95,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_List_HappyPath_ReturnsOwnedCluster()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync("/v1/institution/signals");
@@ -111,7 +111,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_InvalidStateFilter_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync("/v1/institution/signals?state=not_a_real_state");
@@ -127,7 +127,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_ListPagination_EmitsNextCursorAndHonoursIt()
     {
         var seed = await SeedInstitutionWithClustersAsync(clusterCount: 3);
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         // limit=2 with 3 clusters → expect a next cursor
@@ -154,7 +154,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task SignalDetail_InScope_ReturnsCluster()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync($"/v1/institution/signals/{seed.ClusterId}");
@@ -170,7 +170,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         var seedA = await SeedInstitutionWithActiveClusterAsync();
         var seedB = await SeedEmptyInstitutionAsync();
 
-        var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
+        using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seedB.InstitutionId);
         var resp = await sessionB.Client.GetAsync($"/v1/institution/signals/{seedA.ClusterId}");
 
@@ -191,7 +191,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Areas_ReturnsInstitutionJurisdictions()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync("/v1/institution/areas");
@@ -212,7 +212,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
         await SeedOfficialPostAsync(seed.InstitutionId, seed.LocalityId, seed.ClusterId, type: "live_update");
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await session.Client.GetAsync("/v1/institution/activity");

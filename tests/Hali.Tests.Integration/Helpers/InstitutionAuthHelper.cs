@@ -36,11 +36,12 @@ namespace Hali.Tests.Integration.Helpers;
 ///     institution_admin behaviour under the cookie session surface.
 ///
 ///   * <see cref="CreateBearerClient"/> — mints a JWT against
-///     <see cref="TestConstants"/>. The bearer path is a real auth path:
-///     <c>InstitutionSessionMiddleware</c> short-circuits requests that
-///     carry a Bearer header, falling through to JwtBearer validation.
-///     Use for tests that explicitly assert bearer-flow behaviour (e.g.
-///     "bearer JWT cannot satisfy step-up", citizen-role 403 checks).
+///     <see cref="Infrastructure.TestConstants"/>. The bearer path is
+///     a real auth path: <c>InstitutionSessionMiddleware</c>
+///     short-circuits requests that carry a Bearer header, falling
+///     through to JwtBearer validation. Use for tests that explicitly
+///     assert bearer-flow behaviour (e.g. "bearer JWT cannot satisfy
+///     step-up", citizen-role 403 checks).
 ///
 /// Every account / institution created by the helper uses UUID-suffixed
 /// identifiers so concurrent test runs cannot collide on unique-email
@@ -75,7 +76,7 @@ public static class InstitutionAuthHelper
     ///   5. Optionally drive TOTP enroll + confirm so the session carries
     ///      a fresh <c>step_up_verified_at</c> timestamp.
     /// </summary>
-    /// <param name="factory">The shared <see cref="HaliWebApplicationFactory"/>.</param>
+    /// <param name="factory">The shared <see cref="Infrastructure.HaliWebApplicationFactory"/>.</param>
     /// <param name="role">Either <c>"institution"</c> or <c>"institution_admin"</c>.
     ///     Determines the account's <c>IsInstitutionAdmin</c> flag, which
     ///     controls the role snapshotted onto the session row.</param>
@@ -355,9 +356,17 @@ RETURNING id", conn);
 /// <see cref="InstitutionAuthHelper.CreateSessionAsync"/>. Holds the
 /// HttpClient plus the plaintext CSRF token tests need to echo into the
 /// X-CSRF-Token header for every write verb.
+///
+/// Implements <see cref="IDisposable"/> so test call sites can write
+/// <c>using var session = await InstitutionAuthHelper.CreateSessionAsync(...)</c>
+/// and have the underlying HttpClient disposed with the test's scope —
+/// the old JWT-minted pattern used <c>using var client = ...</c>, and
+/// this keeps the same deterministic cleanup contract.
 /// </summary>
-public sealed class InstitutionAuthSession
+public sealed class InstitutionAuthSession : IDisposable
 {
+    private bool _disposed;
+
     public HttpClient Client { get; }
     public Guid AccountId { get; }
     public Guid InstitutionId { get; }
@@ -376,5 +385,12 @@ public sealed class InstitutionAuthSession
         InstitutionId = institutionId;
         CsrfPlaintext = csrfPlaintext;
         SessionPlaintext = sessionPlaintext;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Client.Dispose();
     }
 }

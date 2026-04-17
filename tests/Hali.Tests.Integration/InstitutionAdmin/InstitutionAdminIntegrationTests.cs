@@ -158,7 +158,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     {
         // Helper creates the institution + admin; drives magic-link verify
         // and TOTP enroll + confirm so step_up_verified_at is fresh.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
 
         var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
@@ -176,7 +176,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task InviteUser_ElevationAttempt_Returns403ElevationGuard()
     {
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
 
         var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
@@ -198,7 +198,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
         // then log in an admin in the same institution via the helper
         // and attempt to invite using that member's email.
         var (institutionId, memberEmail) = await SeedInstitutionWithMemberAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", institutionId: institutionId,
             withStepUp: true);
 
@@ -222,7 +222,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     public async Task ChangeRole_ElevationAttempt_Returns403()
     {
         var (institutionId, memberId, _) = await SeedInstitutionWithMemberIdAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", institutionId: institutionId,
             withStepUp: true);
 
@@ -242,7 +242,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     {
         // Helper creates the single admin in a fresh institution; trying
         // to demote that admin (self) must be blocked to prevent lockout.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
 
         var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
@@ -261,7 +261,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     {
         // Two admins in the institution: the helper's (session.AccountId)
         // + a seeded second admin (adminB). Demoting adminB is allowed.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
         Guid adminB = await SeedSecondAdminAsync(session.InstitutionId);
 
@@ -286,7 +286,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
         // account Guid — the route has a `{userId:guid}` constraint and
         // would reject a non-Guid segment with an empty-bodied 404 from
         // the router, masking the controller's NotFoundException envelope.
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
         var (_, memberB, _) = await SeedInstitutionWithMemberIdAsync(
             institutionName: "Other");
