@@ -232,7 +232,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
             relatedClusterId = seed.ClusterId,
             responseStatus = "teams_on_site",
         });
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        await AssertCreatedAsync(resp);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("teams_on_site", body.GetProperty("responseStatus").GetString());
@@ -276,7 +276,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
             localityId = seed.LocalityId,
             severity = "moderate",
         });
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        await AssertCreatedAsync(resp);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("moderate", body.GetProperty("severity").GetString());
@@ -325,7 +325,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
             relatedClusterId = seed.ClusterId,
             responseStatus = "restoration_in_progress",
         });
-        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        await AssertCreatedAsync(post);
 
         // Public cluster endpoint now exposes the derived responseStatus
         var resp = await Client.GetAsync($"/v1/clusters/{seed.ClusterId}");
@@ -447,6 +447,23 @@ VALUES
         scopeCmd.Parameters.AddWithValue("postId", postId);
         scopeCmd.Parameters.AddWithValue("locId", localityId);
         await scopeCmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Fails the test with the server's response body when the status is not
+    /// 201 — surfaces the actual error envelope instead of the opaque
+    /// "Expected: Created / Actual: InternalServerError" that a bare
+    /// Assert.Equal emits. Crucial for diagnosing CI failures where the
+    /// server stack trace only lives in the CI logs.
+    /// </summary>
+    private static async Task AssertCreatedAsync(HttpResponseMessage resp)
+    {
+        if (resp.StatusCode == HttpStatusCode.Created)
+        {
+            return;
+        }
+        var body = await resp.Content.ReadAsStringAsync();
+        Assert.Fail($"Expected 201 Created but got {(int)resp.StatusCode} {resp.StatusCode}. Body: {body}");
     }
 
     private HttpClient CreateInstitutionClient(Guid institutionId)
