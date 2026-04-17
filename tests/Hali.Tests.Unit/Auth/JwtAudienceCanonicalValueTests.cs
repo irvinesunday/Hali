@@ -68,14 +68,21 @@ public class JwtAudienceCanonicalValueTests
 
         // Extract every Auth__JwtAudience value in the workflow and assert each
         // one is the canonical value — this catches any new non-canonical value,
-        // not just the specific strings the PR replaced.
-        MatchCollection matches = Regex.Matches(contents, @"Auth__JwtAudience:\s*""(?<value>[^""]*)""");
+        // not just the specific strings the PR replaced. Accept double-quoted,
+        // single-quoted, or unquoted YAML scalars so the test does not break
+        // (or silently miss drift) if ci.yml formatting changes later.
+        MatchCollection matches = Regex.Matches(
+            contents,
+            @"Auth__JwtAudience:\s*(?:""(?<dq>[^""]*)""|'(?<sq>[^']*)'|(?<bare>[^\r\n#]+))");
 
         Assert.True(matches.Count >= 1, "Expected at least one Auth__JwtAudience entry in ci.yml");
 
         foreach (Match match in matches)
         {
-            string value = match.Groups["value"].Value;
+            string value =
+                match.Groups["dq"].Success ? match.Groups["dq"].Value :
+                match.Groups["sq"].Success ? match.Groups["sq"].Value :
+                match.Groups["bare"].Value.Trim();
             Assert.Equal(CanonicalAudience, value);
         }
     }
