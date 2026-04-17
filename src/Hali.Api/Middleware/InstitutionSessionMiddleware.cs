@@ -1,15 +1,12 @@
 using System;
-using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Hali.Api.Errors;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
 using Hali.Domain.Entities.Auth;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hali.Api.Middleware;
@@ -31,7 +28,6 @@ namespace Hali.Api.Middleware;
 public sealed class InstitutionSessionMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly ILogger<InstitutionSessionMiddleware> _logger;
 
     // NOTE on DI lifetime:
     //   Conventional middleware (via app.UseMiddleware<T>()) is instantiated
@@ -40,12 +36,9 @@ public sealed class InstitutionSessionMiddleware
     //   either share a DbContext or operate on a disposed scope. Scoped
     //   services are resolved per-request via the InvokeAsync parameters
     //   below, which ASP.NET Core resolves from the request scope.
-    public InstitutionSessionMiddleware(
-        RequestDelegate next,
-        ILogger<InstitutionSessionMiddleware> logger)
+    public InstitutionSessionMiddleware(RequestDelegate next)
     {
         _next = next;
-        _logger = logger;
     }
 
     public async Task InvokeAsync(
@@ -112,17 +105,6 @@ public sealed class InstitutionSessionMiddleware
 
         WebSession session = validation.Session!;
 
-        // Awaited (not fire-and-forget) — the scoped DbContext behind
-        // ISessionService is disposed with the request scope, so a
-        // background continuation would risk running on a disposed
-        // context. A single UPDATE statement is cheap enough to carry
-        // inline. Also update the in-memory session object so the
-        // controller's RefreshSession response echoes the fresh
-        // last-activity timestamp.
-        DateTime touchedAt = DateTime.UtcNow;
-        await sessions.TouchAsync(session.Id, context.RequestAborted);
-        session.LastActivityAt = touchedAt;
-
         // Build a ClaimsPrincipal mirroring the JWT-flow shape. Role +
         // institution_id must match the existing [Authorize(Roles = ...)]
         // attributes on institution controllers. NameIdentifier maps to
@@ -144,6 +126,28 @@ public sealed class InstitutionSessionMiddleware
         context.Items["InstitutionWebSession"] = session;
 
         await _next(context);
+
+        // Touch the session AFTER downstream middleware + controller run,
+        // and only on a successful response. This ensures a CSRF-rejected
+        // or authorization-rejected write does NOT extend the idle timer
+        // (which would let a misbehaving client keep a session alive by
+        // hammering invalid requests). Awaited so the scoped DbContext
+        // outlives the write. Errors are swallowed — they shouldn't mask
+        // the original response the downstream pipeline produced.
+        if (context.Response.StatusCode < 400)
+        {
+            DateTime touchedAt = DateTime.UtcNow;
+            try
+            {
+                await sessions.TouchAsync(session.Id, context.RequestAborted);
+                session.LastActivityAt = touchedAt;
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                // Client disconnected — nothing to do. The touch will be
+                // attempted on the next successful request.
+            }
+        }
     }
 
     private static async Task WriteErrorAsync(HttpContext context, int status, string code, string message)

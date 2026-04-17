@@ -33,18 +33,36 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth")
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
 
-// Data Protection key persistence. Default to a file-system directory
-// under the content root so the key ring survives process restarts —
-// critical because TOTP secrets are encrypted with these keys and an
-// unresolvable key ring breaks every institution user's second factor.
-// Production deployments override `DataProtection:KeysPath` to a shared
-// volume / Redis / blob-backed store so a multi-node cluster shares the
-// ring. The application name isolates Hali's keys from any other
-// consumer in the same shared store.
-string dataProtectionKeysPath =
-    builder.Configuration["DataProtection:KeysPath"]
-    ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
-System.IO.Directory.CreateDirectory(dataProtectionKeysPath);
+// Data Protection key persistence. TOTP secrets (#197) are encrypted
+// with these keys — an unresolvable key ring breaks every institution
+// user's second factor, so the ring must survive process restarts and
+// be shared across nodes. Rules:
+//   * Production MUST set `DataProtection:KeysPath` to a pre-existing
+//     writable path (shared volume / Redis / blob-backed store). The
+//     app fails fast here if the path is missing in Production — that
+//     is a deployment bug we want to surface immediately, not paper
+//     over with a content-root fallback (which can land on a read-only
+//     filesystem in a container and crash at startup).
+//   * Development / Testing fall back to `<content-root>/data-protection-keys`
+//     and create the directory on demand.
+// At-rest encryption of the persisted key ring (DPAPI / certificate /
+// KMS) is a Production-only concern tracked as a follow-up — see the
+// review-discussion on PR #242.
+string? configuredKeysPath = builder.Configuration["DataProtection:KeysPath"];
+string dataProtectionKeysPath;
+if (builder.Environment.IsProduction())
+{
+    dataProtectionKeysPath = configuredKeysPath
+        ?? throw new InvalidOperationException(
+            "DataProtection:KeysPath must be configured in Production so the " +
+            "TOTP key ring survives restarts and is shared across nodes.");
+}
+else
+{
+    dataProtectionKeysPath = configuredKeysPath
+        ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
+    System.IO.Directory.CreateDirectory(dataProtectionKeysPath);
+}
 builder.Services
     .AddDataProtection()
     .PersistKeysToFileSystem(new System.IO.DirectoryInfo(dataProtectionKeysPath))
@@ -62,6 +80,16 @@ builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
 builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Institution email sender — NoOp binding is deliberately restricted to
+// non-Production environments. A production deployment must register
+// its own IInstitutionEmailSender (real SES/SendGrid/etc) BEFORE this
+// line, or the app will fail to resolve the scoped dependency on the
+// first magic-link request.
+if (!builder.Environment.IsProduction())
+{
+    builder.Services.AddScoped<Hali.Application.Auth.IInstitutionEmailSender,
+        Hali.Infrastructure.Auth.NoOpInstitutionEmailSender>();
+}
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();

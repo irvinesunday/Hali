@@ -9,15 +9,15 @@ namespace Hali.Tests.Unit.Auth;
 
 /// <summary>
 /// Unit coverage for <see cref="TotpService"/>'s pure pieces — base32
-/// codec, RFC 6238 code computation, recovery-code shape. Does NOT spin
-/// up ASP.NET DI; the Data Protection dependency is satisfied with the
-/// ephemeral provider that Microsoft ships for exactly this case.
+/// codec, RFC 6238 code computation, recovery-code shape, and
+/// current-window verify. Uses <see cref="EphemeralDataProtectionProvider"/>
+/// so the key ring lives entirely in memory and does not touch disk —
+/// the test runner never writes Data Protection keys to shared storage.
 /// </summary>
 public sealed class TotpServiceTests
 {
     // RFC 6238 appendix B test vector — HMAC-SHA1, secret "12345678901234567890"
     // as raw bytes, step = 30s, digits = 6. Example: T = 59s → code 287082.
-    // The service uses HMAC-SHA1 which is the default for the TOTP spec.
     private static readonly byte[] _rfcSecret = Encoding.ASCII.GetBytes("12345678901234567890");
 
     [Theory]
@@ -42,18 +42,39 @@ public sealed class TotpServiceTests
     }
 
     [Fact]
-    public void VerifyCode_AcceptsCurrentAndAdjacentSteps()
+    public void VerifyCode_CurrentWindowCode_IsAccepted()
     {
-        var service = CreateService();
+        // Generate an enrollment + decrypt its secret with the same
+        // ephemeral provider, then compute the "right now" code using
+        // the same RFC 6238 primitives the service uses internally.
+        // Accepting that code end-to-end exercises the
+        // Unprotect → DecodeBase32 → ComputeCode → FixedTimeEquals path.
+        var provider = new EphemeralDataProtectionProvider();
+        var service = new TotpService(provider, Options.Create(new InstitutionAuthOptions()));
+
         TotpEnrollment enrollment = service.GenerateEnrollment("user@example.com");
-        // We don't know the current window code from outside, but we
-        // can compute it given the decrypted secret isn't accessible to
-        // the test. Instead, the "accepts current step" case is covered
-        // by the integration tests. Here we only assert "rejects junk".
-        Assert.False(service.VerifyCode(enrollment.EncryptedSecret, "000000"));
-        Assert.False(service.VerifyCode(enrollment.EncryptedSecret, "abcdef"));
-        Assert.False(service.VerifyCode(enrollment.EncryptedSecret, ""));
-        Assert.False(service.VerifyCode(enrollment.EncryptedSecret, "12345"));
+        string base32 = provider
+            .CreateProtector("hali-institution-totp-secrets")
+            .Unprotect(enrollment.EncryptedSecret);
+        byte[] raw = TotpService.DecodeBase32(base32);
+        long step = TotpService.GetCurrentStep(DateTimeOffset.UtcNow);
+        string currentCode = TotpService.ComputeCode(raw, step);
+
+        Assert.True(service.VerifyCode(enrollment.EncryptedSecret, currentCode));
+    }
+
+    [Theory]
+    [InlineData("000000")]
+    [InlineData("abcdef")]
+    [InlineData("")]
+    [InlineData("12345")]
+    public void VerifyCode_JunkInput_IsRejected(string junk)
+    {
+        var provider = new EphemeralDataProtectionProvider();
+        var service = new TotpService(provider, Options.Create(new InstitutionAuthOptions()));
+        TotpEnrollment enrollment = service.GenerateEnrollment("user@example.com");
+
+        Assert.False(service.VerifyCode(enrollment.EncryptedSecret, junk));
     }
 
     [Fact]
@@ -66,8 +87,6 @@ public sealed class TotpServiceTests
         Assert.Contains("secret=", enrollment.OtpAuthUri);
         Assert.Contains("issuer=", enrollment.OtpAuthUri);
         Assert.False(string.IsNullOrEmpty(enrollment.EncryptedSecret));
-        // Ephemeral Data Protection wraps the base32 secret — the
-        // ciphertext must NOT equal the plaintext-base32 in the URI.
         Assert.DoesNotContain(enrollment.EncryptedSecret, enrollment.OtpAuthUri);
     }
 
@@ -105,8 +124,7 @@ public sealed class TotpServiceTests
 
     private static TotpService CreateService()
     {
-        IDataProtectionProvider provider = DataProtectionProvider.Create("hali-tests");
         IOptions<InstitutionAuthOptions> options = Options.Create(new InstitutionAuthOptions());
-        return new TotpService(provider, options);
+        return new TotpService(new EphemeralDataProtectionProvider(), options);
     }
 }

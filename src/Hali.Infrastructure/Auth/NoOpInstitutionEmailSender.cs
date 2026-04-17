@@ -1,6 +1,4 @@
 using System;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
@@ -9,10 +7,14 @@ using Microsoft.Extensions.Logging;
 namespace Hali.Infrastructure.Auth;
 
 /// <summary>
-/// Development / test binding that does not dispatch email. Logs an
-/// email-fingerprint + expiry so integration tests and local operators
-/// can correlate a magic-link issuance without the URL ever touching
-/// structured logs (per SECURITY_POSTURE.md §4).
+/// Development / Testing binding that does not dispatch email. Logs the
+/// outcome + expiry only — no email-derived identifier, no URL — so the
+/// observability output stays PII-free per
+/// <c>docs/arch/SECURITY_POSTURE.md §4</c>. A registered implementation
+/// of this interface in a Production environment is a wiring mistake;
+/// Program.cs only registers this binding when the environment is not
+/// Production, and production deployments must provide their own
+/// <see cref="IInstitutionEmailSender"/>.
 /// </summary>
 public sealed class NoOpInstitutionEmailSender : IInstitutionEmailSender
 {
@@ -25,15 +27,12 @@ public sealed class NoOpInstitutionEmailSender : IInstitutionEmailSender
 
     public Task SendMagicLinkAsync(string destinationEmail, string url, DateTime expiresAt, CancellationToken ct)
     {
+        // Intentionally minimal: no destination, no URL. Issue/verify
+        // correlation flows through the per-request correlation id that
+        // CorrelationIdMiddleware already tags.
         _logger.LogInformation(
-            "institution_auth.magic_link.dispatched email_fingerprint={Fingerprint} expires_at={ExpiresAt}",
-            Fingerprint(destinationEmail), expiresAt);
+            "institution_auth.magic_link.noop_sender expires_at={ExpiresAt}",
+            expiresAt);
         return Task.CompletedTask;
-    }
-
-    private static string Fingerprint(string email)
-    {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(email ?? string.Empty));
-        return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
     }
 }
