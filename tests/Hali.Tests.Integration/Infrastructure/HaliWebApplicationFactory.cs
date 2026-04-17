@@ -77,6 +77,11 @@ public sealed class HaliWebApplicationFactory
                 ["Civis:ContextEditWindowMinutes"]   = "2",
                 ["Civis:RestorationRatio"]           = "0.60",
                 ["Civis:MinRestorationAffectedVotes"] = "2",
+                // Phase 2 institution auth. TestServer serves over HTTP,
+                // so RequireSecureCookies must be off or the browser /
+                // HttpClient CookieContainer will drop the Secure cookie
+                // on the subsequent request.
+                ["InstitutionAuth:RequireSecureCookies"] = "false",
             });
         });
 
