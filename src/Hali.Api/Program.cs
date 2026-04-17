@@ -63,7 +63,7 @@ builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMe
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
 string jwtIssuer = builder.Configuration["Auth:JwtIssuer"] ?? "hali";
-string jwtAudience = builder.Configuration["Auth:JwtAudience"] ?? "hali";
+string jwtAudience = builder.Configuration["Auth:JwtAudience"] ?? "hali-platform";
 
 builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
 {
