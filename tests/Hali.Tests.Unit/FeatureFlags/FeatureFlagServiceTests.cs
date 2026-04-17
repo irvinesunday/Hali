@@ -9,6 +9,26 @@ public class FeatureFlagServiceTests
 {
     private readonly FeatureFlagService _service = new();
 
+    private static BooleanFeatureFlag MakeFlag(
+        string name = "test.flag.enabled",
+        FlagVisibility visibility = FlagVisibility.ServerOnly,
+        bool @default = true,
+        IReadOnlyList<FlagRule>? targeting = null,
+        FlagKind kind = FlagKind.DarkLaunch,
+        bool isPermanent = false)
+    {
+        return new BooleanFeatureFlag(
+            name: name,
+            description: "test",
+            owner: "@test",
+            kind: kind,
+            visibility: visibility,
+            isPermanent: isPermanent,
+            expectedRetirement: isPermanent ? null : new DateOnly(2099, 1, 1),
+            @default: @default,
+            targeting: targeting ?? new List<FlagRule>());
+    }
+
     private static FeatureFlagEvaluationContext MakeContext(
         string environment = "Production",
         Guid? institutionId = null,
@@ -21,29 +41,16 @@ public class FeatureFlagServiceTests
     [Fact]
     public void Evaluate_NoRules_ReturnsDefault()
     {
-        BooleanFeatureFlag flag = new(
-            Name: "test.flag.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.DarkLaunch,
-            Visibility: FlagVisibility.ServerOnly,
-            Default: true,
-            Targeting: new List<FlagRule>());
-
+        BooleanFeatureFlag flag = MakeFlag(@default: true);
         Assert.True(_service.Evaluate(flag, MakeContext()));
     }
 
     [Fact]
     public void Evaluate_EnvironmentRule_Matches()
     {
-        BooleanFeatureFlag flag = new(
-            Name: "test.env.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.DarkLaunch,
-            Visibility: FlagVisibility.ServerOnly,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 new() { Environment = "Development", Value = true },
             });
@@ -53,17 +60,30 @@ public class FeatureFlagServiceTests
     }
 
     [Fact]
+    public void Evaluate_EnvironmentRule_CaseInsensitive()
+    {
+        // Rule written with canonical lowercase vocabulary should still match
+        // a context carrying ASP.NET Core's capitalised environment name.
+        BooleanFeatureFlag flag = MakeFlag(
+            @default: false,
+            targeting: new List<FlagRule>
+            {
+                new() { Environment = "development", Value = true },
+            });
+
+        Assert.True(_service.Evaluate(flag, MakeContext(environment: "Development")));
+        Assert.True(_service.Evaluate(flag, MakeContext(environment: "DEVELOPMENT")));
+    }
+
+    [Fact]
     public void Evaluate_InstitutionIdRule_Matches()
     {
         Guid targetInstitution = Guid.NewGuid();
-        BooleanFeatureFlag flag = new(
-            Name: "test.institution.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.Pilot,
-            Visibility: FlagVisibility.ClientVisible,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            visibility: FlagVisibility.ClientVisible,
+            kind: FlagKind.Pilot,
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 new() { InstitutionIds = new HashSet<Guid> { targetInstitution }, Value = true },
             });
@@ -78,14 +98,11 @@ public class FeatureFlagServiceTests
     public void Evaluate_LocalityIdRule_Matches()
     {
         Guid targetLocality = Guid.NewGuid();
-        BooleanFeatureFlag flag = new(
-            Name: "test.locality.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.Pilot,
-            Visibility: FlagVisibility.ClientVisible,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            visibility: FlagVisibility.ClientVisible,
+            kind: FlagKind.Pilot,
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 new() { LocalityIds = new HashSet<Guid> { targetLocality }, Value = true },
             });
@@ -98,14 +115,12 @@ public class FeatureFlagServiceTests
     [Fact]
     public void Evaluate_ActorTypeRule_Matches()
     {
-        BooleanFeatureFlag flag = new(
-            Name: "test.actor.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.InternalOnly,
-            Visibility: FlagVisibility.ClientVisible,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            kind: FlagKind.InternalOnly,
+            isPermanent: true,
+            visibility: FlagVisibility.ClientVisible,
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 new() { ActorTypes = new HashSet<string> { "admin" }, Value = true },
             });
@@ -115,16 +130,32 @@ public class FeatureFlagServiceTests
     }
 
     [Fact]
+    public void Evaluate_ActorTypeRule_CaseInsensitive()
+    {
+        // Rule written with lowercase canonical vocabulary matches context
+        // values regardless of casing (e.g. JWT role claim variants).
+        BooleanFeatureFlag flag = MakeFlag(
+            kind: FlagKind.InternalOnly,
+            isPermanent: true,
+            visibility: FlagVisibility.ClientVisible,
+            @default: false,
+            targeting: new List<FlagRule>
+            {
+                new() { ActorTypes = new HashSet<string> { "admin" }, Value = true },
+            });
+
+        Assert.True(_service.Evaluate(flag, MakeContext(actorType: "Admin")));
+        Assert.True(_service.Evaluate(flag, MakeContext(actorType: "ADMIN")));
+        Assert.False(_service.Evaluate(flag, MakeContext(actorType: "citizen")));
+    }
+
+    [Fact]
     public void Evaluate_MultipleRules_FirstMatchWins()
     {
-        BooleanFeatureFlag flag = new(
-            Name: "test.first_match.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.Pilot,
-            Visibility: FlagVisibility.ServerOnly,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            kind: FlagKind.Pilot,
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 // First rule: Development → false (opt out)
                 new() { Environment = "Development", Value = false },
@@ -140,14 +171,11 @@ public class FeatureFlagServiceTests
     public void Evaluate_CombinedConstraints_AllMustMatch()
     {
         Guid targetInstitution = Guid.NewGuid();
-        BooleanFeatureFlag flag = new(
-            Name: "test.combined.enabled",
-            Description: "test",
-            Owner: "@test",
-            Kind: FlagKind.Pilot,
-            Visibility: FlagVisibility.ClientVisible,
-            Default: false,
-            Targeting: new List<FlagRule>
+        BooleanFeatureFlag flag = MakeFlag(
+            visibility: FlagVisibility.ClientVisible,
+            kind: FlagKind.Pilot,
+            @default: false,
+            targeting: new List<FlagRule>
             {
                 new()
                 {
@@ -207,6 +235,60 @@ public class FeatureFlagServiceTests
         foreach (BooleanFeatureFlag flag in Hali.Application.FeatureFlags.FeatureFlags.All)
         {
             Assert.True(seen.Add(flag.Name), $"Duplicate flag name: {flag.Name}");
+        }
+    }
+
+    [Fact]
+    public void Flag_NonPermanentRequiresExpectedRetirement()
+    {
+        ArgumentException ex = Assert.Throws<ArgumentException>(() => new BooleanFeatureFlag(
+            name: "test.bad.enabled",
+            description: "test",
+            owner: "@test",
+            kind: FlagKind.DarkLaunch,
+            visibility: FlagVisibility.ServerOnly,
+            isPermanent: false,
+            expectedRetirement: null,
+            @default: true,
+            targeting: new List<FlagRule>()));
+
+        Assert.Contains("expected retirement", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Flag_PermanentMustNotHaveExpectedRetirement()
+    {
+        ArgumentException ex = Assert.Throws<ArgumentException>(() => new BooleanFeatureFlag(
+            name: "test.bad.enabled",
+            description: "test",
+            owner: "@test",
+            kind: FlagKind.KillSwitch,
+            visibility: FlagVisibility.ServerOnly,
+            isPermanent: true,
+            expectedRetirement: new DateOnly(2030, 1, 1),
+            @default: true,
+            targeting: new List<FlagRule>()));
+
+        Assert.Contains("expected retirement", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Catalog_LifecycleMetadataIsConsistent()
+    {
+        // Every catalog entry satisfies the constructor invariants; this
+        // test just enumerates to ensure the static initialisation didn't
+        // throw (it would surface as a TypeInitializationException on
+        // first access otherwise) and documents the expectation.
+        foreach (BooleanFeatureFlag flag in Hali.Application.FeatureFlags.FeatureFlags.All)
+        {
+            if (flag.IsPermanent)
+            {
+                Assert.Null(flag.ExpectedRetirement);
+            }
+            else
+            {
+                Assert.NotNull(flag.ExpectedRetirement);
+            }
         }
     }
 }

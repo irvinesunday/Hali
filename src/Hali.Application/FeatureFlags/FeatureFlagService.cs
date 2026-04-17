@@ -38,7 +38,12 @@ public sealed class FeatureFlagService : IFeatureFlagService
 
     private static bool Matches(FlagRule rule, FeatureFlagEvaluationContext context)
     {
-        if (rule.Environment is not null && !string.Equals(rule.Environment, context.Environment, System.StringComparison.Ordinal))
+        // Environment + actor-type comparisons are case-insensitive so that
+        // rules written with the canonical lowercase vocabulary in
+        // FEATURE_FLIGHTING_MODEL.md match the capitalised values that
+        // ASP.NET Core surfaces (e.g. "Development") or the casing variants
+        // a JWT role claim might carry.
+        if (rule.Environment is not null && !string.Equals(rule.Environment, context.Environment, System.StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -59,11 +64,24 @@ public sealed class FeatureFlagService : IFeatureFlagService
             }
         }
 
-        if (rule.ActorTypes is not null && !rule.ActorTypes.Contains(context.ActorType))
+        if (rule.ActorTypes is not null && !ContainsCaseInsensitive(rule.ActorTypes, context.ActorType))
         {
             return false;
         }
 
         return true;
+    }
+
+    private static bool ContainsCaseInsensitive(IReadOnlySet<string> set, string value)
+    {
+        foreach (string entry in set)
+        {
+            if (string.Equals(entry, value, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

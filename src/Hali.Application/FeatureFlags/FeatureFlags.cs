@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Hali.Application.FeatureFlags;
@@ -18,24 +19,29 @@ public static class FeatureFlags
     // application is to gate push-dispatcher pickup if Expo Push is
     // failing and we want to stop retries without a code change.
     public static readonly BooleanFeatureFlag WorkersPushDispatcherEnabled = new(
-        Name: "workers.push_dispatcher.enabled",
-        Description: "Gates the Expo push dispatcher worker pickup. Flip off to stop new sends; retries drain normally.",
-        Owner: "@irvinesunday",
-        Kind: FlagKind.KillSwitch,
-        Visibility: FlagVisibility.ServerOnly,
-        Default: true,
-        Targeting: new List<FlagRule>());
+        name: "workers.push_dispatcher.enabled",
+        description: "Gates the Expo push dispatcher worker pickup. Flip off to stop new sends; retries drain normally.",
+        owner: "@irvinesunday",
+        kind: FlagKind.KillSwitch,
+        visibility: FlagVisibility.ServerOnly,
+        isPermanent: true,
+        expectedRetirement: null,
+        @default: true,
+        targeting: new List<FlagRule>());
 
-    // ── Client-visible dark launch — an example the mobile client will
-    // consume once #214 lands. Default off in production.
+    // ── Client-visible dark launch — consumed by the citizen mobile
+    // cluster header once the condition badge feature is wired.
+    // Defaults off; flipped on in Development via targeting.
     public static readonly BooleanFeatureFlag MobileHomeConditionBadgeEnabled = new(
-        Name: "mobile.home.condition_badge.enabled",
-        Description: "Shows the condition badge in the cluster header on the citizen home feed.",
-        Owner: "@irvinesunday",
-        Kind: FlagKind.DarkLaunch,
-        Visibility: FlagVisibility.ClientVisible,
-        Default: false,
-        Targeting: new List<FlagRule>
+        name: "mobile.home.condition_badge.enabled",
+        description: "Shows the condition badge in the cluster header on the citizen home feed.",
+        owner: "@irvinesunday",
+        kind: FlagKind.DarkLaunch,
+        visibility: FlagVisibility.ClientVisible,
+        isPermanent: false,
+        expectedRetirement: new DateOnly(2026, 9, 30),
+        @default: false,
+        targeting: new List<FlagRule>
         {
             new() { Environment = "Development", Value = true },
         });
