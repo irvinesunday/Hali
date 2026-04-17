@@ -228,26 +228,34 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     // /v1/official-posts additions: responseStatus + severity validation
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // /v1/official-posts is NOT covered by InstitutionSessionMiddleware's
+    // path list (see src/Hali.Api/Middleware/InstitutionSessionMiddleware.cs,
+    // which only resolves the institution session cookie on
+    // /v1/institution*, /v1/institution-admin*, and specific auth sub-paths).
+    // It authorises solely via JwtBearer. These tests therefore keep the
+    // bearer path via the helper — switching to session would produce a
+    // 401 even though the helper minted a valid session, because the
+    // middleware never gets a chance to attach the principal.
+    // -----------------------------------------------------------------------
+
     [Fact]
     public async Task OfficialPost_LiveUpdate_WithResponseStatus_Persists()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
-            Factory, role: "institution", institutionId: seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        // The session flow triggers the CSRF middleware on write verbs;
-        // PostWithCsrfAsync echoes the plaintext CSRF into X-CSRF-Token.
-        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
-            session, "/v1/official-posts", new
-            {
-                type = "live_update",
-                category = "electricity",
-                title = "Teams on site",
-                body = "Technicians arrived at the substation.",
-                localityId = seed.LocalityId,
-                relatedClusterId = seed.ClusterId,
-                responseStatus = "teams_on_site",
-            });
+        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        {
+            type = "live_update",
+            category = "electricity",
+            title = "Teams on site",
+            body = "Technicians arrived at the substation.",
+            localityId = seed.LocalityId,
+            relatedClusterId = seed.ClusterId,
+            responseStatus = "teams_on_site",
+        });
         await AssertCreatedAsync(resp);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -258,20 +266,19 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_NonLiveUpdate_WithResponseStatus_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
-            Factory, role: "institution", institutionId: seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
-            session, "/v1/official-posts", new
-            {
-                type = "advisory_public_notice",
-                category = "electricity",
-                title = "Planned upgrade",
-                body = "Informational notice.",
-                localityId = seed.LocalityId,
-                // Invalid: response_status on a non-live_update post
-                responseStatus = "teams_on_site",
-            });
+        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        {
+            type = "advisory_public_notice",
+            category = "electricity",
+            title = "Planned upgrade",
+            body = "Informational notice.",
+            localityId = seed.LocalityId,
+            // Invalid: response_status on a non-live_update post
+            responseStatus = "teams_on_site",
+        });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(
@@ -283,19 +290,18 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_ScheduledDisruption_WithSeverity_Persists()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
-            Factory, role: "institution", institutionId: seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
-            session, "/v1/official-posts", new
-            {
-                type = "scheduled_disruption",
-                category = "electricity",
-                title = "Scheduled maintenance",
-                body = "Power off 08:00–12:00.",
-                localityId = seed.LocalityId,
-                severity = "moderate",
-            });
+        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        {
+            type = "scheduled_disruption",
+            category = "electricity",
+            title = "Scheduled maintenance",
+            body = "Power off 08:00–12:00.",
+            localityId = seed.LocalityId,
+            severity = "moderate",
+        });
         await AssertCreatedAsync(resp);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -306,19 +312,18 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_WithInvalidSeverity_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
-            Factory, role: "institution", institutionId: seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
-            session, "/v1/official-posts", new
-            {
-                type = "scheduled_disruption",
-                category = "electricity",
-                title = "Scheduled maintenance",
-                body = "Power off 08:00–12:00.",
-                localityId = seed.LocalityId,
-                severity = "catastrophic",
-            });
+        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        {
+            type = "scheduled_disruption",
+            category = "electricity",
+            title = "Scheduled maintenance",
+            body = "Power off 08:00–12:00.",
+            localityId = seed.LocalityId,
+            severity = "catastrophic",
+        });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(
@@ -334,21 +339,20 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task PublicCluster_AfterLiveUpdate_ExposesResponseStatus()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        var session = await InstitutionAuthHelper.CreateSessionAsync(
-            Factory, role: "institution", institutionId: seed.InstitutionId);
+        using var institutionClient = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         // Post a live_update carrying a response status
-        var post = await InstitutionAuthHelper.PostWithCsrfAsync(
-            session, "/v1/official-posts", new
-            {
-                type = "live_update",
-                category = "electricity",
-                title = "Restoration in progress",
-                body = "Work crews are on site.",
-                localityId = seed.LocalityId,
-                relatedClusterId = seed.ClusterId,
-                responseStatus = "restoration_in_progress",
-            });
+        var post = await institutionClient.PostAsJsonAsync("/v1/official-posts", new
+        {
+            type = "live_update",
+            category = "electricity",
+            title = "Restoration in progress",
+            body = "Work crews are on site.",
+            localityId = seed.LocalityId,
+            relatedClusterId = seed.ClusterId,
+            responseStatus = "restoration_in_progress",
+        });
         await AssertCreatedAsync(post);
 
         // Public cluster endpoint now exposes the derived responseStatus
