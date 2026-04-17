@@ -281,11 +281,15 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     public async Task ChangeRole_CrossInstitutionTarget_Returns404()
     {
         // Helper logs the admin into institution A; member B lives in a
-        // separately seeded institution B.
+        // separately seeded institution B. SeedInstitutionWithMemberIdAsync
+        // (not SeedInstitutionWithMemberAsync) is used so memberB is the
+        // account Guid — the route has a `{userId:guid}` constraint and
+        // would reject a non-Guid segment with an empty-bodied 404 from
+        // the router, masking the controller's NotFoundException envelope.
         var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution_admin", withStepUp: true);
-        var (_, memberB) = await SeedInstitutionWithMemberAsync(
-            institutionName: "Other", memberEmailPrefix: "b");
+        var (_, memberB, _) = await SeedInstitutionWithMemberIdAsync(
+            institutionName: "Other");
 
         var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
             session, $"/v1/institution-admin/users/{memberB}/role", new
