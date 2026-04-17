@@ -90,10 +90,7 @@ public class CivisOptions
 
     public CivisCategoryOptions GetCategoryOptions(CivicCategory category)
     {
-        if (1 == 0)
-        {
-        }
-        CivisCategoryOptions result = category switch
+        return category switch
         {
             CivicCategory.Roads => Roads,
             CivicCategory.Transport => Transport,
@@ -105,9 +102,5 @@ public class CivisOptions
             CivicCategory.Governance => Governance,
             _ => new CivisCategoryOptions(),
         };
-        if (1 == 0)
-        {
-        }
-        return result;
     }
 }

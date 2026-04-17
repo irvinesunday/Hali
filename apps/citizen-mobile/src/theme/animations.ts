@@ -1,12 +1,12 @@
 /**
  * Hali design token — animation presets for Reanimated 2.
  *
- * Six animations ported from the web MVP's globals.css keyframes.
+ * Five animations ported from the web MVP's globals.css keyframes.
  * All use withTiming or withRepeat/withSequence from react-native-reanimated.
  *
  * Usage — imperative helpers start or trigger animations on shared values:
- *   startPulseSoft(opacity, scale);
  *   triggerCountPop(scale);
+ *   startBreathe(scale);
  *
  * Separate *Config exports can be used when building animated styles:
  *   fadeUpConfig.opacity / fadeUpConfig.translateY
@@ -22,35 +22,6 @@ import {
   Easing,
   type SharedValue,
 } from 'react-native-reanimated';
-
-/**
- * pulse-soft — live indicator dot breathing.
- * opacity 1→0.5, scale 1→1.15, 2s infinite.
- * Used by: LiveDot component.
- */
-export const pulseSoftConfig = {
-  duration: 1000,
-  easing: Easing.inOut(Easing.ease),
-};
-
-export function startPulseSoft(opacityValue: SharedValue<number>, scaleValue: SharedValue<number>) {
-  opacityValue.value = withRepeat(
-    withSequence(
-      withTiming(0.5, pulseSoftConfig),
-      withTiming(1, pulseSoftConfig),
-    ),
-    -1,
-    true,
-  );
-  scaleValue.value = withRepeat(
-    withSequence(
-      withTiming(1.15, pulseSoftConfig),
-      withTiming(1, pulseSoftConfig),
-    ),
-    -1,
-    true,
-  );
-}
 
 /**
  * count-pop — count value change feedback.
