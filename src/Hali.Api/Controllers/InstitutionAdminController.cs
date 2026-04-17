@@ -147,7 +147,18 @@ public sealed class InstitutionAdminController : ControllerBase
                 code: ErrorCodes.AuthStepUpRequired,
                 message: "Step-up verification required.");
         }
-        var age = DateTime.UtcNow - session.StepUpVerifiedAt.Value;
+        // Reject future timestamps outright — a clock-skew / tampered
+        // row with StepUpVerifiedAt in the future would pass a naive
+        // (age < window) check because age is negative. Force the
+        // client to re-verify when the stored timestamp is impossible.
+        var now = DateTime.UtcNow;
+        if (session.StepUpVerifiedAt.Value > now)
+        {
+            throw new ForbiddenException(
+                code: ErrorCodes.AuthStepUpRequired,
+                message: "Step-up verification required.");
+        }
+        var age = now - session.StepUpVerifiedAt.Value;
         if (age > TimeSpan.FromMinutes(_authOpts.StepUpWindowMinutes))
         {
             throw new ForbiddenException(

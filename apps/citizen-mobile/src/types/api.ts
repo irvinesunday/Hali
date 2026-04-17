@@ -63,6 +63,8 @@ export const ERROR_CODES = {
     'institution_admin.elevation_requires_approval',
   INSTITUTION_ADMIN_EMAIL_ALREADY_IN_USE:
     'institution_admin.email_already_in_use',
+  INSTITUTION_ADMIN_INSTITUTION_NOT_FOUND:
+    'institution_admin.institution_not_found',
   INSTITUTION_ADMIN_LAST_ADMIN_CANNOT_DEMOTE:
     'institution_admin.last_admin_cannot_demote',
   INSTITUTION_ADMIN_USER_NOT_FOUND: 'institution_admin.user_not_found',

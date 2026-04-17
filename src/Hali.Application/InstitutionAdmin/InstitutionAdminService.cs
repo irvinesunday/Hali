@@ -9,7 +9,6 @@ using Hali.Application.Errors;
 using Hali.Contracts.InstitutionAdmin;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Auth;
-using Microsoft.Extensions.Options;
 
 namespace Hali.Application.InstitutionAdmin;
 
@@ -20,18 +19,15 @@ public sealed class InstitutionAdminService : IInstitutionAdminService
     private readonly IInstitutionAdminRepository _repo;
     private readonly IAuthRepository _authRepo;
     private readonly IInstitutionRepository _institutionRepo;
-    private readonly AuthOptions _authOpts;
 
     public InstitutionAdminService(
         IInstitutionAdminRepository repo,
         IAuthRepository authRepo,
-        IInstitutionRepository institutionRepo,
-        IOptions<AuthOptions> authOptions)
+        IInstitutionRepository institutionRepo)
     {
         _repo = repo;
         _authRepo = authRepo;
         _institutionRepo = institutionRepo;
-        _authOpts = authOptions.Value;
     }
 
     public async Task<InstitutionAdminUserListResponseDto> ListUsersAsync(
@@ -149,7 +145,8 @@ public sealed class InstitutionAdminService : IInstitutionAdminService
         }
 
         // Demotion to institution_user is a no-op when the account is
-        // already a non-admin — 200 OK with no state change.
+        // already a non-admin — the controller still returns 204 No
+        // Content (idempotent no-op on the wire).
         if (!target.IsInstitutionAdmin)
         {
             return;
@@ -184,8 +181,11 @@ public sealed class InstitutionAdminService : IInstitutionAdminService
         Institution? institution = await _repo.FindInstitutionAsync(institutionId, ct);
         if (institution is null)
         {
+            // Distinct code from user_not_found — institution missing is
+            // an invariant violation (orphan JWT / session claim pointing
+            // at a deleted institution), not a per-user lookup failure.
             throw new NotFoundException(
-                ErrorCodes.InstitutionAdminUserNotFound, "Institution not found.");
+                ErrorCodes.InstitutionAdminInstitutionNotFound, "Institution not found.");
         }
 
         var jurisdictions = await _repo.ListJurisdictionsAsync(institutionId, ct);

@@ -1275,7 +1275,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/InviteInstitutionUserResponse' }
         '400':
-          description: Missing / invalid email (validation.missing_field)
+          description: |
+            Request validation failed (validation.failed) — missing or
+            malformed `email` / `role`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1758,6 +1760,7 @@ components:
         - institution.missing_fields
         - institution_admin.elevation_requires_approval
         - institution_admin.email_already_in_use
+        - institution_admin.institution_not_found
         - institution_admin.last_admin_cannot_demote
         - institution_admin.user_not_found
         - invite.already_accepted

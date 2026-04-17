@@ -130,7 +130,12 @@ public sealed class InstitutionSessionMiddleware
         // `institution` or `institution_admin`), so a server-side change
         // to the account's admin flag takes effect on the next login
         // rather than mid-session.
-        string sessionRole = string.IsNullOrWhiteSpace(session.Role) ? "institution" : session.Role;
+        //
+        // SECURITY: the session.Role value is normalised to the allowlist
+        // below. A stray value (data corruption, manual DB edit, missed
+        // migration) falls back to the minimum-privilege `institution`
+        // role — never promoted to admin implicitly.
+        string sessionRole = NormaliseSessionRole(session.Role);
         var claims = new System.Collections.Generic.List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, session.AccountId.ToString()),
@@ -173,6 +178,26 @@ public sealed class InstitutionSessionMiddleware
                 // Client disconnected — next successful request will touch.
             }
         }
+    }
+
+    /// <summary>
+    /// Normalises the <c>WebSession.Role</c> column to the allowlist
+    /// used by <c>[Authorize(Roles = ...)]</c>. Trims + exact-matches
+    /// on the two permitted values. Anything else (including
+    /// <c>null</c>, empty, whitespace, or a stray DB value) collapses
+    /// to <c>institution</c> — the minimum-privilege role on this
+    /// surface. Never defaults to <c>institution_admin</c>.
+    /// </summary>
+    private static string NormaliseSessionRole(string? storedRole)
+    {
+        if (storedRole is null) return "institution";
+        string trimmed = storedRole.Trim();
+        return trimmed switch
+        {
+            "institution_admin" => "institution_admin",
+            "institution" => "institution",
+            _ => "institution",
+        };
     }
 
     private static async Task WriteErrorAsync(HttpContext context, int status, string code, string message)

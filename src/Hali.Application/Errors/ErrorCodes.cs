@@ -79,6 +79,14 @@ public static class ErrorCodes
     /// account (either in this institution or another).
     /// </summary>
     public const string InstitutionAdminEmailAlreadyInUse = "institution_admin.email_already_in_use";
+    /// <summary>
+    /// The institution referenced by the acting admin's JWT/session
+    /// claim no longer exists (orphan claim). Invariant violation — if
+    /// this fires the deployment has drifted (institution deleted but
+    /// sessions still live). Returned as 404 with a distinct code so
+    /// operators can tell it apart from a user-not-found event.
+    /// </summary>
+    public const string InstitutionAdminInstitutionNotFound = "institution_admin.institution_not_found";
 
     // --- cluster.* ---
     public const string ClusterNotFound = "cluster.not_found";
