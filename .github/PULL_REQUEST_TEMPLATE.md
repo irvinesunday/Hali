@@ -1,37 +1,109 @@
 ## Summary
-<!-- One paragraph: what does this PR do and why? -->
 
-## Session / Phase
-<!-- Which build session does this PR belong to? (e.g. Session 04 — Clustering + CIVIS) -->
-Session: 
-Phase: 
+Describe what this PR does in plain language.
 
-## Agent C Verdict
-<!-- Paste the "Overall verdict" line from agent_outputs/session_N/agent_c.md -->
-Verdict: 
-Approved to merge: 
+## Changes
 
-## Coverage
-<!-- What does the Coverage Gate job report? -->
-Line coverage: %
-Gate status: 
+-
+-
+-
 
-## Changes made
-<!-- List the key files changed and why -->
+## Issue linkage
+
+Closes #
+
+## Phase / Workstream
+
+State the current build phase and workstream this PR belongs to
+(e.g. Mobile Phase B, Phase 2 institution dashboard, repo hygiene, etc.)
+
+## Authorization impact
+
+State whether this PR changes:
+- roles or scope enforcement
+- JWT claim handling
+- cross-institution boundaries
+- admin-only behavior
+
+If none, write: None
+
+## Security considerations
+
+State whether this PR changes:
+- auth/session behavior
+- cookies
+- CSRF
+- TOTP / MFA
+- magic links
+- secrets/config
+- logging of sensitive data
+
+If none, write: None
+
+## Observability impact
+
+State whether this PR adds or changes:
+- metrics
+- logs
+- traces
+- alerts
+
+If none, write: None
+
+## OpenAPI updated
+
+- [ ] Yes
+- [ ] No
+- [ ] Not applicable
+
+If yes, summarize changes.
+
+## Authorization coverage matrix updated
+
+- [ ] Yes
+- [ ] No
+- [ ] Not applicable
+
+If No or N/A, explain why.
+
+## Tests added
+
+-
 -
 -
 
 ## How to test
-<!-- Steps a reviewer can follow to verify this works -->
-1.
-2.
+
+List the steps or commands needed to verify this PR's changes.
+
+## Test execution
+
+List commands run (e.g. `dotnet test --project tests/Hali.Tests.Unit`)
+
+## Copilot findings
+
+_Claude Code must reply to all Copilot review comments via the GitHub API
+and resolve threads before this PR is considered complete._
+
+| Finding | Classification | Action taken | Follow-up issue |
+|--------|---------------|-------------|-----------------|
+
+Valid classifications:
+- VALID AND ALIGNED
+- VALID BUT OUT OF SCOPE
+- VALID BUT DEFERRED
+- VALID BUT MISALIGNED
+- NOT VALID
 
 ## Checklist
-- [ ] All 6 CI jobs are green
-- [ ] Coverage gate ≥ 95% 
-- [ ] Agent C validation report reviewed
-- [ ] No hardcoded secrets or API keys
-- [ ] No `.env` files committed
-- [ ] EF Core migrations are reversible
-- [ ] Outbox events written in same transaction as state changes
-- [ ] No features outside MVP scope introduced
+
+- [ ] Scope matches issue
+- [ ] No unrelated changes
+- [ ] Contract-first integrity preserved
+- [ ] Authorization boundaries verified
+- [ ] Cross-institution leakage tested
+- [ ] OpenAPI updated if required
+- [ ] Authorization coverage matrix updated if required
+- [ ] Tests added/updated
+- [ ] CI passed
+- [ ] All Copilot comments replied to via GitHub API and resolved or tracked
