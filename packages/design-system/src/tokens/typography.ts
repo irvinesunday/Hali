@@ -30,7 +30,9 @@ export const FontSize = {
   bodySmall: "0.8125rem",
   /** 12px — condition badges, meta counts */
   badge: "0.75rem",
-  /** 10px — section headers (uppercase), micro labels */
+  /** 10px — section headers (uppercase) */
+  sectionHeader: "0.625rem",
+  /** 10px — micro labels (timestamps, updated-at) */
   micro: "0.625rem",
 } as const;
 

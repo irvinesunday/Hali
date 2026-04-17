@@ -21,11 +21,11 @@ the same gaps.
 
 | Token group | Source used for Phase A extraction | Direct v0 screen evidence? |
 |---|---|---|
-| Colors — surface (background, card, foreground, muted, border) | `v0-hali-mobile-ui/app/globals.css` OKLCH values, hex-converted | **Yes** — every mobile screen renders against these surface tokens |
-| Colors — primary brand (teal) | `v0-hali-mobile-ui/app/globals.css` `--primary` | **Yes** — home-screen header, issue-card active state, FAB background |
+| Colors — surface (background, card, foreground, muted, border) | `docs/reference-ui/v0/v0-hali-mobile-ui.zip:app/globals.css` OKLCH values, hex-converted | **Yes** — every mobile screen renders against these surface tokens |
+| Colors — primary brand (teal) | `docs/reference-ui/v0/v0-hali-mobile-ui.zip:app/globals.css` `--primary` | **Yes** — home-screen header, issue-card active state, FAB background |
 | Colors — destructive (warm orange/red) | `globals.css` `--destructive` | **Partial** — error paths not consistently rendered in v0 components |
-| Colors — condition badges (amber/orange/red/sky/violet/stone/slate/yellow/emerald) | `v0-hali-mobile-ui/components/issue-card.tsx` explicit class map (authoritative) | **Yes** — issue-card.tsx maps condition labels to Tailwind palette classes directly |
-| Typography — font family (Geist) | `v0-hali-mobile-ui/app/layout.tsx` (`Geist`, `Geist_Mono` imports) | **Yes** — mobile layout loads Geist from Google Fonts |
+| Colors — condition badges (amber/orange/red/sky/violet/stone/slate/yellow/emerald) | `docs/reference-ui/v0/v0-hali-mobile-ui.zip:components/issue-card.tsx` explicit class map (authoritative) | **Yes** — issue-card.tsx maps condition labels to Tailwind palette classes directly |
+| Typography — font family (Geist) | `docs/reference-ui/v0/v0-hali-mobile-ui.zip:app/layout.tsx` (`Geist`, `Geist_Mono` imports) | **Yes** — mobile layout loads Geist from Google Fonts |
 | Typography — scale (FontSize.*) | Tailwind classes used across v0 components (`text-2xl`, `text-sm`, etc.) translated to dp | **Inferred** — scale mapping is a judgment call; no pixel measurement taken from a rendered v0 screen |
 | Spacing — scale (4dp base, xs..6xl) | Tailwind default 4px base matches RN 4dp convention | **Inferred** — not directly measured |
 | Radius — scale | `globals.css` `--radius: 0.75rem` | **Yes** — v0 uses `rounded-xl` (12px) on cards, FAB, modal surfaces |
@@ -152,8 +152,9 @@ the same gaps.
   as intent-preserving approximations. Phase B should review
   `apps/citizen-mobile/src/theme/animations.ts` against a running
   reference if animation polish is in scope.
-  - `startPulseSoft` / `pulseSoftConfig` have been removed in #187
-    after LiveDot was deleted — those were the only consumers.
+  - `startPulseSoft` / `pulseSoftConfig` were removed from
+    `apps/citizen-mobile/src/theme/animations.ts` after the LiveDot
+    component was deleted — those were the only consumers.
 
 ---
 
@@ -180,7 +181,7 @@ each palette key, its v0 evidence:
 
 | Palette key | v0 evidence |
 |---|---|
-| `amber` — "No power", "Power outage", "No water", "Transformer", "Sewage", "Bad smell" | **Confirmed** — `v0-hali-mobile-ui/components/issue-card.tsx` maps these condition labels to `bg-amber-50 text-amber-700 border-amber-200` |
+| `amber` — "No power", "Power outage", "No water", "Transformer", "Sewage", "Bad smell" | **Confirmed** — `docs/reference-ui/v0/v0-hali-mobile-ui.zip:components/issue-card.tsx` maps these condition labels to `bg-amber-50 text-amber-700 border-amber-200` |
 | `orange` — "Difficult to pass", "Multiple potholes", "Lane blocked", "Slow moving", "Heavy traffic", "Poor road condition", "Road damage", "Partially blocked", "Sidewalk/walkway", "Uncollected", "Overflowing" | **Confirmed** — same `issue-card.tsx` map |
 | `red` — "Impassable", "Road blocked", "Traffic blocked", "Accident", "Crash", "Collision" | **Confirmed** — same map |
 | `sky` — "Flooding", "Water on road", "Partially flooded" | **Confirmed** — same map |

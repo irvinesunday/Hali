@@ -33,7 +33,11 @@ export const CitizenColors = {
   accent: "oklch(0.92 0.02 180)",
   accentForeground: "oklch(0.30 0.02 220)",
   destructive: "oklch(0.60 0.15 30)",
-  destructiveForeground: "oklch(0.60 0.15 30)",
+  // NOTE: the v0 artifact ships --destructive-foreground equal to
+  // --destructive, which leaves destructive text unreadable on
+  // destructive backgrounds. We deviate from the artifact here and
+  // use the same near-white as primaryForeground so contrast works.
+  destructiveForeground: "oklch(0.99 0 0)",
   border: "oklch(0.90 0.01 200)",
   input: "oklch(0.92 0.01 200)",
   ring: "oklch(0.55 0.12 190)",
@@ -61,7 +65,9 @@ export const InstitutionColors = {
   accent: "oklch(0.92 0.03 180)",
   accentForeground: "oklch(0.25 0.02 200)",
   destructive: "oklch(0.577 0.245 27.325)",
-  destructiveForeground: "oklch(0.577 0.245 27.325)",
+  // Same deviation as citizen: v0 ships foreground==destructive which
+  // is unreadable. Near-white foreground preserves contrast.
+  destructiveForeground: "oklch(0.99 0 0)",
   border: "oklch(0.92 0.01 180)",
   input: "oklch(0.92 0.01 180)",
   ring: "oklch(0.65 0.12 180)",
