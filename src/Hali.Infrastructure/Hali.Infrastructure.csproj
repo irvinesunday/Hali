@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
     <ProjectReference Include="..\Hali.Application\Hali.Application.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.5" />
