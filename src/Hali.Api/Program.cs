@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Hali.Api.Errors;
@@ -12,6 +14,7 @@ using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
 using Hali.Application.Advisories;
+using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -33,53 +36,110 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth")
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
 
-// Data Protection key persistence. TOTP secrets (#197) are encrypted
+// Data Protection key ring (#243). TOTP secrets (#197) are encrypted
 // with these keys — an unresolvable key ring breaks every institution
-// user's second factor, so the ring must survive process restarts and
-// be shared across nodes in a multi-node deployment. Rules:
-//   * Production SHOULD set `DataProtection:KeysPath` to a pre-existing
-//     writable path on a shared volume (or move to Redis / blob-backed
-//     persistence). If unset, the app falls back to the content-root
-//     subdirectory and the server logs a warning so operators can fix
-//     the deployment without an outage.
-//   * Development / Testing always fall back to the same content-root
-//     subdirectory and the directory is created on demand.
-// `Directory.CreateDirectory` is try-caught so a read-only filesystem
-// surfaces a clear warning instead of an opaque startup crash — the
-// DataProtection stack itself will then log its own detailed error
-// when it can't write keys, giving operators two breadcrumbs.
-// At-rest encryption of the persisted key ring (DPAPI / certificate /
-// KMS) is a Production-only concern tracked as a follow-up — see
-// issue #243.
-string? configuredKeysPath = builder.Configuration["DataProtection:KeysPath"];
-string dataProtectionKeysPath = configuredKeysPath
-    ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
-try
-{
-    System.IO.Directory.CreateDirectory(dataProtectionKeysPath);
-}
-catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
-{
-    // Emit to stderr — the logging pipeline isn't up yet at this point
-    // in Program.cs, and swallowing silently is worse than a visible
-    // one-line startup note. DataProtection will fail loudly when it
-    // tries to write a key, pointing operators at the real fix.
-    Console.Error.WriteLine(
-        $"[data-protection] WARNING: key path '{dataProtectionKeysPath}' is not writable. " +
-        $"Configure DataProtection:KeysPath to a writable location. Cause: {ex.Message}");
-}
-if (builder.Environment.IsProduction() && configuredKeysPath is null)
-{
-    Console.Error.WriteLine(
-        "[data-protection] WARNING: DataProtection:KeysPath is not configured. " +
-        "In Production, TOTP secrets may be unrecoverable across restarts or nodes. " +
-        "See issue #243 for at-rest protection follow-up.");
-}
-builder.Services
-    .AddDataProtection()
-    .PersistKeysToFileSystem(new System.IO.DirectoryInfo(dataProtectionKeysPath))
-    .SetApplicationName("Hali.Api");
+// user's second factor, so the ring must survive process restarts
+// and be shared across nodes in a multi-node deployment.
+//
+// Key ring storage:   PostgreSQL (data_protection_keys) via
+//                     HaliDataProtectionDbContext — constant across all
+//                     environments.
+// At-rest protection: X.509 certificate (PFX) loaded from the path
+//                     configured in DataProtection:CertPath.
+//                     Production MUST have a cert provisioned before
+//                     institution users onboard; see
+//                     docs/arch/SECURITY_POSTURE.md.
+//
+// Startup degradation:
+//   * Cert configured + loads: keys protected — log filename only,
+//     never the full path and never the password.
+//   * Cert configured + missing/invalid + Production: throw. A
+//     misconfigured production deployment must not silently start
+//     unprotected.
+//   * Cert configured + missing/invalid + non-Production: log ERROR
+//     and continue so developers are not blocked by an ops issue.
+//   * Cert unconfigured + Windows: DPAPI (dev-machine escape hatch
+//     only, never canonical). Log WARNING.
+//   * Cert unconfigured + other OS: log WARNING, keys unprotected.
+//
+// AddInfrastructure must run BEFORE AddDataProtection so the
+// HaliDataProtectionDbContext is registered in DI when
+// PersistKeysToDbContext<T>() resolves it.
 builder.Services.AddInfrastructure(builder.Configuration);
+
+var dataProtectionBuilder = builder.Services
+    .AddDataProtection()
+    .SetApplicationName("Hali.Api")
+    .PersistKeysToDbContext<HaliDataProtectionDbContext>();
+
+string? certPath = builder.Configuration["DataProtection:CertPath"];
+string? certPassword = builder.Configuration["DataProtection:CertPassword"];
+
+if (!string.IsNullOrWhiteSpace(certPath))
+{
+    if (System.IO.File.Exists(certPath))
+    {
+        try
+        {
+            // X509CertificateLoader is the .NET 9+ replacement for the
+            // X509Certificate2 path-based constructor (which emits
+            // SYSLIB0057 on .NET 10).
+            X509Certificate2 cert = X509CertificateLoader.LoadPkcs12FromFile(
+                certPath, certPassword);
+            dataProtectionBuilder.ProtectKeysWithCertificate(cert);
+            // Log the filename only — never the full path (side-channel
+            // about deployment topology) and never the password.
+            string certFileName = System.IO.Path.GetFileName(certPath);
+            Console.Error.WriteLine(
+                $"[data-protection] INFO: keys protected with certificate [{certFileName}]");
+        }
+        catch (Exception ex)
+            when (ex is System.IO.IOException
+                  || ex is UnauthorizedAccessException
+                  || ex is System.Security.Cryptography.CryptographicException)
+        {
+            // Log the exception TYPE only — the message can leak path
+            // fragments or crypto details.
+            if (builder.Environment.IsProduction())
+            {
+                throw new InvalidOperationException(
+                    "Data Protection certificate could not be loaded. " +
+                    "Production cannot start unprotected.", ex);
+            }
+            Console.Error.WriteLine(
+                "[data-protection] ERROR: certificate load failed — starting unprotected. " +
+                $"Error type: {ex.GetType().Name}");
+        }
+    }
+    else
+    {
+        // Cert configured but file absent. Production must fail loudly;
+        // dev/staging log an ERROR and continue so a broken mount does
+        // not block local work.
+        if (builder.Environment.IsProduction())
+        {
+            throw new InvalidOperationException(
+                "Data Protection certificate not found. Production cannot start unprotected.");
+        }
+        // Deliberately do NOT include the configured path — an attacker
+        // who obtains this log should not learn where the system expects
+        // its cert.
+        Console.Error.WriteLine(
+            "[data-protection] ERROR: certificate configured but file not found — starting unprotected");
+    }
+}
+else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    dataProtectionBuilder.ProtectKeysWithDpapi(protectToLocalMachine: false);
+    Console.Error.WriteLine(
+        "[data-protection] WARNING: using DPAPI — Windows dev-machine only, NOT for staging/production");
+}
+else
+{
+    Console.Error.WriteLine(
+        "[data-protection] WARNING: keys are NOT protected at rest — " +
+        "set DataProtection:CertPath for staging/production");
+}
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInstitutionService, InstitutionService>();
