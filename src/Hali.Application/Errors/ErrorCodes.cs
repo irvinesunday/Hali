@@ -42,6 +42,18 @@ public static class ErrorCodes
     public const string AuthOtpInvalid = "auth.otp_invalid";
     public const string AuthOtpRateLimited = "auth.otp_rate_limited";
     public const string AuthRefreshTokenInvalid = "auth.refresh_token_invalid";
+    // Phase 2 institution auth + session hardening (#197).
+    public const string AuthInstitutionSessionInvalid = "auth.institution_session_invalid";
+    public const string AuthInstitutionSessionIdleTimeout = "auth.institution_session_idle_timeout";
+    public const string AuthInstitutionSessionAbsoluteTimeout = "auth.institution_session_absolute_timeout";
+    public const string AuthCsrfMissing = "auth.csrf_missing";
+    public const string AuthCsrfMismatch = "auth.csrf_mismatch";
+    public const string AuthMagicLinkInvalid = "auth.magic_link_invalid";
+    public const string AuthTotpAlreadyEnrolled = "auth.totp_already_enrolled";
+    public const string AuthTotpNotEnrolled = "auth.totp_not_enrolled";
+    public const string AuthTotpInvalidCode = "auth.totp_invalid_code";
+    public const string AuthTotpNotConfirmed = "auth.totp_not_confirmed";
+    public const string AuthStepUpRequired = "auth.step_up_required";
 
     // --- cluster.* ---
     public const string ClusterNotFound = "cluster.not_found";

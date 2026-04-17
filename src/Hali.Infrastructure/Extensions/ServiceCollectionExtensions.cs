@@ -96,6 +96,12 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
 		services.AddScoped<IAuthRepository, AuthRepository>();
 		services.AddScoped<IInstitutionRepository, InstitutionRepository>();
+		// Phase 2 institution auth + session hardening (#197). The email
+		// sender is NOT registered here — Program.cs wires the NoOp
+		// implementation only in Development/Testing and expects a
+		// production-grade binding to be registered explicitly in
+		// Production (failing-fast on missing binding).
+		services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();

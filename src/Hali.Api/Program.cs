@@ -4,6 +4,7 @@ using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Api.Observability;
+using Microsoft.AspNetCore.DataProtection;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
 using Hali.Application.Institutions;
@@ -30,6 +31,54 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
+
+// Data Protection key persistence. TOTP secrets (#197) are encrypted
+// with these keys — an unresolvable key ring breaks every institution
+// user's second factor, so the ring must survive process restarts and
+// be shared across nodes in a multi-node deployment. Rules:
+//   * Production SHOULD set `DataProtection:KeysPath` to a pre-existing
+//     writable path on a shared volume (or move to Redis / blob-backed
+//     persistence). If unset, the app falls back to the content-root
+//     subdirectory and the server logs a warning so operators can fix
+//     the deployment without an outage.
+//   * Development / Testing always fall back to the same content-root
+//     subdirectory and the directory is created on demand.
+// `Directory.CreateDirectory` is try-caught so a read-only filesystem
+// surfaces a clear warning instead of an opaque startup crash — the
+// DataProtection stack itself will then log its own detailed error
+// when it can't write keys, giving operators two breadcrumbs.
+// At-rest encryption of the persisted key ring (DPAPI / certificate /
+// KMS) is a Production-only concern tracked as a follow-up — see
+// issue #243.
+string? configuredKeysPath = builder.Configuration["DataProtection:KeysPath"];
+string dataProtectionKeysPath = configuredKeysPath
+    ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
+try
+{
+    System.IO.Directory.CreateDirectory(dataProtectionKeysPath);
+}
+catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
+{
+    // Emit to stderr — the logging pipeline isn't up yet at this point
+    // in Program.cs, and swallowing silently is worse than a visible
+    // one-line startup note. DataProtection will fail loudly when it
+    // tries to write a key, pointing operators at the real fix.
+    Console.Error.WriteLine(
+        $"[data-protection] WARNING: key path '{dataProtectionKeysPath}' is not writable. " +
+        $"Configure DataProtection:KeysPath to a writable location. Cause: {ex.Message}");
+}
+if (builder.Environment.IsProduction() && configuredKeysPath is null)
+{
+    Console.Error.WriteLine(
+        "[data-protection] WARNING: DataProtection:KeysPath is not configured. " +
+        "In Production, TOTP secrets may be unrecoverable across restarts or nodes. " +
+        "See issue #243 for at-rest protection follow-up.");
+}
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new System.IO.DirectoryInfo(dataProtectionKeysPath))
+    .SetApplicationName("Hali.Api");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -39,6 +88,20 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 // Institution operational dashboard read service (#195).
 builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
+// Phase 2 institution auth + session hardening (#197).
+builder.Services.AddScoped<ITotpService, TotpService>();
+builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
+builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Institution email sender — NoOp binding is deliberately restricted to
+// non-Production environments. A production deployment must register
+// its own IInstitutionEmailSender (real SES/SendGrid/etc) BEFORE this
+// line, or the app will fail to resolve the scoped dependency on the
+// first magic-link request.
+if (!builder.Environment.IsProduction())
+{
+    builder.Services.AddScoped<Hali.Application.Auth.IInstitutionEmailSender,
+        Hali.Infrastructure.Auth.NoOpInstitutionEmailSender>();
+}
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
@@ -250,7 +313,16 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
+// Session cookie middleware runs AFTER authentication so Bearer-JWT flows
+// short-circuit it. The institution middleware only applies to requests
+// without a JWT header that target institution routes.
+app.UseMiddleware<InstitutionSessionMiddleware>();
 app.UseAuthorization();
+// CSRF enforcement must see the AuthorizationPolicy has already passed
+// for the current request — but runs before the controller so write
+// verbs are rejected before they touch domain code. We position it
+// after UseAuthorization to keep that ordering.
+app.UseMiddleware<InstitutionCsrfMiddleware>();
 app.MapControllers();
 
 // GET /health

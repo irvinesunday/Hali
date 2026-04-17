@@ -7,6 +7,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Hali.Domain\Hali.Domain.csproj" />
     <ProjectReference Include="..\Hali.Contracts\Hali.Contracts.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.5" />
+    <!-- String overloads of IDataProtector.Protect/Unprotect used by TotpService. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.17.0" />

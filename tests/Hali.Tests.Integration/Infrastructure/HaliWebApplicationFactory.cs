@@ -77,6 +77,11 @@ public sealed class HaliWebApplicationFactory
                 ["Civis:ContextEditWindowMinutes"]   = "2",
                 ["Civis:RestorationRatio"]           = "0.60",
                 ["Civis:MinRestorationAffectedVotes"] = "2",
+                // Phase 2 institution auth. TestServer serves over HTTP,
+                // so RequireSecureCookies must be off or the browser /
+                // HttpClient CookieContainer will drop the Secure cookie
+                // on the subsequent request.
+                ["InstitutionAuth:RequireSecureCookies"] = "false",
             });
         });
 
@@ -130,7 +135,7 @@ public sealed class HaliWebApplicationFactory
         // Order: most-dependent first to avoid FK violations
         string[] statements =
         {
-            "TRUNCATE institution_invites, refresh_tokens, otp_challenges, devices, accounts CASCADE",
+            "TRUNCATE web_sessions, totp_recovery_codes, totp_secrets, magic_link_tokens, institution_invites, refresh_tokens, otp_challenges, devices, accounts CASCADE",
             "TRUNCATE participations CASCADE",
             "TRUNCATE outbox_events, civis_decisions, cluster_event_links, signal_clusters CASCADE",
             "TRUNCATE signal_events CASCADE",
@@ -256,6 +261,61 @@ CREATE TABLE IF NOT EXISTS institution_invites (
 )");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_invites_token ON institution_invites(invite_token_hash)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_invites_institution ON institution_invites(institution_id)");
+
+        // Phase 2 institution auth + session hardening (#197) — mirrors the
+        // AuthDbContext migration. Created here so integration tests that
+        // exercise the session/CSRF/TOTP paths have the tables available.
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS web_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id uuid NOT NULL REFERENCES accounts(id),
+    institution_id uuid NULL,
+    session_token_hash varchar(128) NOT NULL,
+    csrf_token_hash varchar(128) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    last_activity_at timestamptz NOT NULL DEFAULT now(),
+    absolute_expires_at timestamptz NOT NULL,
+    step_up_verified_at timestamptz NULL,
+    revoked_at timestamptz NULL,
+    CONSTRAINT uq_web_sessions_token UNIQUE (session_token_hash)
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_web_sessions_account ON web_sessions(account_id)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_web_sessions_absolute_expires ON web_sessions(absolute_expires_at)");
+
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS totp_secrets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id uuid NOT NULL REFERENCES accounts(id),
+    secret_encrypted text NOT NULL,
+    enrolled_at timestamptz NOT NULL DEFAULT now(),
+    confirmed_at timestamptz NULL,
+    revoked_at timestamptz NULL,
+    CONSTRAINT uq_totp_secrets_account UNIQUE (account_id)
+)");
+
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id uuid NOT NULL REFERENCES accounts(id),
+    code_hash varchar(128) NOT NULL,
+    used_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_totp_recovery_codes UNIQUE (account_id, code_hash)
+)");
+
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS magic_link_tokens (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    destination_email varchar(254) NOT NULL,
+    token_hash varchar(128) NOT NULL,
+    account_id uuid NULL REFERENCES accounts(id),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_magic_link_tokens_hash UNIQUE (token_hash)
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_magic_link_tokens_email ON magic_link_tokens(destination_email)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_magic_link_tokens_expires ON magic_link_tokens(expires_at)");
 
         // Signals tables
         await ExecAsync(conn, @"
