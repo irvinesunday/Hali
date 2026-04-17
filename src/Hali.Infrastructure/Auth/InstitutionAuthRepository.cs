@@ -95,9 +95,11 @@ public sealed class InstitutionAuthRepository : IInstitutionAuthRepository
 
     public Task<WebSession?> FindActiveWebSessionAsync(string sessionTokenHash, DateTime now, CancellationToken ct)
         => _db.WebSessions.FirstOrDefaultAsync(
-            s => s.SessionTokenHash == sessionTokenHash
-                && s.RevokedAt == null
-                && s.AbsoluteExpiresAt > now,
+            // Intentionally DO NOT filter on AbsoluteExpiresAt / LastActivityAt
+            // here — the service layer classifies timeout reasons (idle vs
+            // absolute) and needs to see the row to distinguish them. Only
+            // revoked and non-existent sessions are dropped at this boundary.
+            s => s.SessionTokenHash == sessionTokenHash && s.RevokedAt == null,
             ct);
 
     public async Task TouchWebSessionAsync(Guid sessionId, DateTime lastActivityAt, CancellationToken ct)
