@@ -1,0 +1,20 @@
+{
+  "name": "hali-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hali monorepo root — shared packages (contracts, design-system, config) and planned Phase 2+ web app workspaces (institution-web, institution-admin-web, hali-ops-web) that will land under apps/ as they are scaffolded. apps/citizen-mobile is intentionally outside the workspace while it continues to ship an independent npm toolchain; see pnpm-workspace.yaml for current workspace membership and the migration note.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.4.5"
+  }
+}
