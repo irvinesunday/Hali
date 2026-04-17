@@ -11,12 +11,16 @@ flexibility it buys, so the default answer to "should this be a flag?" is
 no.
 
 Authority hierarchy: this document sits below `CLAUDE.md`,
-`Hali_Platform_Reconciliation_v1.md`, `SECURITY_POSTURE.md`, and
-`OBSERVABILITY_MODEL.md`, and above the flag-registry implementation code.
+`Hali_Platform_Reconciliation_v1.md`, `docs/arch/SECURITY_POSTURE.md`, and
+`docs/arch/OBSERVABILITY_MODEL.md`, and above the flag-registry
+implementation code.
 
-The concrete backend implementation lives in #193; the client-safe flag
-exposure contract lives in #194; citizen-mobile consumption lives in #213;
-institution-web day-one integration lives in #205.
+The concrete backend implementation lives in the backend flag-registry
+module (under `src/Hali.Application` once introduced). The client-safe
+flag exposure contract lives in the client-facing flag contract.
+Citizen-mobile consumption and institution-web day-one integration live
+in their respective application codebases. Tracking links to the
+in-flight issues belong in those PR descriptions, not in this document.
 
 ---
 
@@ -53,8 +57,9 @@ institution-web day-one integration lives in #205.
 - **Pilot-audience rollouts** — scoping a feature to a specific
   institution or specific set of localities before a full rollout.
 - **Emergency kill switches** — ability to disable a non-core code path
-  without a redeploy. Kill switches are a deliberate permanent category;
-  they do not expire.
+  quickly via the typed flag registry and a fast deploy, without a new
+  code change at the call site. Kill switches are a deliberate permanent
+  category; they do not expire.
 - **Operator-only / internal-only surfaces** — experimental internal
   screens or ops tooling that should not appear to external users, ever.
 - **Controlled degradation** — e.g. turn off a cache refresh worker if
@@ -88,7 +93,7 @@ targeting axes supported.
 | Environment | `development`, `staging`, `production` | Most flags default `on` in non-prod, off in prod during ramp |
 | Institution id | specific `institution_id` (or `*` for all) | Institution-specific pilots (e.g. give Institution X access to the new update template first) |
 | Locality id | specific `locality_id` (or set) | Locality-scoped rollouts (e.g. new flow enabled in Nairobi wards first) |
-| Actor type | `citizen`, `institution`, `institution_admin`, `hali_ops` | Internal-only / admin-only features |
+| Actor type | `citizen`, `institution`, `admin` (JWT role claim today; expands as future roles land, e.g. `hali_ops`) | Internal-only / admin-only features |
 
 Combining axes (e.g. `environment == production AND institution_id IN (…)`)
 is allowed. Anything more expressive than that is out of scope — if you
@@ -112,16 +117,16 @@ Examples:
 
 - `workers.outbox_relay.enabled` — if off, the outbox relay doesn't
   pick up new jobs.
-- `clusters.lifecycle.central_manager.enabled` — gates the #210
-  lifecycle manager migration while it is dark-launched.
-- `nlp.provider.fallback.enabled` — controls whether the NLP pipeline
-  falls back to a stub when Anthropic is unreachable.
+- `workers.lifecycle_manager.enabled` — gates a planned central
+  cluster-lifecycle manager migration while it is dark-launched.
+- `api.nlp_fallback.enabled` — controls whether the NLP pipeline falls
+  back to a stub when Anthropic is unreachable.
 
 ### 4.2 Client-visible flags
 
 A flag must be explicitly **tagged as client-visible** in the registry
 to be eligible for exposure to any client. The client-safe flag
-endpoint / boot payload (#194) only returns flags with that tag. Every
+endpoint / boot payload only returns flags with that tag. Every
 other flag remains server-only regardless of how it is named.
 
 Examples:
@@ -129,9 +134,9 @@ Examples:
 - `mobile.signal_composer.voice_input.enabled` — shows the voice-input
   affordance in the composer.
 - `mobile.home.condition_badge.enabled` — controls whether the
-  condition badge ships in the cluster header (#214).
+  condition badge ships in the cluster header.
 - `institution_web.restoration_ui.enabled` — shows the restoration
-  action UI (#204) to institution users.
+  action UI to institution users.
 
 ### 4.3 Never expose internals
 
@@ -215,10 +220,10 @@ Retirement discipline:
   match the `dark_launch` retirement criterion.
 - `kill_switch` flags do not retire. They live in the registry with an
   explicit `permanent` marker.
-- An expired flag that has not been retired appears in a CI warning
-  (implementation in #193). The warning can be dismissed with an
-  explicit extension on the registry entry — but doing so requires an
-  updated `expected_retirement` and a short reason.
+- An expired flag that has not been retired appears as a CI warning
+  emitted by the flag-registry tooling. The warning can be dismissed
+  with an explicit extension on the registry entry — but doing so
+  requires an updated `expected_retirement` and a short reason.
 
 ---
 
@@ -258,10 +263,12 @@ state (1), (2), and a rollback plan (which for kill switches is usually
 
 ### 8.2 Flip criteria
 
-- A kill switch is flipped by an authorised ops actor.
+- A kill switch is flipped by an authorized ops actor via a registry
+  edit and a fast deploy (the typed registry is the single write site;
+  there is no external flag UI).
 - Every flip emits both a structured log event and an audit-trail
-  record (per `SECURITY_POSTURE.md` §7 and
-  `OBSERVABILITY_MODEL.md` §2).
+  record (per `docs/arch/SECURITY_POSTURE.md` §7 and
+  `docs/arch/OBSERVABILITY_MODEL.md` §2).
 - Every flip is communicated to the engineering-on-call channel within
   5 minutes.
 
@@ -296,13 +303,16 @@ expected_retirement: "2026-06-15 or after first pilot cohort"
 
 ```
 name: institution_web.restoration_ui.enabled
-description: Shows the institution restoration action UI (#204).
+description: Shows the institution restoration action UI.
 owner: @irvinesunday
 kind: pilot
 visibility: client_visible
 default: false
 targeting:
-  - if institution_id in { acme_water_utility, nairobi_roads } → true
+  - if institution_id in {
+      11111111-1111-1111-1111-111111111111,
+      22222222-2222-2222-2222-222222222222
+    } → true
   - else → false
 expected_retirement: "broaden once pilot institutions approve"
 ```
