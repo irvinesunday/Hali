@@ -2,7 +2,7 @@
   "name": "hali-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Hali monorepo root — workspaces for apps (citizen-mobile, institution-web, …) and shared packages (contracts, design-system, config).",
+  "description": "Hali monorepo root — workspaces for Phase 2+ web apps (institution-web, institution-admin-web, hali-ops-web) and shared packages (contracts, design-system, config). apps/citizen-mobile is intentionally outside the workspace while it continues to ship an independent npm toolchain; see pnpm-workspace.yaml for the migration note.",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"
