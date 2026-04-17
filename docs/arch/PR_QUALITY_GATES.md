@@ -47,7 +47,8 @@ Authentication and identity
       (`replaced_by_token_hash`) semantics are preserved; no plaintext
       storage, no missing revocation
 - [ ] Session / cookie / bearer-token surface changes on any web app use
-      `httpOnly` + `Secure` + `SameSite=Lax` and never `localStorage`
+      `httpOnly` + `Secure` + `SameSite=Strict` and never `localStorage`
+      (canonical posture — see `docs/arch/07_auth_implementation.md`)
 
 Authorization and tenancy
 - [ ] Every new authenticated endpoint has an explicit policy / scope
