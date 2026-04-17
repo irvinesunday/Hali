@@ -139,6 +139,16 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("related_cluster_id");
 
+                    b.Property<string>("ResponseStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("response_status");
+
+                    b.Property<string>("Severity")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("severity");
+
                     b.Property<DateTime?>("StartsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("starts_at");
@@ -194,7 +204,18 @@ namespace Hali.Infrastructure.Data.Advisories.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OfficialPostId");
+
                     b.ToTable("official_post_scopes", (string)null);
+                });
+
+            modelBuilder.Entity("Hali.Domain.Entities.Advisories.OfficialPostScope", b =>
+                {
+                    b.HasOne("Hali.Domain.Entities.Advisories.OfficialPost", null)
+                        .WithMany()
+                        .HasForeignKey("OfficialPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

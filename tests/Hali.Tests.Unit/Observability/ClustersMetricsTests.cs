@@ -125,6 +125,7 @@ public class ClustersMetricsTests
             clusters ?? Substitute.For<IClusterRepository>(),
             auth,
             Substitute.For<IOfficialPostsService>(),
+            Substitute.For<Hali.Application.Institutions.IInstitutionReadRepository>(),
             Options.Create(DefaultOptions()),
             metrics);
         var httpCtx = new DefaultHttpContext();

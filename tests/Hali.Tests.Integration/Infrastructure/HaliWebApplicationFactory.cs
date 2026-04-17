@@ -446,9 +446,17 @@ CREATE TABLE IF NOT EXISTS official_posts (
     status varchar(20) NOT NULL DEFAULT 'draft',
     related_cluster_id uuid,
     is_restoration_claim boolean NOT NULL DEFAULT false,
+    response_status varchar(50) NULL,
+    severity varchar(20) NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 )");
+        // Phase 2 institution backend: additive nullable columns for live_update
+        // response status and scheduled_disruption severity. Mirrored as ADD
+        // COLUMN IF NOT EXISTS so the schema still advances on integration DBs
+        // that pre-exist from an older run without these columns.
+        await ExecAsync(conn, "ALTER TABLE official_posts ADD COLUMN IF NOT EXISTS response_status varchar(50)");
+        await ExecAsync(conn, "ALTER TABLE official_posts ADD COLUMN IF NOT EXISTS severity varchar(20)");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS official_post_scopes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

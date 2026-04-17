@@ -60,6 +60,17 @@ public record ClusterResponseDto(
     /// <c>possible_restoration</c>. Aggregate count only.
     /// </summary>
     public int? RestorationTotalVotes { get; init; }
+
+    /// <summary>
+    /// Derived response status from the most recent <c>live_update</c>
+    /// official post attached to this cluster. Canonical wire values:
+    /// <c>acknowledged</c>, <c>teams_dispatched</c>, <c>teams_on_site</c>,
+    /// <c>work_ongoing</c>, <c>restoration_in_progress</c>,
+    /// <c>service_restored</c>. Null when no live_update has declared a
+    /// status yet. Additive field — powers the institution Signal Detail
+    /// header and citizen-visible response indication.
+    /// </summary>
+    public string? ResponseStatus { get; init; }
 }
 
 /// <summary>

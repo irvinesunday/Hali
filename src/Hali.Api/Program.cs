@@ -6,6 +6,7 @@ using Hali.Api.Middleware;
 using Hali.Api.Observability;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
+using Hali.Application.Institutions;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -36,6 +37,8 @@ builder.Services.AddScoped<IInstitutionService, InstitutionService>();
 builder.Services.AddScoped<ISignalIngestionService, SignalIngestionService>();
 builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
+// Institution operational dashboard read service (#195).
+builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
