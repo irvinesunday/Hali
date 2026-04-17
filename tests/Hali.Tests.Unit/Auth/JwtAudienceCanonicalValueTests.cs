@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Hali.Tests.Unit.Auth;
@@ -15,13 +16,13 @@ public class JwtAudienceCanonicalValueTests
 
     private static string RepoRoot()
     {
-        string current = Directory.GetCurrentDirectory();
-        while (current is not null && !File.Exists(Path.Combine(current, "Hali.sln")))
+        DirectoryInfo? current = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Hali.sln")))
         {
-            current = Directory.GetParent(current)?.FullName!;
+            current = current.Parent;
         }
         Assert.NotNull(current);
-        return current!;
+        return current!.FullName;
     }
 
     [Fact]
@@ -58,27 +59,24 @@ public class JwtAudienceCanonicalValueTests
     }
 
     [Fact]
-    public void CiWorkflow_JwtAudienceEnv_IsCanonical()
+    public void CiWorkflow_AllJwtAudienceEnvValues_AreCanonical()
     {
         string path = Path.Combine(RepoRoot(), ".github", "workflows", "ci.yml");
         Assert.True(File.Exists(path), $"ci.yml not found at {path}");
 
         string contents = File.ReadAllText(path);
 
-        // Every Auth__JwtAudience env in the workflow must target the canonical value.
-        // Any occurrence of a non-canonical value is a regression.
-        Assert.DoesNotContain("Auth__JwtAudience: \"hali\"", contents);
-        Assert.DoesNotContain("Auth__JwtAudience: \"hali-mobile\"", contents);
+        // Extract every Auth__JwtAudience value in the workflow and assert each
+        // one is the canonical value — this catches any new non-canonical value,
+        // not just the specific strings the PR replaced.
+        MatchCollection matches = Regex.Matches(contents, @"Auth__JwtAudience:\s*""(?<value>[^""]*)""");
 
-        int canonicalCount = 0;
-        int index = 0;
-        string needle = $"Auth__JwtAudience: \"{CanonicalAudience}\"";
-        while ((index = contents.IndexOf(needle, index, System.StringComparison.Ordinal)) >= 0)
+        Assert.True(matches.Count >= 1, "Expected at least one Auth__JwtAudience entry in ci.yml");
+
+        foreach (Match match in matches)
         {
-            canonicalCount++;
-            index += needle.Length;
+            string value = match.Groups["value"].Value;
+            Assert.Equal(CanonicalAudience, value);
         }
-
-        Assert.True(canonicalCount >= 1, "Expected at least one Auth__JwtAudience entry using the canonical value");
     }
 }
