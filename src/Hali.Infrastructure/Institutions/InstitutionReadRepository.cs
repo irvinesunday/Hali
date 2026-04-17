@@ -130,6 +130,7 @@ ORDER BY active_signals DESC, display_name ASC;";
     }
 
     public async Task<IReadOnlyList<InstitutionClusterRow>> ListClustersAsync(
+        Guid institutionId,
         IReadOnlyList<Guid> localityIds,
         Guid? areaLocalityId,
         string? filterState,
@@ -166,10 +167,17 @@ ORDER BY active_signals DESC, display_name ASC;";
             ? "AND sc.locality_id = @areaLocalityId"
             : string.Empty;
 
+        // LEFT JOIN on institution_jurisdictions resolves the caller's
+        // jurisdiction id for the cluster's locality, so the Area reference
+        // returned in the list response uses the same id space as
+        // /v1/institution/areas — avoids the "Area.Id means jurisdiction
+        // on one endpoint and locality on another" inconsistency flagged
+        // at review time.
         var sql = $@"
 SELECT sc.id,
        sc.title,
        sc.locality_id,
+       ij.id AS area_jurisdiction_id,
        loc.ward_name AS locality_display,
        sc.category::text AS category,
        sc.state::text AS state,
@@ -180,6 +188,9 @@ SELECT sc.id,
        sc.activated_at
 FROM signal_clusters sc
 LEFT JOIN localities loc ON loc.id = sc.locality_id
+LEFT JOIN institution_jurisdictions ij
+       ON ij.locality_id = sc.locality_id
+      AND ij.institution_id = @institutionId
 WHERE sc.locality_id = ANY(@localityIds)
   {areaClause}
   AND {stateClause}
@@ -189,6 +200,7 @@ LIMIT @limit;";
 
         await using var conn = await _dataSources.Advisories.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("institutionId", institutionId);
         cmd.Parameters.AddWithValue("localityIds", (object)localityIds.ToArray());
         cmd.Parameters.AddWithValue("limit", limit);
         if (areaLocalityId.HasValue)
@@ -209,14 +221,15 @@ LIMIT @limit;";
                 Id: reader.GetGuid(0),
                 Title: reader.IsDBNull(1) ? null : reader.GetString(1),
                 LocalityId: reader.IsDBNull(2) ? (Guid?)null : reader.GetGuid(2),
-                LocalityDisplayName: reader.IsDBNull(3) ? null : reader.GetString(3),
-                Category: reader.GetString(4),
-                State: reader.GetString(5),
-                AffectedCount: reader.GetInt32(6),
-                ObservingCount: reader.GetInt32(7),
-                CreatedAt: reader.GetDateTime(8),
-                LastSeenAt: reader.GetDateTime(9),
-                ActivatedAt: reader.IsDBNull(10) ? (DateTime?)null : reader.GetDateTime(10)));
+                AreaJurisdictionId: reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3),
+                LocalityDisplayName: reader.IsDBNull(4) ? null : reader.GetString(4),
+                Category: reader.GetString(5),
+                State: reader.GetString(6),
+                AffectedCount: reader.GetInt32(7),
+                ObservingCount: reader.GetInt32(8),
+                CreatedAt: reader.GetDateTime(9),
+                LastSeenAt: reader.GetDateTime(10),
+                ActivatedAt: reader.IsDBNull(11) ? (DateTime?)null : reader.GetDateTime(11)));
         }
         return rows;
     }
@@ -312,13 +325,17 @@ GROUP BY cel.cluster_id;";
         // Return the response_status from the newest live_update per cluster
         // that has a non-null response_status. Older rows (pre-migration) have
         // NULL and are skipped by DISTINCT ON semantics here.
+        // Secondary sort on `op.id DESC` guarantees deterministic selection
+        // when two live_update posts share the same `created_at` timestamp
+        // (writes rarely collide, but DISTINCT ON otherwise picks an
+        // implementation-defined row which can flip between runs).
         const string sql = @"
 SELECT DISTINCT ON (op.related_cluster_id) op.related_cluster_id, op.response_status
 FROM official_posts op
 WHERE op.related_cluster_id = ANY(@cids)
   AND op.type = 'live_update'
   AND op.response_status IS NOT NULL
-ORDER BY op.related_cluster_id, op.created_at DESC;";
+ORDER BY op.related_cluster_id, op.created_at DESC, op.id DESC;";
 
         await using var conn = await _dataSources.Advisories.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -342,7 +359,7 @@ FROM official_posts op
 WHERE op.related_cluster_id = @cid
   AND op.type = 'live_update'
   AND op.response_status IS NOT NULL
-ORDER BY op.created_at DESC
+ORDER BY op.created_at DESC, op.id DESC
 LIMIT 1;";
 
         await using var conn = await _dataSources.Advisories.OpenConnectionAsync(ct);
@@ -366,9 +383,11 @@ LIMIT 1;";
         }
 
         // Two event families compose the activity stream:
-        //   1. Cluster lifecycle transitions from signal_clusters — mapped
-        //      to new_signal / growing / stabilising / restoration / restored
-        //      so operators see the whole civic flow on one feed.
+        //   1. Cluster lifecycle transitions from signal_clusters — mapped to
+        //      new_signal / growing / restoration / restored so operators see
+        //      the whole civic flow on one feed. The `stabilising` wire value
+        //      is reserved in OpenAPI but has no emission site yet (see
+        //      InstitutionVocabulary for the gating note).
         //   2. Official posts the institution has published — mapped to
         //      update_posted. These are scoped to localities the institution
         //      owns, so other institutions' posts never appear.

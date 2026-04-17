@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
@@ -106,10 +107,14 @@ public class ClustersController : ControllerBase
                 : (double?)null;
         }
 
-        // Phase 2: derive response_status from the latest live_update post
-        // attached to this cluster. Null when no live_update has declared a
-        // status yet. Additive nullable field on ClusterResponseDto.
-        string? responseStatus = await _institutionRead.GetLatestResponseStatusForClusterAsync(id, ct);
+        // Derive response_status from the existing officialPosts list already
+        // fetched above — no extra DB round-trip needed because each
+        // OfficialPostResponseDto now carries the per-post ResponseStatus.
+        // GetByClusterIdAsync returns posts ordered newest-first, so the
+        // first live_update with a non-null status is the latest one.
+        string? responseStatus = officialPosts
+            .FirstOrDefault(p => p.Type == "live_update" && !string.IsNullOrEmpty(p.ResponseStatus))
+            ?.ResponseStatus;
 
         var dto = new ClusterResponseDto(
             cluster.Id,

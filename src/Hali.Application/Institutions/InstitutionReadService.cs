@@ -1,10 +1,8 @@
 using System;
-using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
@@ -19,16 +17,18 @@ using Hali.Domain.Enums;
 
 namespace Hali.Application.Institutions;
 
+/// <summary>
+/// Read-model service backing the institution operational dashboard.
+/// Every read method is scoped by the caller's institution id (resolved
+/// from the JWT by the controller); the service composes the repository
+/// rows into the DTOs the UI consumes. Cursor pagination uses a
+/// base64url-encoded "&lt;timestamp-iso-utc&gt;|&lt;id&gt;" tuple.
+/// </summary>
 public sealed class InstitutionReadService : IInstitutionReadService
 {
     private const int OverviewAreaCap = 6;
     private const int MaxListLimit = 100;
     private const int DefaultListLimit = 20;
-
-    // Simple UTF-8 base64url codec; the wire contract requires an opaque
-    // cursor so we do not leak primary-key columns directly. Encoded form
-    // is "<timestamp-iso-utc>|<id>".
-    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     private readonly IInstitutionReadRepository _repo;
     private readonly IClusterRepository _clusterRepo;
@@ -88,7 +88,7 @@ public sealed class InstitutionReadService : IInstitutionReadService
 
         // Request limit + 1 to detect "has more" without a second round-trip.
         IReadOnlyList<InstitutionClusterRow> rows = await _repo.ListClustersAsync(
-            localityIds, areaLocalityId, state, cursorTs, cursorId, effectiveLimit + 1, ct);
+            institutionId, localityIds, areaLocalityId, state, cursorTs, cursorId, effectiveLimit + 1, ct);
 
         bool hasMore = rows.Count > effectiveLimit;
         var page = hasMore ? rows.Take(effectiveLimit).ToList() : rows.ToList();
@@ -105,8 +105,13 @@ public sealed class InstitutionReadService : IInstitutionReadService
             .Select(row => new InstitutionSignalListItemDto(
                 Id: row.Id,
                 Title: row.Title ?? string.Empty,
-                Area: row.LocalityId.HasValue
-                    ? new InstitutionAreaRefDto(row.LocalityId.Value, row.LocalityDisplayName ?? string.Empty)
+                // AreaRef uses the jurisdiction id so this field stays
+                // interchangeable with the `areaId` query parameter and with
+                // /v1/institution/areas, which also key by jurisdiction id.
+                // Rows without a matching jurisdiction (defensive fallback
+                // for data mid-migration) surface no area ref.
+                Area: row.AreaJurisdictionId.HasValue
+                    ? new InstitutionAreaRefDto(row.AreaJurisdictionId.Value, row.LocalityDisplayName ?? string.Empty)
                     : null,
                 Category: row.Category,
                 Condition: DeriveCondition(row.State, row.AffectedCount),

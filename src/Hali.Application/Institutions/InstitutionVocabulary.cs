@@ -32,7 +32,9 @@ public static class InstitutionVocabulary
     };
 
     // Signal list filter states consumed by the Live Signals page.
-    public static readonly IReadOnlySet<string> SignalFilterStates = new HashSet<string>
+    // Iteration order is deterministic (List, not HashSet) so the validation
+    // error message that lists the accepted values is stable across runs.
+    public static readonly IReadOnlyList<string> SignalFilterStates = new List<string>
     {
         "active",
         "growing",
@@ -53,11 +55,15 @@ public static class InstitutionVocabulary
     public const string TrendPossibleRestoration = "possible_restoration";
 
     // Activity feed item types — the subset currently emitted by the
-    // institution activity endpoint. Adding new types requires adding the
-    // emission site in InstitutionReadService and updating the OpenAPI enum.
+    // institution activity endpoint. The OpenAPI enum also lists
+    // <c>stabilising</c> as a reserved wire value; it has no emission site
+    // today and will be wired once the cluster-lifecycle telemetry
+    // distinguishes "activity slowing without full restoration" from the
+    // generic <c>growing</c> state. Adding a new active emission requires a
+    // matching CASE branch in InstitutionReadRepository.GetActivityAsync and
+    // an OpenAPI update.
     public const string ActivityNewSignal = "new_signal";
     public const string ActivityGrowing = "growing";
-    public const string ActivityStabilising = "stabilising";
     public const string ActivityUpdatePosted = "update_posted";
     public const string ActivityRestoration = "restoration";
     public const string ActivityRestored = "restored";

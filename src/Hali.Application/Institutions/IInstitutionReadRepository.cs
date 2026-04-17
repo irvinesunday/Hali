@@ -44,8 +44,13 @@ public interface IInstitutionReadRepository
     /// stable paging surface. <paramref name="localityIds"/> is the
     /// pre-computed set of localities in the caller's scope — passed
     /// explicitly so the service layer owns the scope derivation.
+    /// Rows carry the caller's jurisdiction id for the cluster's locality
+    /// in <see cref="InstitutionClusterRow.AreaJurisdictionId"/>, keeping
+    /// the wire contract consistent with <see cref="GetAreasAsync"/> —
+    /// both surfaces use jurisdiction ids as the stable area identifier.
     /// </summary>
     Task<IReadOnlyList<InstitutionClusterRow>> ListClustersAsync(
+        Guid institutionId,
         IReadOnlyList<Guid> localityIds,
         Guid? areaLocalityId,
         string? filterState,
@@ -129,6 +134,7 @@ public sealed record InstitutionClusterRow(
     Guid Id,
     string? Title,
     Guid? LocalityId,
+    Guid? AreaJurisdictionId,
     string? LocalityDisplayName,
     string Category,
     string State,
