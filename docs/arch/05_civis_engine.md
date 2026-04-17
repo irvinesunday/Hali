@@ -7,7 +7,9 @@ This file is your contract for all trust, scoring, and state machine logic. Impl
 
 ## Module boundary
 
-`Hali.Modules.Civis` owns:
+The CIVIS module is a logical folder-level boundary inside
+`Hali.Application` / `Hali.Domain` — there is no separate `Hali.Modules.Civis`
+csproj. CIVIS code owns:
 - WRAB computation
 - SDS computation
 - MACF computation

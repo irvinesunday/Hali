@@ -136,7 +136,12 @@ public void Restoration_TheftDetection_RevokesAllTokens()
 
 ### Required integration tests — Phase 1
 
-Each test uses a real PostgreSQL test DB (use Testcontainers).
+Each test boots the API via `HaliWebApplicationFactory` against a real
+PostgreSQL instance on localhost (see
+`tests/Hali.Tests.Integration/Infrastructure/`). The harness replaces SMS,
+NLP, and Geocoding with test doubles and uses the real Redis instance on
+localhost. Testcontainers was the original plan but was not adopted —
+localhost PostgreSQL + Redis is the current integration harness.
 
 ```
 Auth flow:
@@ -204,7 +209,9 @@ var cluster = new ClusterBuilder()
 
 // Never use production IDs in tests
 // Never call external services (mock INlpExtractionService, ISmsProvider, etc.)
-// Use Testcontainers for PostgreSQL — never SQLite (PostGIS not available on SQLite)
+// Use the localhost PostgreSQL harness for integration tests — never SQLite
+// (PostGIS not available on SQLite). Testcontainers was the original plan but
+// was not adopted; the harness is HaliWebApplicationFactory + localhost PG.
 // Seed taxonomy before each test that touches taxonomy tables
 ```
 
@@ -223,9 +230,11 @@ var cluster = new ClusterBuilder()
 ## Phase 1 test coverage target
 
 ```
-Hali.Domain:            95% line coverage minimum
-Hali.Application:       80% line coverage minimum
-Hali.Modules.Civis:     95% line coverage minimum — no exceptions
-Hali.Infrastructure:    Integration tests cover all DB operations
-Hali.Api:               Contract tests cover all public endpoints
+Hali.Domain:                95% line coverage minimum
+Hali.Application:           80% line coverage minimum
+CIVIS code paths            95% line coverage minimum — no exceptions
+  (inside Hali.Application / Hali.Domain — folder-level module boundary,
+   not a separate csproj)
+Hali.Infrastructure:        Integration tests cover all DB operations
+Hali.Api:                   Contract tests cover all public endpoints
 ```
