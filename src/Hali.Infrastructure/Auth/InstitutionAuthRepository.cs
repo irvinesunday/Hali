@@ -62,6 +62,19 @@ public sealed class InstitutionAuthRepository : IInstitutionAuthRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task UpdateTotpSecretAsync(TotpSecret secret, CancellationToken ct)
+    {
+        _db.TotpSecrets.Update(secret);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteRecoveryCodesForAccountAsync(Guid accountId, CancellationToken ct)
+    {
+        await _db.TotpRecoveryCodes
+            .Where(c => c.AccountId == accountId)
+            .ExecuteDeleteAsync(ct);
+    }
+
     public async Task ConfirmTotpSecretAsync(Guid totpSecretId, DateTime confirmedAt, CancellationToken ct)
     {
         await _db.TotpSecrets

@@ -63,12 +63,19 @@ public sealed class MagicLinkService : IMagicLinkService
         await _repo.SaveMagicLinkAsync(token, ct);
 
         string url = BuildUrl(plaintext);
-        // The URL is delivered via email — never logged. Only the email
-        // destination hash and the outcome bucket are emitted so the
-        // observability model stays PII-safe per SECURITY_POSTURE.md §4.
+        // The URL is delivered via email — never logged. The outcome event
+        // itself carries only the expiry timestamp; no email-derived
+        // identifier is written to the structured log. CodeQL flagged an
+        // earlier version that emitted a 4-byte SHA-256 fingerprint of the
+        // email address — even though the fingerprint is one-way, the
+        // scanner (correctly) treats derived data the same as raw PII.
+        // Correlation across the issue/verify pair is available via the
+        // per-request correlation id that CorrelationIdMiddleware already
+        // tags on every log entry.
         await _emailSender.SendMagicLinkAsync(normalised, url, expiresAt, ct);
-        _logger.LogInformation("institution_auth.magic_link.issued email_fingerprint={Fingerprint} expires_at={ExpiresAt}",
-            FingerprintEmail(normalised), expiresAt);
+        _logger.LogInformation(
+            "institution_auth.magic_link.issued expires_at={ExpiresAt}",
+            expiresAt);
 
         return new MagicLinkIssued(plaintext, url, expiresAt);
     }
@@ -110,11 +117,5 @@ public sealed class MagicLinkService : IMagicLinkService
         // then POSTs it to /v1/auth/institution/magic-link/verify.
         string baseUrl = (_authOpts.AppBaseUrl ?? string.Empty).TrimEnd('/');
         return $"{baseUrl}/institution/magic-link?token={Uri.EscapeDataString(plaintext)}";
-    }
-
-    private static string FingerprintEmail(string email)
-    {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(email));
-        return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
     }
 }

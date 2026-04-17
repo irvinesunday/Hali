@@ -23,6 +23,13 @@ namespace Hali.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("v1/auth/institution")]
+// Class-level role gate. Without a role constraint, a citizen JWT would
+// satisfy bare [Authorize] and reach the TOTP / session endpoints — the
+// institution session cookie + the citizen JWT are both "authenticated"
+// principals but only the institution surface should reach these routes.
+// Magic-link request + verify are [AllowAnonymous] below, which overrides
+// the class-level gate for the pre-session endpoints.
+[Authorize(Roles = "institution")]
 public sealed class InstitutionAuthController : ControllerBase
 {
     private readonly IMagicLinkService _magicLink;
@@ -140,16 +147,30 @@ public sealed class InstitutionAuthController : ControllerBase
 
         TotpEnrollment enrollment = _totp.GenerateEnrollment(account.Email ?? account.Id.ToString());
 
-        // Replace any stale unconfirmed secret so the UI flow can
-        // regenerate without leaving orphan rows.
+        // Re-enrollment replaces the existing unconfirmed secret in place
+        // to respect the uq_totp_secrets_account unique constraint, and
+        // deletes stale recovery codes so a discarded enrollment's codes
+        // cannot be redeemed against the new secret.
         var now = DateTime.UtcNow;
-        await _repo.SaveTotpSecretAsync(new TotpSecret
+        if (existing is not null)
         {
-            Id = Guid.NewGuid(),
-            AccountId = accountId,
-            SecretEncrypted = enrollment.EncryptedSecret,
-            EnrolledAt = now,
-        }, ct);
+            existing.SecretEncrypted = enrollment.EncryptedSecret;
+            existing.EnrolledAt = now;
+            existing.ConfirmedAt = null;
+            existing.RevokedAt = null;
+            await _repo.UpdateTotpSecretAsync(existing, ct);
+            await _repo.DeleteRecoveryCodesForAccountAsync(accountId, ct);
+        }
+        else
+        {
+            await _repo.SaveTotpSecretAsync(new TotpSecret
+            {
+                Id = Guid.NewGuid(),
+                AccountId = accountId,
+                SecretEncrypted = enrollment.EncryptedSecret,
+                EnrolledAt = now,
+            }, ct);
+        }
 
         await _repo.SaveRecoveryCodesAsync(
             enrollment.RecoveryCodes.Select(rc => new TotpRecoveryCode

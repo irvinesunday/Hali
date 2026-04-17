@@ -31,24 +31,29 @@ namespace Hali.Api.Middleware;
 public sealed class InstitutionSessionMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly IInstitutionSessionService _sessions;
-    private readonly InstitutionAuthOptions _opts;
     private readonly ILogger<InstitutionSessionMiddleware> _logger;
 
+    // NOTE on DI lifetime:
+    //   Conventional middleware (via app.UseMiddleware<T>()) is instantiated
+    //   once from the ROOT service provider. Injecting a scoped dependency
+    //   here would capture it as a singleton — across requests it would
+    //   either share a DbContext or operate on a disposed scope. Scoped
+    //   services are resolved per-request via the InvokeAsync parameters
+    //   below, which ASP.NET Core resolves from the request scope.
     public InstitutionSessionMiddleware(
         RequestDelegate next,
-        IInstitutionSessionService sessions,
-        IOptions<InstitutionAuthOptions> options,
         ILogger<InstitutionSessionMiddleware> logger)
     {
         _next = next;
-        _sessions = sessions;
-        _opts = options.Value;
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(
+        HttpContext context,
+        IInstitutionSessionService sessions,
+        IOptions<InstitutionAuthOptions> options)
     {
+        InstitutionAuthOptions opts = options.Value;
         // Only act on institution/institution-admin paths; citizen routes
         // continue to rely on JwtBearer.
         var path = context.Request.Path.Value ?? string.Empty;
@@ -73,7 +78,7 @@ public sealed class InstitutionSessionMiddleware
             return;
         }
 
-        if (!context.Request.Cookies.TryGetValue(_opts.SessionCookieName, out var sessionToken)
+        if (!context.Request.Cookies.TryGetValue(opts.SessionCookieName, out var sessionToken)
             || string.IsNullOrWhiteSpace(sessionToken))
         {
             // No cookie — fall through. If the downstream endpoint is
@@ -83,7 +88,7 @@ public sealed class InstitutionSessionMiddleware
             return;
         }
 
-        var validation = await _sessions.ValidateAsync(sessionToken, context.RequestAborted);
+        var validation = await sessions.ValidateAsync(sessionToken, context.RequestAborted);
         switch (validation.Result)
         {
             case SessionValidationResult.Ok:
@@ -107,12 +112,16 @@ public sealed class InstitutionSessionMiddleware
 
         WebSession session = validation.Session!;
 
-        // Touch the session asynchronously so the idle timer resets
-        // without blocking the request pipeline. The write is
-        // fire-and-forget: the read already snapshotted the current
-        // last_activity_at and a lost update only costs one request
-        // worth of idle time.
-        _ = _sessions.TouchAsync(session.Id, CancellationToken.None);
+        // Awaited (not fire-and-forget) — the scoped DbContext behind
+        // ISessionService is disposed with the request scope, so a
+        // background continuation would risk running on a disposed
+        // context. A single UPDATE statement is cheap enough to carry
+        // inline. Also update the in-memory session object so the
+        // controller's RefreshSession response echoes the fresh
+        // last-activity timestamp.
+        DateTime touchedAt = DateTime.UtcNow;
+        await sessions.TouchAsync(session.Id, context.RequestAborted);
+        session.LastActivityAt = touchedAt;
 
         // Build a ClaimsPrincipal mirroring the JWT-flow shape. Role +
         // institution_id must match the existing [Authorize(Roles = ...)]

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Api.Observability;
+using Microsoft.AspNetCore.DataProtection;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
 using Hali.Application.Institutions;
@@ -31,7 +32,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
-builder.Services.AddDataProtection();
+
+// Data Protection key persistence. Default to a file-system directory
+// under the content root so the key ring survives process restarts —
+// critical because TOTP secrets are encrypted with these keys and an
+// unresolvable key ring breaks every institution user's second factor.
+// Production deployments override `DataProtection:KeysPath` to a shared
+// volume / Redis / blob-backed store so a multi-node cluster shares the
+// ring. The application name isolates Hali's keys from any other
+// consumer in the same shared store.
+string dataProtectionKeysPath =
+    builder.Configuration["DataProtection:KeysPath"]
+    ?? System.IO.Path.Combine(builder.Environment.ContentRootPath, "data-protection-keys");
+System.IO.Directory.CreateDirectory(dataProtectionKeysPath);
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new System.IO.DirectoryInfo(dataProtectionKeysPath))
+    .SetApplicationName("Hali.Api");
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();

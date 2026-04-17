@@ -33,6 +33,20 @@ public interface IInstitutionAuthRepository
 
     Task SaveTotpSecretAsync(TotpSecret secret, CancellationToken ct);
 
+    /// <summary>
+    /// Updates an existing (unconfirmed) TOTP secret row with a freshly
+    /// generated secret. Used by the enroll endpoint so re-enrollment
+    /// does not hit the <c>uq_totp_secrets_account</c> unique constraint.
+    /// </summary>
+    Task UpdateTotpSecretAsync(TotpSecret secret, CancellationToken ct);
+
+    /// <summary>
+    /// Deletes all recovery codes for an account. Called during re-enrollment
+    /// so stale codes from a prior enrollment cannot be redeemed after the
+    /// secret has been rotated.
+    /// </summary>
+    Task DeleteRecoveryCodesForAccountAsync(Guid accountId, CancellationToken ct);
+
     Task ConfirmTotpSecretAsync(Guid totpSecretId, DateTime confirmedAt, CancellationToken ct);
 
     Task SaveRecoveryCodesAsync(

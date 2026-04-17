@@ -19,8 +19,14 @@ public class MagicLinkToken
     public string TokenHash { get; set; } = string.Empty;
 
     /// <summary>
-    /// The account the link resolves to. Null when the email is not yet
-    /// registered — the link flow itself creates the account on verify.
+    /// The account the link resolves to. Institution-web magic links are
+    /// only valid for pre-existing institution accounts; a null value
+    /// means the destination email did not resolve to any account at
+    /// issue time and the verify endpoint will reject with
+    /// <c>auth.magic_link_invalid</c>. The null column is retained (not
+    /// rejected at issue time) so response shape is identical for
+    /// registered and unknown emails — see
+    /// <c>MagicLinkService.IssueAsync</c>'s enumeration-resistance note.
     /// </summary>
     public Guid? AccountId { get; set; }
 

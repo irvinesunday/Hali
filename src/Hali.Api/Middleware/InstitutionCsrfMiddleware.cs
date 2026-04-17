@@ -7,7 +7,6 @@ using Hali.Application.Auth;
 using Hali.Application.Errors;
 using Hali.Domain.Entities.Auth;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Options;
 
 namespace Hali.Api.Middleware;
 
@@ -31,20 +30,18 @@ public sealed class InstitutionCsrfMiddleware
     };
 
     private readonly RequestDelegate _next;
-    private readonly IInstitutionSessionService _sessions;
-    private readonly InstitutionAuthOptions _opts;
 
-    public InstitutionCsrfMiddleware(
-        RequestDelegate next,
-        IInstitutionSessionService sessions,
-        IOptions<InstitutionAuthOptions> options)
+    // Conventional middleware — scoped services are resolved per-request
+    // via InvokeAsync parameters (see InstitutionSessionMiddleware for
+    // the same pattern + rationale).
+    public InstitutionCsrfMiddleware(RequestDelegate next)
     {
         _next = next;
-        _sessions = sessions;
-        _opts = options.Value;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(
+        HttpContext context,
+        IInstitutionSessionService sessions)
     {
         if (_safeVerbs.Contains(context.Request.Method))
         {
@@ -76,7 +73,7 @@ public sealed class InstitutionCsrfMiddleware
         // a request that lacks the cookie but carries a stolen header
         // would pass that check. Comparing against storage makes the
         // check rest on the session's own CSRF secret.
-        string headerHash = _sessions.HashCsrfToken(headerValues.ToString());
+        string headerHash = sessions.HashCsrfToken(headerValues.ToString());
         if (!string.Equals(headerHash, session.CsrfTokenHash, StringComparison.Ordinal))
         {
             await WriteErrorAsync(context, ErrorCodes.AuthCsrfMismatch,
