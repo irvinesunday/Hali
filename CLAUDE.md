@@ -67,49 +67,55 @@ If any of these seem necessary: stop and ask before building.
 
 ## Monorepo structure
 
+The repo mixes current reality with planned expansion. Items marked **planned**
+do not yet exist on disk and are scheduled against open issues; everything else
+is in the tree today.
+
 ```
 /hali
   /apps
-    /citizen-mobile            # React Native + Expo (Phase 1)
-    /institution-web           # Phase 2
-    /institution-admin-web     # Phase 2
-    /hali-ops-web              # Phase 3
-    /api                       # ASP.NET Core Web API
-    /workers                   # .NET Background Workers
+    /citizen-mobile            # React Native + Expo (Phase 1) — implemented
+    /institution-web           # Next.js — planned (Phase 2)
+    /institution-admin-web     # Next.js — planned (Phase 2)
+    /hali-ops-web              # Next.js — planned (Phase 3)
 
-  /packages
-    /contracts                 # Framework-agnostic TypeScript types (all surfaces)
-    /taxonomy                  # Category/subcategory/condition constants (all surfaces)
-    /config                    # Non-secret app constants (all surfaces)
-    /design-system             # Tailwind + shadcn/ui — WEB ONLY, never in citizen-mobile
+  /packages                    # planned — see issues #188, #189
+    /contracts                 # Framework-agnostic TypeScript types — planned
+    /taxonomy                  # Category/subcategory/condition constants — planned
+    /config                    # Non-secret app constants — planned
+    /design-system             # Tailwind + shadcn/ui (web only) — planned
 
-  /src                         # C# modular monolith
-    /Hali.Api
-    /Hali.Workers
-    /Hali.Domain
-    /Hali.Application
-    /Hali.Infrastructure
-    /Hali.Contracts
-    /Hali.Modules.Auth
-    /Hali.Modules.Signals
-    /Hali.Modules.Clusters
-    /Hali.Modules.Participation
-    /Hali.Modules.Advisories
-    /Hali.Modules.Institutions
-    /Hali.Modules.Admin
-    /Hali.Modules.Civis
-    /Hali.Modules.Nlp
-    /Hali.Modules.Notifications
-    /Hali.Modules.Metrics
+  /src                         # C# modular monolith — six projects, module
+                               # boundaries live inside Hali.Application and
+                               # Hali.Domain (folder-level, not separate csproj)
+    /Hali.Api                  # ASP.NET Core Web API composition root
+    /Hali.Workers              # Background worker host
+    /Hali.Domain               # Civic vocabulary, invariants, domain services
+    /Hali.Application          # Use cases, DTOs, auth/signals/clusters/etc.
+    /Hali.Infrastructure       # EF Core, Redis, adapters, external integrations
+    /Hali.Contracts            # Wire-format request/response DTOs
 
   /tests
-  /docs/arch       # Architecture reference — read before each implementation area
+    /Hali.Tests.Unit           # Unit tests — implemented
+    /Hali.Tests.Integration    # Integration tests via WebApplicationFactory
+                               # against localhost PostgreSQL + Redis — implemented
+
+  /docs/arch                   # Architecture reference — read before each
+                               # implementation area
+  /docs/reference-ui/v0        # v0 citizen + institution UI reference artifacts
+  /docs/runbooks               # Incident response runbooks
   /scripts
   /agent_prompts
   /session_prompts
   /agent_outputs
   .github/workflows
 ```
+
+Logical C# module names (`Hali.Modules.Auth`, `Hali.Modules.Signals`,
+`Hali.Modules.Civis`, etc.) that appear in older docs refer to folder-level
+boundaries **inside** `Hali.Application` / `Hali.Domain` / `Hali.Infrastructure`.
+There are no `Hali.Modules.*` csproj files — the six projects above are the
+complete solution layout.
 
 ---
 
@@ -381,9 +387,13 @@ Phase 1 (Citizen Mobile MVP) backend is **complete**.
 | 07 | Push notifications, observability, integration polish | ✅ Done |
 
 Post-build Agent C full-codebase validation: **PASS_WITH_NOTES** — all blocking issues resolved.
-139 unit tests passing. Codebase on `main`.
+Backend currently ships 450+ unit tests and a full integration-test suite
+(WebApplicationFactory against localhost PostgreSQL + Redis). The default
+branch for ongoing work is `develop`; `main` is the promoted release line.
 
-**PR #28 merged:** Institution auth (B-5), OpenAPI v0.3.0 docs sync, SLOs (12 definitions), alert rules (14, P1–P4), runbook stubs (12), Dredd contract test hooks. 18/18 CI checks passed.
+OpenAPI spec is at `02_openapi.yaml` — version tracks forward as endpoints
+are added (currently v0.5.0). Check the spec file itself for the authoritative
+version, not historical PR descriptions in this document.
 
 Repo location on WSL2: `/home/irvine/projects/halicity/hali`
 
@@ -391,31 +401,25 @@ Repo location on WSL2: `/home/irvine/projects/halicity/hali`
 
 ## Agent C blocking issue status
 
-| Issue | Description | Status |
-|---|---|---|
-| BLOCKING-1 | Integration tests — WebApplicationFactory + Testcontainers PostgreSQL | ⏳ Own session |
-| BLOCKING-2 | Institution header bypass security fix | ✅ Done |
-| BLOCKING-3 | Governance CIVIS constants | ✅ Done |
-| BLOCKING-4 | Redis rate limiting on preview endpoint | ✅ Done |
-| BLOCKING-5 | MinRestorationAffectedVotes corrected to 2 | ✅ Done |
-| BLOCKING-6 | DeactivationThreshold documented | ✅ Done |
-| BLOCKING-7 | Structured logging verified live | ✅ Done |
-
-Integration tests (BLOCKING-1) are the only remaining backend item. Run as a parallel session alongside mobile app work.
+All seven Phase 1 blocking issues identified in the post-build Agent C
+validation are resolved, including the integration-test harness
+(`tests/Hali.Tests.Integration`, `HaliWebApplicationFactory`, localhost
+PostgreSQL + Redis — not Testcontainers). Historical detail is preserved in
+`docs/arch/AGENT_C_PHASE1_VALIDATION.md` for audit purposes.
 
 ---
 
 ## What is not yet built
 
-| Item | Phase | Notes |
+| Item | Phase | State |
 |---|---|---|
-| Integration tests | Phase 1 | Separate session — can run in parallel with mobile |
-| React Native mobile app (citizen-mobile) | Phase 1 | Agent D — highest priority |
-| Institution Operations Dashboard | Phase 2 | Backend auth foundation (B-5) already done |
-| Institution Admin Dashboard | Phase 2 | |
-| Hali Ops Admin Dashboard | Phase 3 | |
+| Citizen mobile app — remaining screens and polish | Phase 1 | In progress — open issues track outstanding flows (e.g. GPS locality wiring, condition badge, feature-flag rollout) |
+| Institution Operations Dashboard | Phase 2 | Planned — backend auth foundation in place; institution routes tracked under #195 |
+| Institution Admin Dashboard | Phase 2 | Planned — routes tracked under #196 |
+| Hali Ops Admin Dashboard | Phase 3 | Planned |
 
-The mobile app is the highest priority remaining Phase 1 item. Start with Agent D.
+Current priority is the Phase 1→Phase 2 backend + institution-web build.
+Open issues under the `feature:` label are the authoritative backlog.
 
 ---
 
@@ -432,17 +436,20 @@ You do not run session prompts sequentially anymore — those are complete. For 
 5. Run `dotnet test` before and after — must stay at 0 failures
 6. Commit with a clear message referencing the issue or fix
 
-### Starting a mobile app session (Agent D)
+### Continuing a mobile app session
 
-The React Native app is a greenfield build on top of the completed backend.
-Before starting, read:
+The React Native app in `apps/citizen-mobile` is an in-flight build on top of
+the completed backend — auth, home feed, cluster detail, signal composer,
+settings/restoration, and core theming have already shipped across Phase A–G
+sessions. Remaining work is tracked as discrete issues (see the `feature:` and
+`chore:` labels).
+
+Before making changes, read:
 - `docs/arch/04_phase1_mobile.md` — full screen inventory and rules
 - `docs/arch/02_api_contracts.md` — all Phase 1 endpoints the app calls
 - `docs/arch/07_auth_implementation.md` — SMS OTP flow and token storage
-- `agent_prompts/agent_d_mobile.md` — Agent D system prompt
 
-The backend API is running at `http://localhost:8080` for local development.
-Start with auth flow (phone entry → OTP → verify → home feed) and work screen by screen.
+The backend API is available at `http://localhost:8080` for local development.
 
 ### Starting a Phase 2 session (institution dashboards)
 

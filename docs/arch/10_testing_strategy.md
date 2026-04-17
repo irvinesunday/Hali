@@ -223,9 +223,11 @@ var cluster = new ClusterBuilder()
 ## Phase 1 test coverage target
 
 ```
-Hali.Domain:            95% line coverage minimum
-Hali.Application:       80% line coverage minimum
-Hali.Modules.Civis:     95% line coverage minimum — no exceptions
-Hali.Infrastructure:    Integration tests cover all DB operations
-Hali.Api:               Contract tests cover all public endpoints
+Hali.Domain:                95% line coverage minimum
+Hali.Application:           80% line coverage minimum
+CIVIS code paths            95% line coverage minimum — no exceptions
+  (inside Hali.Application / Hali.Domain — folder-level module boundary,
+   not a separate csproj)
+Hali.Infrastructure:        Integration tests cover all DB operations
+Hali.Api:                   Contract tests cover all public endpoints
 ```
