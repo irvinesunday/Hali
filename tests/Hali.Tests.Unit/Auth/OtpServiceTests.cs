@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Domain.Entities.Auth;
 using Hali.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -35,7 +36,8 @@ public class OtpServiceTests
 	{
 		_rateLimiter.IsAllowedAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>()).Returns(false);
 		OtpService svc = CreateService();
-		Assert.Equal("OTP_RATE_LIMITED", (await Assert.ThrowsAsync<InvalidOperationException>(() => svc.RequestOtpAsync("+254712345678", AuthMethod.PhoneOtp))).Message);
+		var ex = await Assert.ThrowsAsync<RateLimitException>(() => svc.RequestOtpAsync("+254712345678", AuthMethod.PhoneOtp));
+		Assert.Equal("auth.otp_rate_limited", ex.Code);
 		await _sms.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 	}
 

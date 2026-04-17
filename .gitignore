@@ -119,3 +119,9 @@ build_state.json
 agent_outputs/session_*_prompt.txt
 agent_outputs/session_*_claude_output.txt
 agent_outputs/master_orchestrator.log
+
+# ── Claude Code agent worktrees (local only) ────────────────────────────────
+.claude/worktrees/
+
+# ── Expo generated type declarations ────────────────────────────────────────
+expo-env.d.ts

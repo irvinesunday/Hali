@@ -338,6 +338,26 @@ It supersedes any conflicting guidance in older files.
 
 ---
 
+## Self-Healing Requirement (MANDATORY)
+
+For any task involving CI pipelines, deployment workflows, database migrations,
+Docker builds, or test failures:
+
+1. Read `docs/arch/SELF_HEALING_SKILL.md` before starting
+2. After every fix, watch the CI run yourself using `gh run watch`
+3. Read failure logs yourself using `gh run view --log-failed`
+4. Apply the next fix from the fix table in the skill file
+5. Iterate until the job passes or you hit a genuine external blocker
+
+Never stop and report a code-level failure to Irvine.
+Never wait for Irvine to paste error logs.
+You have gh CLI access. Use it every time without being asked.
+
+Only defer to Irvine when the fix requires action outside the codebase:
+missing GitHub secret, Neon infrastructure change, or external API credentials.
+
+---
+
 
 ---
 
@@ -478,3 +498,70 @@ When any two documents conflict, this is the resolution order:
 5. 02_openapi.yaml for route names
 6. Everything else (older .docx files, earlier .md files) — reference only
 
+---
+
+## Copilot Review Comments
+
+Before addressing any Copilot review comment on any PR, read
+`docs/arch/COPILOT_RESOLUTION_SKILL.md` in full. Every step in that
+file is mandatory. Follow the skill file's exact review, thread-
+reply, and resolution procedure, including its required checks and
+all affected fixes. Do not skip the reply or resolve steps.
+
+## Reference Skills
+
+These instruction docs are mandatory reading at the listed trigger points:
+
+- Read `mvp_locked_decisions.md` before changing any locked architectural, schema, or auth decision — this is the locked-decisions authority referenced by `docs/arch/COPILOT_RESOLUTION_SKILL.md`.
+- Read `nlp_extraction_prompt.md` before modifying CSI-NLP extraction prompts, schemas, or the structured output contract.
+- Read `mobile_screen_inventory.md` before adding, removing, or restructuring screens in `apps/citizen-mobile`.
+
+## Architecture Reference Docs
+
+The following are canonical reference documents — read them when working in their respective domains:
+
+- `docs/arch/README.md` — index of the docs/arch/ canon
+- `docs/arch/hali_citizen_mvp_canonical_spec.md` — Phase 1 citizen mobile UX/architecture freeze
+- `docs/arch/hali_institution_dashboard_canonical_spec.md` — Phase 2 institution dashboard freeze
+- `docs/arch/hali_ops_internal_dashboard_canonical_spec_v2.md` — Phase 3 Hali ops dashboard freeze
+- `docs/runbooks/*.md` — incident response runbooks (read when touching the corresponding subsystem or responding to alerts)
+- `docs/staging-env-guide.md` — staging environment / GitHub Environment secrets reference
+- `04_queue_topic_definitions.md` — domain event and queue topic catalog
+- `05_redis_job_config.md` — Redis usage and worker queue config
+- `schema_patch_notes.md` — historical schema patch notes (supplements `docs/arch/01_schema_reference.md`)
+- `HANDOVER.md` — operator guide for running Claude Code build sessions
+- `SECURITY.md` — vulnerability reporting policy
+
+## Code Quality — Mandatory Pre-Session and Pre-Commit Rules
+
+### Before writing any code in a session
+Read `docs/arch/CODING_STANDARDS.md` in full.
+Read `docs/arch/LESSONS_LEARNED.md` — especially the most recent 3 entries.
+These files contain concrete rules derived from real Copilot review failures.
+Ignoring them will produce the same errors again.
+
+### Before every git commit
+Run the Pre-Commit Checklist in `docs/arch/CODING_STANDARDS.md`.
+Every item must be checked. Do not commit if any item fails.
+
+Minimum commands before committing C# changes:
+```
+dotnet format --verify-no-changes
+dotnet build
+dotnet test   # if tests exist for the changed module
+```
+
+Minimum commands before committing TypeScript changes:
+```
+npx tsc --noEmit
+```
+
+### After addressing a Copilot review comment
+Fix the code only. Do NOT auto-write to `docs/arch/LESSONS_LEARNED.md` or
+`docs/arch/CODING_STANDARDS.md` unless the user explicitly requests a
+documentation pass. See `docs/arch/CODING_STANDARDS.md` → "PR Scope Discipline"
+for the full rule.
+
+### At the end of every session that included a git push
+No automatic documentation writes. If lessons were identified, note them
+internally — they will be recorded in a separate documentation pass when requested.

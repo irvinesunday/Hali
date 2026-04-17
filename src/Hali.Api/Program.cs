@@ -1,7 +1,11 @@
 using System;
 using System.Text;
+using System.Text.Json;
+using Hali.Api.Errors;
 using Hali.Api.Middleware;
+using Hali.Api.Observability;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -34,6 +38,27 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
+builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
+// ApiMetrics owns the Hali.Api Meter + the api_exceptions_total counter. The
+// instance is long-lived; IMeterFactory is registered by the hosting stack.
+builder.Services.AddSingleton<ApiMetrics>();
+// HomeMetrics owns the Hali.Home Meter + the home feed latency histogram and
+// cache-hit/miss counters used by HomeController. Registered alongside
+// ApiMetrics so both meters export through the same OTel pipeline.
+builder.Services.AddSingleton<HomeMetrics>();
+// SignalsMetrics owns the Hali.Signals Meter + the signal ingestion counters,
+// NLP extraction latency histogram, and join-outcome counter emitted from
+// SignalsController / AnthropicNlpExtractionService / ClusteringService /
+// CivisEvaluationService. Same singleton lifetime as the other meters.
+builder.Services.AddSingleton<Hali.Application.Observability.SignalsMetrics>();
+// ClustersMetrics owns the Hali.Clusters Meter + the participation actions
+// counter and cluster lifecycle transitions counter emitted from
+// ClustersController / ParticipationService / CivisEvaluationService.
+builder.Services.AddSingleton<Hali.Application.Observability.ClustersMetrics>();
+// PushNotificationsMetrics owns the Hali.Notifications Meter + the push-send
+// attempt counter, push-send latency histogram, and push-token registration
+// counter emitted from ExpoPushNotificationService / DevicesController.
+builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMetrics>();
 
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
@@ -52,18 +77,103 @@ builder.Services.AddAuthentication("Bearer").AddJwtBearer(opts =>
         ValidAudience = jwtAudience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
     };
+
+    // Replace the framework's default empty-bodied 401 with the canonical
+    // ApiErrorResponse envelope. Without this, every [Authorize]-protected
+    // endpoint short-circuits before ExceptionHandlingMiddleware can write
+    // a body, breaking the wire contract every other error path honours.
+    //
+    // Code is "auth.unauthenticated" — distinct from the application-layer
+    // "auth.unauthorized" thrown by controllers when a token is valid but
+    // an expected claim is missing. We deliberately do NOT leak whether
+    // the token was missing, malformed, or expired (security side-channel).
+    opts.Events = new JwtBearerEvents
+    {
+        OnChallenge = async context =>
+        {
+            // Suppress the framework's default challenge so we own the response.
+            context.HandleResponse();
+
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            // Preserve RFC 7235 challenge advertisement.
+            if (!context.Response.Headers.ContainsKey("WWW-Authenticate"))
+            {
+                context.Response.Headers.Append("WWW-Authenticate", "Bearer");
+            }
+
+            // CorrelationIdMiddleware runs before authentication, so
+            // Items["CorrelationId"] is populated and already sanitized to
+            // a server-only GUID. TraceIdentifier is the framework fallback.
+            var traceId = context.HttpContext.Items["CorrelationId"] as string
+                ?? context.HttpContext.TraceIdentifier
+                ?? string.Empty;
+
+            var envelope = new ApiErrorResponse
+            {
+                Error = new ApiErrorBody
+                {
+                    Code = ErrorCodes.AuthUnauthenticated,
+                    Message = "Authentication required.",
+                    TraceId = traceId
+                }
+            };
+
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
+        },
+
+        // Mirror of OnChallenge for the 403 path: when an authenticated caller
+        // fails a role-gated [Authorize(Roles = ...)] check, the authorization
+        // stage short-circuits with a 403 that bypasses
+        // ExceptionHandlingMiddleware, producing a bare empty body. This hook
+        // emits the canonical ApiErrorResponse envelope instead so role-gated
+        // endpoints match the wire contract used everywhere else.
+        //
+        // Code is "auth.role_insufficient" — distinct from:
+        //   - "auth.unauthenticated" (OnChallenge above — no/invalid token)
+        //   - "auth.unauthorized" (application-layer, claim missing in logic)
+        //   - "auth.refresh_token_invalid" (refresh-endpoint-specific)
+        // Message is deliberately opaque: we do NOT leak the required role,
+        // policy, or claim name, because that information exposes the shape
+        // of the authorization graph to unauthorized callers.
+        OnForbidden = async context =>
+        {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            var traceId = context.HttpContext.Items["CorrelationId"] as string
+                ?? context.HttpContext.TraceIdentifier
+                ?? string.Empty;
+
+            var envelope = new ApiErrorResponse
+            {
+                Error = new ApiErrorBody
+                {
+                    Code = ErrorCodes.AuthRoleInsufficient,
+                    Message = "Access to this resource is not permitted.",
+                    TraceId = traceId
+                }
+            };
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(envelope, ApiErrorJsonOptions.Default));
+        }
+    };
 });
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers()
-    .AddJsonOptions(opts =>
-    {
-        opts.JsonSerializerOptions.Converters.Add(
-            new System.Text.Json.Serialization.JsonStringEnumConverter(
-                System.Text.Json.JsonNamingPolicy.SnakeCaseLower));
-        opts.JsonSerializerOptions.PropertyNamingPolicy =
-            System.Text.Json.JsonNamingPolicy.CamelCase;
-    });
+    .AddJsonOptions(Hali.Api.Serialization.ApiJsonConfiguration.Configure);
 builder.Services.AddOpenApi();
 
 // OpenTelemetry — enabled when OTEL_EXPORTER_OTLP_ENDPOINT is configured
@@ -81,6 +191,11 @@ if (!string.IsNullOrWhiteSpace(otelEndpoint))
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)))
         .WithMetrics(m => m
             .AddAspNetCoreInstrumentation()
+            .AddMeter(ApiMetrics.MeterName)
+            .AddMeter(HomeMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.SignalsMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.ClustersMetrics.MeterName)
+            .AddMeter(Hali.Application.Observability.PushNotificationsMetrics.MeterName)
             .AddOtlpExporter(o => o.Endpoint = new Uri(otelEndpoint)));
 }
 
@@ -119,6 +234,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

@@ -19,5 +19,57 @@ public record ClusterResponseDto(
     DateTime? PossibleRestorationAt,
     DateTime? ResolvedAt)
 {
+    /// <summary>
+    /// Canonical human-readable location label for this cluster, e.g.
+    /// "Ngong Road near Adams Arcade, Kilimani". Null when the originating
+    /// signal did not include a resolved location label.
+    /// </summary>
+    public string? LocationLabel { get; init; }
+
     public List<OfficialPostResponseDto> OfficialPosts { get; init; } = new();
+
+    /// <summary>
+    /// Per-caller participation summary used by the mobile UI to gate the
+    /// "Add Further Context" and restoration-response CTAs server-side.
+    /// Null for unauthenticated callers or when the caller has no
+    /// participation record on this cluster.
+    /// </summary>
+    public MyParticipationDto? MyParticipation { get; init; }
+
+    /// <summary>
+    /// Fraction of restoration responses that voted 'yes'. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c> (null otherwise, and
+    /// null when no restoration responses have been recorded yet). Equal to
+    /// <see cref="RestorationYesVotes"/> divided by
+    /// <see cref="RestorationTotalVotes"/>. Exposed as a pre-computed server
+    /// value — mobile must not derive it from other fields.
+    /// </summary>
+    public double? RestorationRatio { get; init; }
+
+    /// <summary>
+    /// Count of 'restoration_yes' votes on this cluster. Populated only when
+    /// <see cref="State"/> is <c>possible_restoration</c>. Aggregate count
+    /// only — no individual vote attribution.
+    /// </summary>
+    public int? RestorationYesVotes { get; init; }
+
+    /// <summary>
+    /// Total count of restoration responses on this cluster (participation
+    /// types <c>restoration_yes</c>, <c>restoration_no</c>,
+    /// <c>restoration_unsure</c>). Populated only when <see cref="State"/> is
+    /// <c>possible_restoration</c>. Aggregate count only.
+    /// </summary>
+    public int? RestorationTotalVotes { get; init; }
 }
+
+/// <summary>
+/// Snapshot of the authenticated caller's most recent participation on a
+/// cluster, plus the server's verdict on whether the two restricted CTAs
+/// may be shown. This is the source of truth — the mobile app must NOT
+/// gate these CTAs on local state alone.
+/// </summary>
+public record MyParticipationDto(
+    string Type,
+    DateTime CreatedAt,
+    bool CanAddContext,
+    bool CanRespondToRestoration);

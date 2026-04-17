@@ -52,6 +52,7 @@ public class EvaluatePossibleRestorationJobTests
         public Task<int> ComputeWrabCountAsync(Guid c, int d, CancellationToken ct) => Task.FromResult(0);
         public Task<int> ComputeActiveMassCountAsync(Guid c, int h, CancellationToken ct) => Task.FromResult(0);
         public Task<int> CountUniqueDevicesAsync(Guid c, CancellationToken ct) => Task.FromResult(0);
+        public Task<double> GetMinLocationConfidenceAsync(Guid c, CancellationToken ct) => Task.FromResult(1.0);
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
@@ -79,18 +80,16 @@ public class EvaluatePossibleRestorationJobTests
             return Task.FromResult(count);
         }
 
-        public Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct)
+        public Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct)
         {
-            int total = 0;
-            foreach (var type in new[] { ParticipationType.RestorationYes, ParticipationType.RestorationNo, ParticipationType.RestorationUnsure })
-            {
-                _counts.TryGetValue((clusterId, type), out var c);
-                total += c;
-            }
-            return Task.FromResult(total);
+            _counts.TryGetValue((clusterId, ParticipationType.RestorationYes), out var yes);
+            _counts.TryGetValue((clusterId, ParticipationType.RestorationNo), out var no);
+            _counts.TryGetValue((clusterId, ParticipationType.RestorationUnsure), out var unsure);
+            return Task.FromResult(new RestorationCountSnapshot(yes, no, yes + no + unsure));
         }
 
         public Task<ParticipationEntity?> GetByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
+        public Task<ParticipationEntity?> GetMostRecentByAccountAsync(Guid c, Guid a, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
         public Task DeleteByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.CompletedTask;
         public Task AddAsync(ParticipationEntity p, CancellationToken ct) => Task.CompletedTask;
         public Task UpdateContextAsync(Guid id, string text, CancellationToken ct) => Task.CompletedTask;
@@ -113,9 +112,12 @@ public class EvaluatePossibleRestorationJobTests
         CivisOptions options)
     {
         var ct = CancellationToken.None;
-        int restorationYes = await participRepo.CountByTypeAsync(cluster.Id, ParticipationType.RestorationYes, ct);
-        int stillAffected = await participRepo.CountByTypeAsync(cluster.Id, ParticipationType.Affected, ct);
-        int totalRestorationResponses = await participRepo.CountRestorationResponsesAsync(cluster.Id, ct);
+        // Mirror the production path: single atomic snapshot, "still affected"
+        // votes are RestorationNo rows (#142 + #143).
+        RestorationCountSnapshot snapshot = await participRepo.GetRestorationCountSnapshotAsync(cluster.Id, ct);
+        int restorationYes = snapshot.YesVotes;
+        int stillAffected = snapshot.NoVotes;
+        int totalRestorationResponses = snapshot.TotalResponses;
 
         if (stillAffected > restorationYes && stillAffected >= options.MinRestorationAffectedVotes)
         {
@@ -178,7 +180,10 @@ public class EvaluatePossibleRestorationJobTests
         var counts = new Dictionary<(Guid, ParticipationType), int>
         {
             { (clusterId, ParticipationType.RestorationYes), 1 },
-            { (clusterId, ParticipationType.Affected), 3 }  // 3 still-affected > 1 yes
+            // 3 still-affected restoration votes — recorded as RestorationNo
+            // by the write path post-#142, counted as snapshot.NoVotes by
+            // the worker post-#143.
+            { (clusterId, ParticipationType.RestorationNo), 3 }
         };
 
         var clusterRepo = new FakeClusterRepo(new[] { cluster });
@@ -243,12 +248,13 @@ public class EvaluatePossibleRestorationJobTests
             LastSeenAt = DateTime.UtcNow
         };
 
-        // 2 yes out of 5 total = 0.40 < 0.60
+        // 2 yes out of 5 total = 0.40 < 0.60. Dissent is RestorationUnsure
+        // so the revert-to-active path (which now keys off RestorationNo
+        // post-#142/#143) is not exercised by this ratio-only test.
         var counts = new Dictionary<(Guid, ParticipationType), int>
         {
             { (clusterId, ParticipationType.RestorationYes), 2 },
-            { (clusterId, ParticipationType.RestorationNo), 3 },
-            { (clusterId, ParticipationType.Affected), 0 }
+            { (clusterId, ParticipationType.RestorationUnsure), 3 }
         };
 
         var clusterRepo = new FakeClusterRepo(new[] { cluster });
@@ -276,11 +282,12 @@ public class EvaluatePossibleRestorationJobTests
             LastSeenAt = DateTime.UtcNow
         };
 
-        // 1 still-affected, but min is 2 — should not revert
+        // 1 still-affected (RestorationNo) restoration vote, but min is 2
+        // — should not revert.
         var counts = new Dictionary<(Guid, ParticipationType), int>
         {
             { (clusterId, ParticipationType.RestorationYes), 0 },
-            { (clusterId, ParticipationType.Affected), 1 }  // < MinRestorationAffectedVotes
+            { (clusterId, ParticipationType.RestorationNo), 1 }  // < MinRestorationAffectedVotes
         };
 
         var clusterRepo = new FakeClusterRepo(new[] { cluster });

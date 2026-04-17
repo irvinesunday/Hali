@@ -2,7 +2,9 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Api.Logging;
 using Hali.Application.Auth;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Contracts.Notifications;
 using Microsoft.AspNetCore.Authorization;
@@ -28,13 +30,14 @@ public class UsersController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> GetMe(CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null)
-            return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var account = await _auth.FindAccountByIdAsync(accountId.Value, ct);
+        var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
-            return NotFound();
+            throw new NotFoundException(
+                code: ErrorCodes.AccountNotFound,
+                message: "Account not found.");
 
         var settings = ParseNotificationSettings(account.NotificationSettings);
 
@@ -55,22 +58,26 @@ public class UsersController : ControllerBase
         [FromBody] NotificationSettingsDto dto,
         CancellationToken ct)
     {
-        var accountId = GetAccountId();
-        if (accountId == null)
-            return Unauthorized();
+        var accountId = GetAccountId()
+            ?? throw new UnauthorizedException();
 
-        var account = await _auth.FindAccountByIdAsync(accountId.Value, ct);
+        var account = await _auth.FindAccountByIdAsync(accountId, ct);
         if (account == null)
-            return NotFound();
+            throw new NotFoundException(
+                code: ErrorCodes.AccountNotFound,
+                message: "Account not found.");
 
         account.NotificationSettings = JsonSerializer.Serialize(dto);
         account.UpdatedAt = DateTime.UtcNow;
         await _auth.UpdateAccountAsync(account, ct);
 
         var correlationId = HttpContext.Items["CorrelationId"] as string;
+        // Log a non-reversible hash of the account id rather than the raw
+        // GUID — CodeQL treats raw identifiers in logs as PII (cs/cleartext-
+        // storage-of-sensitive-information).
         _logger.LogInformation(
-            "{eventName} correlationId={CorrelationId} accountId={AccountId}",
-            "account.notification_settings_updated", correlationId, accountId);
+            "{eventName} correlationId={CorrelationId} accountHash={AccountHash}",
+            "account.notification_settings_updated", correlationId, AccountLogIdentifier.Hash(accountId));
 
         return NoContent();
     }

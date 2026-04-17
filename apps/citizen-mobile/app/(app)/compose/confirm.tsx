@@ -1,59 +1,295 @@
-// Signal Composer Step 2 — Confirm extraction
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
+// apps/citizen-mobile/app/(app)/compose/confirm.tsx
+import React, { useMemo, useState } from 'react';
+import {
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  StyleSheet, KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { ComposerStep2 } from '../../../src/components/signals/ComposerStep2';
-import { useComposerContext } from '../../../src/context/ComposerContext';
-import { Loading } from '../../../src/components/common/Loading';
+import { ArrowLeft, Check } from 'lucide-react-native';
+import {
+  useComposerContext,
+  type ComposerLocationOverride,
+  type LocationOverridePickedVia,
+} from '../../../src/context/ComposerContext';
+import { Button } from '../../../src/components/common/Button';
+import { ConditionBadge } from '../../../src/components/shared';
+import { LocationFallbackPicker } from '../../../src/components/compose/LocationFallbackPicker';
+import { formatCategoryLabel } from '../../../src/utils/formatters';
+import {
+  canProceedFromLocationGate,
+  classifyLocationGate,
+  isMeaningfulLabelEdit,
+  type ConfidenceGate,
+} from '../../../src/utils/composerGates';
+import { Colors, FontFamily, FontSize, Spacing, Radius, ScreenPaddingH } from '../../../src/theme';
 import type { SignalPreviewResponse } from '../../../src/types/api';
 
-export default function ComposerConfirmScreen() {
+export default function ComposerConfirmScreen(): React.ReactElement {
   const router = useRouter();
-  const { preview, setPreview } = useComposerContext();
-
-  if (!preview) {
-    // Guard: should not arrive here without a preview
-    return <Loading message="Loading preview…" />;
+  const {
+    preview,
+    setPreview,
+    locationOverride,
+    locationOverridePickedVia,
+    setLocationOverride,
+  } = useComposerContext();
+  if (preview === null) {
+    return <PreviewMissingFallback onBack={() => router.replace('/(app)/compose/text')} />;
   }
+  return (
+    <ConfirmScreenContent
+      preview={preview}
+      setPreview={setPreview}
+      locationOverride={locationOverride}
+      locationOverridePickedVia={locationOverridePickedVia}
+      setLocationOverride={setLocationOverride}
+    />
+  );
+}
 
-  function handleConfirm(updated: SignalPreviewResponse) {
-    setPreview(updated);
+function ConfirmScreenContent({
+  preview, setPreview, locationOverride, locationOverridePickedVia, setLocationOverride,
+}: {
+  preview: SignalPreviewResponse;
+  setPreview: (p: SignalPreviewResponse | null) => void;
+  locationOverride: ComposerLocationOverride | null;
+  locationOverridePickedVia: LocationOverridePickedVia | null;
+  setLocationOverride: (
+    o: ComposerLocationOverride | null,
+    pickedVia?: LocationOverridePickedVia | null,
+  ) => void;
+}): React.ReactElement {
+  const router = useRouter();
+  const [locationLabel, setLocationLabel] = useState(preview.location.locationLabel ?? '');
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
+
+  // C11: gate combines (server flag, numeric confidence, label).
+  // The server wins when it has spoken. We intentionally do NOT force the
+  // gate to 'accept' when an override is picked — that would un-render the
+  // picker (which displays the selected-state card with a "Change"
+  // affordance). Instead, we keep the underlying gate and let the render
+  // branch prefer the picker whenever an override is present.
+  const locationGate = useMemo<ConfidenceGate>(
+    () =>
+      classifyLocationGate({
+        confidence: preview.location.locationConfidence,
+        requiresFallback: preview.requiresLocationFallback,
+        label: locationLabel,
+      }),
+    [
+      preview.location.locationConfidence,
+      preview.requiresLocationFallback,
+      locationLabel,
+    ],
+  );
+
+  // Render the picker when the server / gate asked for fallback OR when
+  // the user has already locked in an override (e.g. returning to Step 2
+  // from Step 3). Otherwise show the text-input path for the happy /
+  // amber tiers.
+  const renderFallbackPicker =
+    locationOverride !== null || locationGate === 'fallback';
+
+  // Pure helper; see composerGates.canProceedFromLocationGate for the full
+  // rules. The 'fallback' tier is override-only — the text input is not
+  // rendered in that tier, and the stale NLP label in `locationLabel`
+  // state must not be allowed to silently bypass the fallback gate.
+  const canProceed = useMemo<boolean>(
+    () =>
+      canProceedFromLocationGate({
+        gate: locationGate,
+        hasOverride: locationOverride !== null,
+        label: locationLabel,
+        originalLabel: preview.location.locationLabel,
+        confirmed: locationConfirmed,
+      }),
+    [
+      locationGate,
+      locationOverride,
+      locationLabel,
+      locationConfirmed,
+      preview.location.locationLabel,
+    ],
+  );
+
+  function handleNext(): void {
+    // If the user picked an override, the override is authoritative and
+    // we don't need to mutate preview.location.locationLabel — submit.tsx
+    // reads the override directly and overrides both coords and label.
+    if (locationOverride === null) {
+      // C11 follow-up (#131): a meaningful edit to the text-input label
+      // means the wire source must flip from 'nlp' to 'user_edit' so
+      // downstream source-attribution matches the label's provenance.
+      // "Meaningful" mirrors the 'confirm' tier gate rule — trimmed,
+      // non-empty, and different from the trimmed original (see
+      // isMeaningfulLabelEdit in composerGates.ts). Whitespace-only
+      // and blanking edits do NOT flip source.
+      //
+      // Once flipped, the source stays 'user_edit' even if the user
+      // navigates back and re-edits; that's the correct outcome because
+      // the persisted label is already user-authored content, and there
+      // is no "un-edit" path back to the original NLP label from the
+      // UI.
+      const edited = isMeaningfulLabelEdit({
+        label: locationLabel,
+        originalLabel: preview.location.locationLabel,
+      });
+      const trimmed = locationLabel.trim();
+      setPreview({
+        ...preview,
+        location: {
+          ...preview.location,
+          locationLabel: trimmed || preview.location.locationLabel,
+          locationSource: edited ? 'user_edit' : preview.location.locationSource,
+        },
+      });
+    }
     router.push('/(app)/compose/submit');
-  }
-
-  function handleEdit() {
-    // Go back to step 1 to let the user rewrite
-    router.back();
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.navBar}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}
+          accessibilityRole="button" accessibilityLabel="Back to Step 1">
+          <ArrowLeft size={24} color={Colors.foreground} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Step 2 of 3</Text>
-        <View style={{ width: 24 }} />
+        <Text style={styles.stepLabel}>Step 2 of 3</Text>
+        <View style={styles.navSpacer} />
       </View>
-      <ComposerStep2
-        preview={preview}
-        onConfirm={handleConfirm}
-        onEdit={handleEdit}
-      />
+
+      <KeyboardAvoidingView style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={80}>
+        <ScrollView style={styles.flex} contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled">
+          <Text style={styles.heading}>Does this look right?</Text>
+          <Text style={styles.sub}>
+            Review what we extracted. You can correct the location before submitting.
+          </Text>
+
+          <View style={styles.card}>
+            <Field label="Category" value={formatCategoryLabel(preview.category)} />
+            <Field label="Subcategory" value={formatCategoryLabel(preview.subcategorySlug)} />
+            {preview.conditionSlug !== null && preview.conditionSlug !== '' && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>Condition</Text>
+                <ConditionBadge label={formatCategoryLabel(preview.conditionSlug)} />
+              </View>
+            )}
+            {preview.neutralSummary !== null && preview.neutralSummary !== '' && (
+              <Field label="Summary" value={preview.neutralSummary} />
+            )}
+          </View>
+
+          <View style={styles.locationBlock}>
+            <Text style={styles.fieldLabel}>Location</Text>
+            {renderFallbackPicker ? (
+              <LocationFallbackPicker
+                selected={locationOverride}
+                pickedVia={locationOverridePickedVia}
+                onPick={(o, pickedVia) => setLocationOverride(o, pickedVia)}
+                onClear={() => setLocationOverride(null)}
+                onOpenMapPin={() => router.push('/(app)/compose/pin')}
+              />
+            ) : (
+              <>
+                {locationGate === 'confirm' && (
+                  <Text style={styles.warningAmber}>
+                    We extracted this location but aren&apos;t fully confident. Confirm or correct it.
+                  </Text>
+                )}
+                <TextInput
+                  style={styles.locationInput}
+                  value={locationLabel}
+                  onChangeText={(v) => { setLocationLabel(v); setLocationConfirmed(false); }}
+                  placeholder="Confirm or correct the location…"
+                  placeholderTextColor={Colors.faintForeground}
+                  accessibilityLabel="Location"
+                  accessibilityHint="Confirm the extracted location or correct it if needed."
+                />
+                {locationGate === 'confirm' && !locationConfirmed && (
+                  <TouchableOpacity style={styles.confirmChip}
+                    onPress={() => setLocationConfirmed(true)}
+                    accessibilityRole="button" accessibilityLabel="Confirm location">
+                    <Check size={14} color={Colors.primary} strokeWidth={2.5} />
+                    <Text style={styles.confirmChipText}>Looks right</Text>
+                  </TouchableOpacity>
+                )}
+                {locationGate === 'confirm' && locationConfirmed && (
+                  <Text style={styles.confirmedText}>Location confirmed.</Text>
+                )}
+              </>
+            )}
+          </View>
+
+          <Button label="Next" onPress={handleNext} disabled={!canProceed}
+            accessibilityLabel="Next"
+            accessibilityState={{ disabled: !canProceed }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }): React.ReactElement {
+  return (
+    <View style={styles.fieldRow}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldValue}>{value}</Text>
+    </View>
+  );
+}
+
+function PreviewMissingFallback({ onBack }: { onBack: () => void }): React.ReactElement {
+  return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.missingContainer}>
+        <Text style={styles.heading}>No preview found</Text>
+        <Text style={styles.sub}>Your composer draft was lost. Please start again.</Text>
+        <Button label="Start over" onPress={onBack} />
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
+  safe: { flex: 1, backgroundColor: Colors.card },
+  flex: { flex: 1 },
   navBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: ScreenPaddingH, paddingVertical: Spacing.sm + 2,
   },
-  navTitle: { fontSize: 14, color: '#6b7280' },
+  stepLabel: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.medium, color: Colors.mutedForeground },
+  navSpacer: { width: 24 },
+  content: { paddingHorizontal: ScreenPaddingH, paddingTop: Spacing.lg, paddingBottom: Spacing['4xl'], gap: Spacing.lg },
+  heading: { fontSize: FontSize.title, fontFamily: FontFamily.bold, color: Colors.foreground },
+  sub: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.mutedForeground, lineHeight: FontSize.body * 1.5 },
+  card: {
+    backgroundColor: Colors.card, borderRadius: Radius.lg, padding: Spacing.lg,
+    gap: Spacing.md, borderWidth: 1, borderColor: Colors.border,
+  },
+  fieldRow: { gap: Spacing.xs },
+  fieldLabel: {
+    fontSize: FontSize.badge, fontFamily: FontFamily.medium, color: Colors.faintForeground,
+    textTransform: 'uppercase', letterSpacing: 0.4,
+  },
+  fieldValue: { fontSize: FontSize.body, fontFamily: FontFamily.regular, color: Colors.foreground },
+  locationBlock: { gap: Spacing.sm },
+  warningAmber: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.conditionBadge.amber.text },
+  locationInput: {
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+    fontSize: FontSize.body, fontFamily: FontFamily.regular,
+    color: Colors.foreground, backgroundColor: Colors.card,
+  },
+  confirmChip: {
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
+    backgroundColor: Colors.primarySubtle, borderRadius: Radius.full,
+    paddingVertical: Spacing.xs + 2, paddingHorizontal: Spacing.md,
+  },
+  confirmChipText: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.medium, color: Colors.primary },
+  confirmedText: { fontSize: FontSize.bodySmall, fontFamily: FontFamily.regular, color: Colors.primary, fontStyle: 'italic' },
+  missingContainer: { flex: 1, padding: ScreenPaddingH, gap: Spacing.lg, justifyContent: 'center' },
 });

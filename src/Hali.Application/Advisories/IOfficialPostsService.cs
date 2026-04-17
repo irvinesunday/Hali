@@ -11,4 +11,5 @@ public interface IOfficialPostsService
     Task<OfficialPostResponseDto> CreatePostAsync(Guid institutionId, Guid? authorAccountId, CreateOfficialPostRequestDto dto, CancellationToken ct);
     Task<List<OfficialPostResponseDto>> GetByClusterIdAsync(Guid clusterId, CancellationToken ct);
     Task<List<OfficialPostResponseDto>> GetActiveByLocalityAsync(Guid localityId, CancellationToken ct);
+    Task<List<OfficialPostResponseDto>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct);
 }

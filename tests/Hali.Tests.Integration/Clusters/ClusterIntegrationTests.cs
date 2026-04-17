@@ -38,10 +38,12 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             category            = "roads",
             subcategorySlug     = "flooding",
             conditionConfidence = 0.88,
+            latitude            = -1.2921,
+            longitude           = 36.8219,
             locationConfidence  = 0.80,
-            locationSource      = "user",
+            // C11: wire allowlist is {"nlp","user_edit","place_search"}.
+            locationSource      = "user_edit",
             neutralSummary      = "Road flooding near bridge.",
-            spatialCellId       = "8a390d24cdfffff",   // unique cell → new cluster
         });
         submitResp.EnsureSuccessStatusCode();
 
@@ -78,9 +80,11 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
             category            = "electricity",
             subcategorySlug     = "outage",
             conditionConfidence = 0.90,
+            latitude            = -1.2850,
+            longitude           = 36.8300,
             locationConfidence  = 0.75,
-            locationSource      = "user",
-            spatialCellId       = "8a390d24cfffff0",
+            // C11: wire allowlist is {"nlp","user_edit","place_search"}.
+            locationSource      = "user_edit",
         });
 
         var clusterId = await GetLatestClusterIdAsync();
@@ -101,8 +105,110 @@ public sealed class ClusterIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
+    // GetCluster — restoration progress fields (#51, #53)
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetCluster_PossibleRestoration_ExposesRestorationProgressFields()
+    {
+        // Seed a cluster in possible_restoration with the participation mix
+        // the HTTP write path produces post-#142:
+        //   "restored"       -> ParticipationType.RestorationYes
+        //   "still_affected" -> ParticipationType.RestorationNo
+        //   "not_sure"       -> ParticipationType.RestorationUnsure
+        //
+        // Expected counts (atomic snapshot, #143):
+        //   yesVotes   = 2
+        //   totalVotes = 4 (yes + no + unsure)
+        //   ratio      = 2 / 4 = 0.5
+        var clusterId = await SeedClusterInStateAsync("possible_restoration");
+        await SeedParticipationAsync(clusterId, "restoration_yes");
+        await SeedParticipationAsync(clusterId, "restoration_yes");
+        await SeedParticipationAsync(clusterId, "restoration_no");
+        await SeedParticipationAsync(clusterId, "restoration_unsure");
+
+        var resp = await Client.GetAsync($"/v1/clusters/{clusterId}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
+        Assert.Equal("possible_restoration", body.GetProperty("state").GetString());
+        Assert.Equal(2, body.GetProperty("restorationYesVotes").GetInt32());
+        Assert.Equal(4, body.GetProperty("restorationTotalVotes").GetInt32());
+        Assert.Equal(0.5, body.GetProperty("restorationRatio").GetDouble(), 6);
+    }
+
+    [Fact]
+    public async Task GetCluster_PossibleRestoration_NoVotesYet_RatioIsNull()
+    {
+        // possible_restoration but zero restoration responses — counts should
+        // be 0 and ratio null (division-by-zero guard).
+        var clusterId = await SeedClusterInStateAsync("possible_restoration");
+
+        var resp = await Client.GetAsync($"/v1/clusters/{clusterId}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
+        Assert.Equal(0, body.GetProperty("restorationYesVotes").GetInt32());
+        Assert.Equal(0, body.GetProperty("restorationTotalVotes").GetInt32());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("restorationRatio").ValueKind);
+    }
+
+    [Fact]
+    public async Task GetCluster_NotInPossibleRestoration_RestorationFieldsAreNull()
+    {
+        // Guard: for any state other than possible_restoration, all three
+        // restoration fields must be null — even if restoration votes exist.
+        var clusterId = await SeedClusterInStateAsync("active");
+        await SeedParticipationAsync(clusterId, "restoration_yes");
+
+        var resp = await Client.GetAsync($"/v1/clusters/{clusterId}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
+        Assert.Equal("active", body.GetProperty("state").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("restorationRatio").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("restorationYesVotes").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("restorationTotalVotes").ValueKind);
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    private static async Task<Guid> SeedClusterInStateAsync(string state)
+    {
+        await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(@"
+INSERT INTO signal_clusters
+    (id, category, state, title, summary,
+     spatial_cell_id, first_seen_at, last_seen_at,
+     raw_confirmation_count, temporal_type)
+VALUES
+    (gen_random_uuid(), 'roads', @state::signal_state,
+     'Restoration test cluster', 'Seeded for restoration-progress tests',
+     '8a390d24abfffff', now(), now(), 1, 'temporary')
+RETURNING id", conn);
+        cmd.Parameters.AddWithValue("state", state);
+        return (Guid)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    private static async Task SeedParticipationAsync(Guid clusterId, string participationType)
+    {
+        await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(@"
+INSERT INTO participations
+    (id, cluster_id, device_id, participation_type, created_at)
+VALUES
+    (gen_random_uuid(), @clusterId, gen_random_uuid(),
+     @ptype::participation_type, now())", conn);
+        cmd.Parameters.AddWithValue("clusterId", clusterId);
+        cmd.Parameters.AddWithValue("ptype", participationType);
+        await cmd.ExecuteNonQueryAsync();
+    }
 
     private static async Task SeedOfficialPostAsync(Guid clusterId)
     {

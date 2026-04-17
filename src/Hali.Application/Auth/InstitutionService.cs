@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Errors;
 using Hali.Contracts.Auth;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Auth;
@@ -75,13 +76,13 @@ public class InstitutionService : IInstitutionService
         DateTime now = DateTime.UtcNow;
 
         if (invite == null)
-            throw new InvalidOperationException("INVITE_INVALID");
+            throw new ValidationException("Invalid invite token.", code: ErrorCodes.InviteInvalid);
 
         if (invite.ExpiresAt <= now)
-            throw new InvalidOperationException("INVITE_EXPIRED");
+            throw new ValidationException("Invite token has expired.", code: ErrorCodes.InviteExpired);
 
         if (invite.AcceptedAt != null)
-            throw new InvalidOperationException("INVITE_ALREADY_ACCEPTED");
+            throw new ConflictException(ErrorCodes.InviteAlreadyAccepted, "Invite has already been accepted.");
 
         // Create account with institution role
         Account? existing = await _authRepo.FindAccountByPhoneAsync(request.PhoneNumber, ct);

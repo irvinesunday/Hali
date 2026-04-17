@@ -42,6 +42,7 @@ public sealed class HaliWebApplicationFactory
         Environment.SetEnvironmentVariable("ConnectionStrings__Participation", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Advisories", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Notifications", connStr);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Feedback", connStr);
         Environment.SetEnvironmentVariable("ConnectionStrings__Admin", connStr);
         Environment.SetEnvironmentVariable("Redis__Url", TestConstants.RedisUrl);
 
@@ -57,6 +58,7 @@ public sealed class HaliWebApplicationFactory
                 ["ConnectionStrings:Participation"]  = connStr,
                 ["ConnectionStrings:Advisories"]     = connStr,
                 ["ConnectionStrings:Notifications"]  = connStr,
+                ["ConnectionStrings:Feedback"]       = connStr,
                 ["ConnectionStrings:Admin"]          = connStr,
                 ["Redis:Url"]                        = TestConstants.RedisUrl,
                 ["Auth:JwtSecret"]                   = TestConstants.JwtSecret,
@@ -91,6 +93,10 @@ public sealed class HaliWebApplicationFactory
             // Replace geocoding
             ReplaceService<IGeocodingService>(services,
                 ServiceLifetime.Scoped, _ => new FakeGeocodingService());
+
+            // Replace locality lookup (no seeded geometry in test DB)
+            ReplaceService<ILocalityLookupRepository>(services,
+                ServiceLifetime.Scoped, _ => new FakeLocalityLookupRepository());
         });
     }
 
@@ -130,6 +136,7 @@ public sealed class HaliWebApplicationFactory
             "TRUNCATE signal_events CASCADE",
             "TRUNCATE official_post_scopes, official_posts, institution_jurisdictions, institutions CASCADE",
             "TRUNCATE notifications, follows CASCADE",
+            "TRUNCATE app_feedback CASCADE",
         };
 
         foreach (var sql in statements)
@@ -365,7 +372,8 @@ CREATE TABLE IF NOT EXISTS signal_clusters (
     raw_confirmation_count integer NOT NULL DEFAULT 0,
     temporal_type varchar(40),
     affected_count integer NOT NULL DEFAULT 0,
-    observing_count integer NOT NULL DEFAULT 0
+    observing_count integer NOT NULL DEFAULT 0,
+    location_label_text varchar(400)
 )");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS cluster_event_links (
@@ -385,6 +393,8 @@ CREATE TABLE IF NOT EXISTS civis_decisions (
     metrics jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 )");
+        // B9: location label text (idempotent — adds only if missing from pre-B9 test DBs)
+        await ExecAsync(conn, "ALTER TABLE signal_clusters ADD COLUMN IF NOT EXISTS location_label_text varchar(400)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_state_locality_category ON signal_clusters(state, locality_id, category)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_last_seen ON signal_clusters(last_seen_at DESC)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_clusters_spatial_cell_category ON signal_clusters(spatial_cell_id, category)");
@@ -457,6 +467,10 @@ CREATE TABLE IF NOT EXISTS follows (
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_follow UNIQUE (account_id, locality_id)
 )");
+        // Follows.display_label (EF migration 20260407112450_AddDisplayLabelToFollows)
+        // — mirrored here so the test schema matches the EF model and SELECTs of
+        // the Follow entity via FollowRepository do not fail with 42703.
+        await ExecAsync(conn, "ALTER TABLE follows ADD COLUMN IF NOT EXISTS display_label varchar(160)");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS notifications (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -471,6 +485,25 @@ CREATE TABLE IF NOT EXISTS notifications (
     CONSTRAINT uq_notification_dedupe UNIQUE (dedupe_key)
 )");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_notifications_queued_send_after ON notifications(send_after) WHERE status = 'queued'");
+
+        // Feedback table (EF migration 20260408100124_AddAppFeedbackTable) — mirrored
+        // here per the schema-bootstrap rule in docs/arch/CODING_STANDARDS.md.
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS app_feedback (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    rating varchar(10) NOT NULL,
+    text varchar(300),
+    screen varchar(50),
+    cluster_id uuid,
+    account_id uuid,
+    app_version varchar(20),
+    platform varchar(10),
+    session_id uuid,
+    submitted_at timestamptz NOT NULL
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_submitted_at ON app_feedback(submitted_at)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_rating ON app_feedback(rating)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_screen ON app_feedback(screen)");
     }
 
     // -------------------------------------------------------------------------

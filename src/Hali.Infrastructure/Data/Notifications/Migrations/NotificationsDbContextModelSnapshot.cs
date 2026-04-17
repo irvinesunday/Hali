@@ -37,6 +37,11 @@ namespace Hali.Infrastructure.Data.Notifications.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("DisplayLabel")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("display_label");
+
                     b.Property<Guid>("LocalityId")
                         .HasColumnType("uuid")
                         .HasColumnName("locality_id");

@@ -100,6 +100,30 @@ public class OfficialPostRepository : IOfficialPostRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<OfficialPost>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
+    {
+        var ids = localityIds?.ToList() ?? new List<Guid>();
+        if (ids.Count == 0) return new List<OfficialPost>();
+
+        var postIds = await _db.OfficialPostScopes
+            .AsNoTracking()
+            .Where(s => s.LocalityId != null && ids.Contains(s.LocalityId.Value))
+            .Select(s => s.OfficialPostId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        // Short-circuit: no scoped posts means no results. Avoids a second
+        // round-trip with an empty IN() set in the common case where a
+        // followed locality set has no published official posts.
+        if (postIds.Count == 0) return new List<OfficialPost>();
+
+        return await _db.OfficialPosts
+            .AsNoTracking()
+            .Where(p => postIds.Contains(p.Id) && p.Status == "published")
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(ct);
+    }
+
     public async Task<int> ExpirePostsAsync(CancellationToken ct)
     {
         return await _db.OfficialPosts

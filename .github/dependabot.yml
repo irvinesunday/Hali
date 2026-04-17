@@ -9,6 +9,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Africa/Nairobi"
+    target-branch: "develop"
     open-pull-requests-limit: 5
     reviewers:
       - "irvinesunday"
@@ -30,6 +31,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Africa/Nairobi"
+    target-branch: "develop"
     open-pull-requests-limit: 5
     reviewers:
       - "irvinesunday"
@@ -50,6 +52,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Africa/Nairobi"
+    target-branch: "develop"
     reviewers:
       - "irvinesunday"
     labels:
@@ -64,6 +67,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    target-branch: "develop"
     reviewers:
       - "irvinesunday"
     labels:

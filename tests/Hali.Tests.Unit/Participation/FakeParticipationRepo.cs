@@ -17,8 +17,17 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 
 	public Task<Hali.Domain.Entities.Participation.Participation?> GetByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
 	{
-		Hali.Domain.Entities.Participation.Participation result = (from x in _store
+		Hali.Domain.Entities.Participation.Participation? result = (from x in _store
 			where x.ClusterId == clusterId && x.DeviceId == deviceId
+			orderby x.CreatedAt descending
+			select x).FirstOrDefault();
+		return Task.FromResult(result);
+	}
+
+	public Task<Hali.Domain.Entities.Participation.Participation?> GetMostRecentByAccountAsync(Guid clusterId, Guid accountId, CancellationToken ct)
+	{
+		Hali.Domain.Entities.Participation.Participation? result = (from x in _store
+			where x.ClusterId == clusterId && x.AccountId == accountId
 			orderby x.CreatedAt descending
 			select x).FirstOrDefault();
 		return Task.FromResult(result);
@@ -38,7 +47,7 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 
 	public Task UpdateContextAsync(Guid participationId, string contextText, CancellationToken ct)
 	{
-		Hali.Domain.Entities.Participation.Participation participation = _store.FirstOrDefault((Hali.Domain.Entities.Participation.Participation x) => x.Id == participationId);
+		Hali.Domain.Entities.Participation.Participation? participation = _store.FirstOrDefault((Hali.Domain.Entities.Participation.Participation x) => x.Id == participationId);
 		if (participation != null)
 		{
 			participation.ContextText = contextText;
@@ -51,9 +60,12 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 		return Task.FromResult(_store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && x.ParticipationType == type));
 	}
 
-	public Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct)
+	public Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct)
 	{
-		return Task.FromResult(_store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && (x.ParticipationType == ParticipationType.RestorationYes || x.ParticipationType == ParticipationType.RestorationNo || x.ParticipationType == ParticipationType.RestorationUnsure)));
+		int yes = _store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationYes);
+		int no = _store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationNo);
+		int unsure = _store.Count((Hali.Domain.Entities.Participation.Participation x) => x.ClusterId == clusterId && x.ParticipationType == ParticipationType.RestorationUnsure);
+		return Task.FromResult(new RestorationCountSnapshot(yes, no, yes + no + unsure));
 	}
 
 	public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)

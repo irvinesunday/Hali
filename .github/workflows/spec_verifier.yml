@@ -18,7 +18,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -37,7 +37,7 @@ jobs:
         run: pip install anthropic tenacity
 
       - name: Download test results from triggering run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +50,13 @@ jobs:
           CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/spec_verifier.py
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret not configured — skipping spec verification."
+            echo "Add ANTHROPIC_API_KEY to repository secrets to enable post-CI analysis."
+            exit 0
+          fi
+          python3 scripts/spec_verifier.py
 
       - name: Commit updated lessons if changed
         run: |

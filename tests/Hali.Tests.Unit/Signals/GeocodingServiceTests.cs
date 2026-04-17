@@ -36,7 +36,7 @@ public class GeocodingServiceTests
 	{
 		FakeRedisDatabase fakeDb = new FakeRedisDatabase();
 		NominatimGeocodingService svc = CreateService(HttpStatusCode.OK, NominatimResponse, fakeDb);
-		GeocodingResult result = await svc.ReverseGeocodeAsync(-1.3, 36.8);
+		GeocodingResult? result = await svc.ReverseGeocodeAsync(-1.3, 36.8);
 		Assert.NotNull(result);
 		Assert.Contains("Nairobi", result.DisplayName);
 		Assert.Equal("Lusaka Road", result.Road);
@@ -55,7 +55,7 @@ public class GeocodingServiceTests
 		FakeHttpMessageHandler handler = new FakeHttpMessageHandler(HttpStatusCode.InternalServerError, "should not be called");
 		HttpClient http = new HttpClient(handler);
 		NominatimGeocodingService svc = new NominatimGeocodingService(http, db, NullLogger<NominatimGeocodingService>.Instance);
-		GeocodingResult result = await svc.ReverseGeocodeAsync(-1.3, 36.8);
+		GeocodingResult? result = await svc.ReverseGeocodeAsync(-1.3, 36.8);
 		Assert.NotNull(result);
 		Assert.Equal("Cached Display", result.DisplayName);
 		Assert.Equal("Cached Road", result.Road);

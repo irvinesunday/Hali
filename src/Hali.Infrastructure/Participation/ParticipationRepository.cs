@@ -28,6 +28,14 @@ public class ParticipationRepository : IParticipationRepository
 			select p).FirstOrDefaultAsync(ct);
 	}
 
+	public Task<Hali.Domain.Entities.Participation.Participation?> GetMostRecentByAccountAsync(Guid clusterId, Guid accountId, CancellationToken ct)
+	{
+		return (from p in _db.Participations
+			where p.ClusterId == clusterId && p.AccountId == accountId
+			orderby p.CreatedAt descending
+			select p).FirstOrDefaultAsync(ct);
+	}
+
 	public async Task DeleteByDeviceAsync(Guid clusterId, Guid deviceId, CancellationToken ct)
 	{
 		List<Hali.Domain.Entities.Participation.Participation> existing = await _db.Participations.Where((Hali.Domain.Entities.Participation.Participation p) => p.ClusterId == clusterId && p.DeviceId == deviceId).ToListAsync(ct);
@@ -59,9 +67,24 @@ public class ParticipationRepository : IParticipationRepository
 		return _db.Participations.CountAsync((Hali.Domain.Entities.Participation.Participation p) => p.ClusterId == clusterId && (int)p.ParticipationType == (int)type, ct);
 	}
 
-	public Task<int> CountRestorationResponsesAsync(Guid clusterId, CancellationToken ct)
+	public async Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct)
 	{
-		return _db.Participations.CountAsync((Hali.Domain.Entities.Participation.Participation p) => p.ClusterId == clusterId && ((int)p.ParticipationType == 3 || (int)p.ParticipationType == 4 || (int)p.ParticipationType == 5), ct);
+		// Single EF query: GroupBy + conditional Count over the cluster's
+		// participation rows. Replaces the prior two-query pattern
+		// (CountByType(RestorationYes) followed by CountRestorationResponses)
+		// which exposed a race where a concurrent participation-type flip
+		// could produce yesVotes > totalResponses or a ratio > 1. See #143.
+		RestorationCountSnapshot? snapshot = await _db.Participations
+			.Where(p => p.ClusterId == clusterId)
+			.GroupBy(_ => 1)
+			.Select(g => new RestorationCountSnapshot(
+				g.Count(p => p.ParticipationType == ParticipationType.RestorationYes),
+				g.Count(p => p.ParticipationType == ParticipationType.RestorationNo),
+				g.Count(p => p.ParticipationType == ParticipationType.RestorationYes
+					|| p.ParticipationType == ParticipationType.RestorationNo
+					|| p.ParticipationType == ParticipationType.RestorationUnsure)))
+			.FirstOrDefaultAsync(ct);
+		return snapshot ?? new RestorationCountSnapshot(0, 0, 0);
 	}
 
 	public async Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)

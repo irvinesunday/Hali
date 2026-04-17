@@ -1,15 +1,54 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import type { SignalPreviewResponse } from '../types/api';
+import type { SignalLocationSource, SignalPreviewResponse } from '../types/api';
+
+/**
+ * Authoritative coordinates + label produced by the C11 low-confidence
+ * location fallback picker. When present on the composer draft, the
+ * submit screen uses these values instead of the device-GPS coordinates
+ * and the NLP-derived label.
+ *
+ * Set when:
+ *   - the user picks a PlaceCandidate from /v1/places/search → source = 'place_search'
+ *   - the user taps "Use my current location" → source = 'place_search'
+ *     (the label comes from /v1/places/reverse, i.e. the same backend
+ *     geocoding service; the coordinates are device GPS but treated as
+ *     authoritative because the user deliberately chose them)
+ *
+ * NOT set when the user merely edits the text label inline — that path
+ * stays on source='user_edit' with device-GPS coordinates on submit.
+ */
+export interface ComposerLocationOverride {
+  latitude: number;
+  longitude: number;
+  label: string;
+  source: SignalLocationSource;
+}
+
+/**
+ * UI-only record of which fallback-picker path produced the current
+ * `locationOverride`. Kept here (and not on the override itself) so the
+ * wire `locationSource` stays tight ('place_search' for search/current,
+ * 'map_pin' for the map path) — `pickedVia` only drives the composer's
+ * selected-state subtitle copy ("Current location" / "Selected from
+ * place search" / "Dropped pin on map") and never leaves the client.
+ */
+export type LocationOverridePickedVia = 'search' | 'current' | 'map';
 
 interface ComposerContextValue {
   freeText: string;
   locationHint: string | undefined;
   preview: SignalPreviewResponse | null;
   deviceHash: string;
+  locationOverride: ComposerLocationOverride | null;
+  locationOverridePickedVia: LocationOverridePickedVia | null;
   setFreeText: (v: string) => void;
   setLocationHint: (v: string | undefined) => void;
   setPreview: (p: SignalPreviewResponse | null) => void;
   setDeviceHash: (h: string) => void;
+  setLocationOverride: (
+    o: ComposerLocationOverride | null,
+    pickedVia?: LocationOverridePickedVia | null,
+  ) => void;
   reset: () => void;
 }
 
@@ -20,11 +59,28 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   const [locationHint, setLocationHint] = useState<string | undefined>();
   const [preview, setPreview] = useState<SignalPreviewResponse | null>(null);
   const [deviceHash, setDeviceHash] = useState('');
+  const [locationOverride, setLocationOverrideState] =
+    useState<ComposerLocationOverride | null>(null);
+  const [locationOverridePickedVia, setLocationOverridePickedVia] =
+    useState<LocationOverridePickedVia | null>(null);
+
+  const setLocationOverride = useCallback(
+    (
+      o: ComposerLocationOverride | null,
+      pickedVia: LocationOverridePickedVia | null = null,
+    ) => {
+      setLocationOverrideState(o);
+      setLocationOverridePickedVia(o === null ? null : pickedVia);
+    },
+    [],
+  );
 
   const reset = useCallback(() => {
     setFreeText('');
     setLocationHint(undefined);
     setPreview(null);
+    setLocationOverrideState(null);
+    setLocationOverridePickedVia(null);
   }, []);
 
   return (
@@ -34,10 +90,13 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         locationHint,
         preview,
         deviceHash,
+        locationOverride,
+        locationOverridePickedVia,
         setFreeText,
         setLocationHint,
         setPreview,
         setDeviceHash,
+        setLocationOverride,
         reset,
       }}
     >

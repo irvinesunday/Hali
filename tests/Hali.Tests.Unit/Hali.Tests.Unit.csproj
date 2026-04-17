@@ -11,12 +11,13 @@
     <ProjectReference Include="..\..\src\Hali.Application\Hali.Application.csproj" />
     <ProjectReference Include="..\..\src\Hali.Contracts\Hali.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Hali.Infrastructure\Hali.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Hali.Api\Hali.Api.csproj" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
-    <PackageReference Include="StackExchange.Redis" Version="2.12.8" />
+    <PackageReference Include="StackExchange.Redis" Version="2.12.14" />
   </ItemGroup>
 </Project>

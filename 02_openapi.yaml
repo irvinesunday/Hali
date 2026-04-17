@@ -2,8 +2,14 @@
 openapi: 3.1.0
 info:
   title: Hali API
-  version: 0.3.0
+  version: 0.5.0
   summary: Civic signal and official update API for the Hali MVP
+  description: |
+    Spec repaired against the C# backend source in `src/Hali.Api/Controllers/*`
+    and `src/Hali.Contracts/**/*Dto.cs`. JSON convention:
+      - Property names: camelCase (System.Text.Json `JsonNamingPolicy.CamelCase`)
+      - Enum values: snake_case_lower (`JsonStringEnumConverter` with
+        `JsonNamingPolicy.SnakeCaseLower`)
 servers:
   - url: http://localhost:8080
 tags:
@@ -16,6 +22,7 @@ tags:
   - name: Home
   - name: Users
   - name: Devices
+  - name: Feedback
   - name: Admin
 paths:
   # ── Auth ────────────────────────────────────────────────────────────
@@ -29,16 +36,26 @@ paths:
           application/json:
             schema:
               type: object
-              required: [authMethod, destination]
+              required: [destination, authMethod]
               properties:
+                destination: { type: string }
                 authMethod:
                   type: string
-                  enum: [phone_otp, email_otp, magic_link]
-                  description: Accepts snake_case; backend normalises to PascalCase AuthMethod enum
-                destination: { type: string }
+                  enum: [phone_otp, email_otp, magic_link, google, apple]
+                  description: |
+                    Serialised from `Hali.Domain.Enums.AuthMethod` via
+                    snake_case_lower converter. Phase 1 only uses `phone_otp`.
       responses:
         '200':
           description: OTP sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpRequestedResponse' }
+        '429':
+          description: OTP rate limited (auth.otp_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/verify:
     post:
       tags: [Auth]
@@ -65,7 +82,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '400':
-          description: Invalid or expired OTP
+          description: Invalid or expired OTP (auth.otp_invalid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/refresh:
     post:
       tags: [Auth]
@@ -87,7 +107,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
-          description: Invalid or expired refresh token
+          description: Invalid or expired refresh token (auth.refresh_token_invalid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/auth/logout:
     post:
       tags: [Auth]
@@ -124,17 +147,54 @@ paths:
                 phoneNumber: { type: string }
       responses:
         '202': { description: OTP sent to phone }
-        '400': { description: Invalid, expired, or already-accepted invite }
+        '400':
+          description: Invalid or expired invite (invite.invalid, invite.expired)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Invite already accepted (invite.already_accepted)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: OTP rate limited (auth.otp_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Localities ──────────────────────────────────────────────────────
   /v1/localities/followed:
     get:
       tags: [Localities]
-      summary: List current user's followed wards
+      summary: List current user's followed wards (with display names)
       security:
         - bearerAuth: []
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, displayLabel, wardName, cityName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    displayLabel:
+                      type: string
+                      nullable: true
+                      description: User-chosen area/estate name (e.g. "South B"). May be null for follows that predate this column — UI falls back to wardName.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     put:
       tags: [Localities]
       summary: Set followed wards (max 5)
@@ -146,26 +206,267 @@ paths:
           application/json:
             schema:
               type: object
-              required: [localityIds]
+              description: |
+                Send `items` (preferred — carries displayLabel for each follow).
+                Legacy `localityIds` is still accepted for backwards compatibility
+                but does not capture display labels.
               properties:
+                items:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: object
+                    required: [localityId]
+                    properties:
+                      localityId: { type: string, format: uuid }
+                      displayLabel:
+                        type: string
+                        nullable: true
+                        maxLength: 160
                 localityIds:
                   type: array
+                  deprecated: true
                   items: { type: string, format: uuid }
                   maxItems: 5
       responses:
-        '200': { description: Updated }
-        '422': { description: max_followed_localities_exceeded }
+        '204': { description: Updated }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: max_followed_localities_exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/localities/wards:
+    get:
+      tags: [Localities]
+      summary: List every ward/locality in the system (canonical list)
+      description: |
+        Returns the full, alphabetically sorted list of wards/localities
+        known to the platform. Intended for the mobile client to cache
+        locally and run client-side search/filter against — avoiding a
+        geocoding round-trip per keystroke and enabling a "browse all"
+        UX.
+
+        Response is cached in Redis for 24 hours (the underlying ward
+        geometry changes only on explicit import). Anonymous endpoint.
+      security: []
+      responses:
+        '200':
+          description: Canonical ward list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LocalitySummary' }
+
+  /v1/localities/search:
+    get:
+      tags: [Localities]
+      summary: Search for an area / estate by free text (Nominatim + PostGIS ward resolution)
+      description: |
+        Forward-geocodes the query via Nominatim (biased to Kenya), then resolves
+        each candidate to a Hali locality via PostGIS point-in-polygon. Returns
+        up to 5 matches. Candidates outside any covered locality are skipped.
+        Results are cached in Redis for 1 hour. Anonymous endpoint.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        '200':
+          description: Candidate localities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [localityId, placeLabel, wardName, cityName]
+                  properties:
+                    localityId: { type: string, format: uuid }
+                    placeLabel:
+                      type: string
+                      description: Human-readable label from Nominatim (e.g. "South B, Nairobi"). Use this as displayLabel when following.
+                    wardName: { type: string }
+                    cityName:
+                      type: string
+                      nullable: true
+        '400':
+          description: Query too short or too long (locality.query_too_short, locality.query_too_long)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded (locality.search_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/localities/resolve-by-coordinates:
+    get:
+      tags: [Localities]
+      summary: Resolve GPS coordinates to nearest ward — GPS opt-in only (public)
+      description: |
+        NOT called by default. Only called when the user explicitly opts in to
+        GPS-based locality detection. The default first-launch flow uses
+        /v1/localities/search (manual area picker).
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, format: double }
+      responses:
+        '200':
+          description: Nearest matched locality
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocalitySummary' }
+        '400':
+          description: Coordinates out of range (locality.invalid_coordinates)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: No locality found for coordinates (locality.not_found)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Places (C11 low-confidence location fallback) ──────────────────
+  /v1/places/search:
+    get:
+      tags: [Places]
+      summary: Search for a place (road / landmark / area) by free text — composer fallback
+      description: |
+        Forward-geocodes the query via Nominatim (biased to Kenya), then resolves
+        each candidate to a Hali locality via PostGIS point-in-polygon. Returns
+        up to 5 matches, each with coordinates and resolved ward context.
+        Candidates outside any covered locality are filtered out — every
+        returned candidate is a valid submit target. Anonymous, rate-limited
+        per client IP, Redis-cached (1h).
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        '200':
+          description: Candidate places (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PlaceCandidate' }
+        '400':
+          description: Query too short or too long
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/places/reverse:
+    get:
+      tags: [Places]
+      summary: Reverse geocode coordinates to a single place candidate — composer fallback
+      description: |
+        Reverse-geocodes the coordinate via Nominatim and resolves it to a
+        Hali locality. Used by the composer's "Use my current location"
+        action in the low-confidence fallback flow. Returns 404 when the
+        coordinates are outside any known locality. Anonymous, rate-limited,
+        Redis-cached (1d).
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema: { type: number, format: double, minimum: -90, maximum: 90 }
+        - name: longitude
+          in: query
+          required: true
+          schema: { type: number, format: double, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Resolved place candidate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceCandidate' }
+        '400':
+          description: Invalid coordinates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: No locality found for the given coordinates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/feedback:
+    post:
+      tags: [Feedback]
+      summary: Submit anonymous in-app feedback (public)
+      description: |
+        No auth required. Returns 202 immediately — fire and forget from client.
+        account_id captured server-side if request is authenticated, otherwise null.
+        Text capped at 300 chars server-side regardless of client input.
+
+        Rate-limited via the canonical Redis limiter (#169 / R4). Authenticated
+        callers are throttled per-account; anonymous callers fall back to a
+        per-IP bucket. Over-cap submissions return 429 with
+        `error.code = rate_limit.exceeded` on the canonical error envelope.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '202': { description: Feedback received }
+        '429':
+          description: Rate limit exceeded (per-account for authenticated callers, per-IP for anonymous)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Signals ─────────────────────────────────────────────────────────
   /v1/signals/preview:
     post:
       tags: [Signals]
-      summary: NLP-first preview — extracts candidate structured civic signals
+      summary: NLP-first preview — extracts a structured civic signal candidate
       description: |
-        Returns candidates[] (structured extractions from free text) and
-        existingClusterCandidates[] (nearby clusters the signal could join).
-      security:
-        - bearerAuth: []
+        Returns a single structured extraction from free text, including the
+        canonical category/subcategory and a resolved location object. Anonymous
+        callers are rate-limited to 10 requests per IP per 10 minutes (Redis-
+        backed).
+      security: []
       requestBody:
         required: true
         content:
@@ -174,11 +475,31 @@ paths:
               $ref: '#/components/schemas/SignalPreviewRequest'
       responses:
         '200':
-          description: Preview result with candidate clusters to join
+          description: Preview result
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SignalPreviewResponse'
+        '400':
+          description: free_text is required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: NLP returned an unrecognised category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limited (anonymous IP cap)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: NLP extraction service unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/signals/submit:
     post:
       tags: [Signals]
@@ -192,21 +513,61 @@ paths:
             schema:
               $ref: '#/components/schemas/SignalSubmitRequest'
       responses:
-        '201':
+        '200':
           description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalSubmitResponse'
+        '400':
+          description: idempotency_key or device_hash missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Signal already submitted with this idempotency key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: Invalid category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Too many signals submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Clusters ────────────────────────────────────────────────────────
   /v1/clusters/{id}:
     get:
       tags: [Clusters]
       summary: Get cluster detail with official updates side by side
+      security: []
       parameters:
         - in: path
           name: id
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterResponse'
+        '404':
+          description: Cluster not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/participation:
     post:
       tags: [Participation]
@@ -225,7 +586,22 @@ paths:
             schema:
               $ref: '#/components/schemas/ParticipationRequest'
       responses:
-        '202': { description: Accepted }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash or type missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: invalid_participation_type or device_not_found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/context:
     post:
       tags: [Participation]
@@ -242,16 +618,32 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                contextText: { type: string, maxLength: 150 }
+              $ref: '#/components/schemas/ContextRequest'
       responses:
-        '202': { description: Accepted }
-        '422': { description: context_requires_affected_participation or context_edit_window_expired }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash or text missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: |
+            One of:
+              - device_not_found
+              - policy_blocked (reason=context_requires_affected_participation)
+              - policy_blocked (reason=context_edit_window_expired)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/clusters/{id}/restoration-response:
     post:
       tags: [Participation]
-      summary: Cast a restoration vote (yes/no/unsure)
+      summary: Cast a restoration vote (still_affected / restored / not_sure)
       security:
         - bearerAuth: []
       parameters:
@@ -264,14 +656,28 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [type]
-              properties:
-                type:
-                  type: string
-                  enum: [restoration_yes, restoration_no, restoration_unsure]
+              $ref: '#/components/schemas/RestorationResponseRequest'
       responses:
-        '202': { description: Accepted }
+        '204': { description: Recorded }
+        '400':
+          description: device_hash missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: |
+            One of:
+              - invalid_restoration_response
+              - device_not_found
+              - policy_blocked (reason=restoration_requires_affected_participation)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Official Posts ──────────────────────────────────────────────────
   /v1/official-posts:
@@ -287,8 +693,35 @@ paths:
             schema:
               $ref: '#/components/schemas/OfficialPostCreateRequest'
       responses:
-        '201': { description: Created }
-        '403': { description: Outside institution jurisdiction }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfficialPostResponse'
+        '400':
+          description: |
+            Missing fields (official_post.missing_fields),
+            invalid post type (official_post.invalid_type), or
+            invalid category (official_post.invalid_category).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Authenticated caller does not hold the institution role
+            (auth.role_insufficient), is outside the institution's
+            jurisdiction (official_post.outside_jurisdiction), or is
+            missing/has a malformed institution_id claim on the JWT
+            (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Home Feed ───────────────────────────────────────────────────────
   /v1/home:
@@ -298,7 +731,7 @@ paths:
       description: |
         Returns four sections. Without `section` or `cursor`, returns first page of all sections.
         Section limits: active_now=20, official_updates=5, recurring_at_this_time=10, other_active_signals=10.
-        First page (unauthenticated or empty follows) is cached in Redis for 30 seconds.
+        First page (authenticated with non-empty follows) is cached in Redis for 30 seconds.
         Subsequent pages are fetched live (no cache).
       security: []
       parameters:
@@ -315,15 +748,35 @@ paths:
           schema:
             type: string
           description: Opaque pagination cursor from a previous response's nextCursor
+        - name: localityId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            When provided, scopes the feed to a single locality.
+            When absent, the backend derives scope from the authenticated user's
+            followed localities (or returns empty sections for unauthenticated users).
+            Combines with section and cursor — locality scoping applies regardless.
       responses:
         '200':
-          description: Home feed (all sections or single section depending on query params)
+          description: |
+            Without `section`: returns HomeResponse (all four sections).
+            With `section`: returns the matching typed PagedSection directly
+            (ClusterPagedSection or OfficialPostPagedSection).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HomeResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/HomeResponse'
+                  - $ref: '#/components/schemas/ClusterPagedSection'
+                  - $ref: '#/components/schemas/OfficialPostPagedSection'
         '400':
           description: Unknown section name
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Users ───────────────────────────────────────────────────────────
   /v1/users/me:
@@ -333,7 +786,22 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Account not found (account.not_found)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/users/me/notification-settings:
     put:
       tags: [Users]
@@ -345,13 +813,19 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                clusterActivated: { type: boolean }
-                restorationPrompt: { type: boolean }
-                clusterResolved: { type: boolean }
+              $ref: '#/components/schemas/NotificationSettings'
       responses:
-        '200': { description: Updated }
+        '204': { description: Updated }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Account not found (account.not_found)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Devices ─────────────────────────────────────────────────────────
   /v1/devices/push-token:
@@ -366,12 +840,30 @@ paths:
           application/json:
             schema:
               type: object
-              required: [deviceFingerprintHash, expoPushToken]
+              required: [deviceHash, expoPushToken]
               properties:
-                deviceFingerprintHash: { type: string }
+                deviceHash: { type: string }
                 expoPushToken: { type: string }
       responses:
-        '200': { description: Updated }
+        '204': { description: Updated }
+        '400':
+          description: device_hash or expo_push_token missing (device.missing_fields)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            Device not recognised (device.not_found). Previously 422 —
+            re-typed as NotFound (H2) since "no matching device" is
+            semantically a missing resource.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Admin ───────────────────────────────────────────────────────────
   /v1/admin/institutions:
@@ -386,13 +878,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, jurisdictionLocalityIds]
               properties:
                 name: { type: string }
                 jurisdictionLocalityIds:
                   type: array
                   items: { type: string, format: uuid }
-                contactEmail: { type: string, format: email }
+                contactEmail: { type: string, format: email, nullable: true }
       responses:
         '201':
           description: Institution created with invite link
@@ -400,10 +892,28 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [institutionId, inviteLink, inviteExpiresAt]
                 properties:
                   institutionId: { type: string, format: uuid }
                   inviteLink: { type: string, format: uri }
                   inviteExpiresAt: { type: string, format: date-time }
+        '400':
+          description: name is required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Authenticated caller does not hold the admin role
+            (auth.role_insufficient).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /v1/admin/institutions/{id}/access:
     delete:
       tags: [Admin]
@@ -416,15 +926,25 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: Access revoked }
-  /v1/admin/orphaned-signals:
-    get:
-      tags: [Admin]
-      summary: View unowned categories and orphaned civic clusters
-      security:
-        - bearerAuth: []
-      responses:
-        '200': { description: OK }
+        '200':
+          description: Access revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Empty object on success.
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Authenticated caller does not hold the admin role
+            (auth.role_insufficient).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
 components:
   securitySchemes:
@@ -439,94 +959,532 @@ components:
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
   schemas:
+    CivicCategory:
+      type: string
+      enum:
+        - roads
+        - transport
+        - electricity
+        - water
+        - environment
+        - safety
+        - governance
+        - infrastructure
+    FeedbackRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: string
+          enum: [positive, neutral, negative]
+        text: { type: string, maxLength: 300, nullable: true }
+        screen:
+          type: string
+          nullable: true
+          enum: [home, detail, composer_step1, composer_step2, composer_step3, areas, profile, notification_settings]
+        clusterId: { type: string, format: uuid, nullable: true }
+        appVersion: { type: string, nullable: true }
+        platform: { type: string, enum: [ios, android], nullable: true }
+        sessionId: { type: string, format: uuid, nullable: true }
+
+    ErrorCode:
+      type: string
+      description: |
+        Stable, programmatic identifier for an application-level error
+        condition emitted by the Hali API. Codes follow the
+        `namespace.reason` snake_case convention (e.g. `auth.otp_invalid`,
+        `validation.locality_unresolved`, `signal.duplicate`).
+
+        The canonical source of truth on the server is
+        `Hali.Application.Errors.ErrorCodes`; this enum is the wire-visible
+        subset. Internal-only codes used for log/trace correlation (e.g.
+        `clustering.no_spatial_cell`) are redacted to
+        `server.internal_error` by the exception mapper and are NOT listed
+        here.
+
+        Client applications should treat an unknown code as equivalent to
+        `server.internal_error` for UX fallback purposes, but log the
+        received code verbatim for forward-compatible debugging.
+
+        Drift between this enum and the server-side catalog is enforced by
+        a unit test (`ErrorCodeCatalogTests`).
+      enum:
+        - account.not_found
+        - auth.forbidden
+        - auth.institution_id_missing
+        - auth.otp_invalid
+        - auth.otp_rate_limited
+        - auth.refresh_token_invalid
+        - auth.role_insufficient
+        - auth.unauthenticated
+        - auth.unauthorized
+        - cluster.not_found
+        - dependency.nlp_unavailable
+        - dependency.spatial_derivation_failed
+        - device.missing_fields
+        - device.not_found
+        - institution.missing_fields
+        - invite.already_accepted
+        - invite.expired
+        - invite.invalid
+        - locality.not_found
+        - locality.query_too_long
+        - locality.query_too_short
+        - locality.search_rate_limited
+        - official_post.invalid_category
+        - official_post.invalid_type
+        - official_post.missing_fields
+        - official_post.outside_jurisdiction
+        - participation.context_requires_affected
+        - participation.context_window_expired
+        - participation.restoration_requires_affected
+        - places.query_too_long
+        - places.query_too_short
+        - places.reverse_rate_limited
+        - places.search_rate_limited
+        - rate_limit.exceeded
+        - server.internal_error
+        - signal.duplicate
+        - validation.device_not_found
+        - validation.failed
+        - validation.invalid_category
+        - validation.invalid_coordinates
+        - validation.invalid_location_source
+        - validation.invalid_participation_type
+        - validation.invalid_restoration_response
+        - validation.invalid_section
+        - validation.locality_unresolved
+        - validation.location_label_required
+        - validation.location_label_too_long
+        - validation.max_followed_localities_exceeded
+        - validation.missing_coordinates
+        - validation.missing_field
+
+    ErrorResponse:
+      type: object
+      description: |
+        Canonical error envelope emitted by the API's centralized exception
+        middleware (H1) and referenced by most documented application-level
+        error responses in this spec. A small number of legacy endpoints
+        still document body-less 4xx responses; those are tracked for
+        migration but are intentionally not referenced to this schema.
+
+        Framework-generated `401` responses from the JwtBearer challenge
+        (missing/invalid/expired token on an `[Authorize]` endpoint) also
+        emit this envelope, with `code = "auth.unauthenticated"` distinct
+        from the application-layer `auth.unauthorized` thrown by controllers
+        when a token is valid but an expected claim is missing.
+        Framework-generated `403` responses from role/policy denial emit
+        this envelope with `code = "auth.role_insufficient"` (see
+        `OnForbidden` handler in `Program.cs`). Documented `403` entries
+        that reference this schema from controller logic describe failures
+        surfaced as typed `ForbiddenException` (`auth.forbidden`).
+
+          * `error.code` — stable `ErrorCode` identifier for programmatic
+            handling (see the named `ErrorCode` enum schema for the full
+            published set).
+          * `error.message` — short human-readable summary safe to surface
+            in UI. Not localized; treat wording as unstable between versions.
+          * `error.details` — optional. When present on 400 responses it
+            carries `{ fields: { fieldName: ["error msg", ...] } }` for
+            per-field validation errors. Other codes may include additional
+            structured metadata.
+          * `error.traceId` — sanitized correlation ID for support/log
+            correlation. Not a security boundary.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string }
+            details: { type: object, nullable: true, additionalProperties: true }
+            traceId: { type: string }
+
+    OtpRequestedResponse:
+      type: object
+      description: |
+        Success body for POST /v1/auth/otp. The `message` field is a short
+        human-readable status; clients should not depend on its exact wording.
+      required: [message]
+      properties:
+        message: { type: string, example: "OTP sent" }
+
+    LocalitySummary:
+      type: object
+      description: |
+        Minimal ward/locality summary. Used both by the canonical ward list
+        and by single-ward coordinate-resolution responses. Mirrors
+        `Hali.Contracts.Notifications.LocalitySummaryDto`.
+      required: [localityId, wardName, cityName]
+      properties:
+        localityId: { type: string, format: uuid }
+        wardName: { type: string }
+        cityName: { type: string, nullable: true }
+
     TokenResponse:
       type: object
+      required: [accessToken, refreshToken, expiresIn]
       properties:
         accessToken: { type: string }
         refreshToken: { type: string }
         expiresIn: { type: integer, description: Access token TTL in seconds }
+
+    # ── Signals ──────────────────────────────────────────────────────
     SignalPreviewRequest:
       type: object
-      required: [text, sourceLanguage]
+      required: [freeText]
+      description: |
+        Mirrors `Hali.Contracts.Signals.SignalPreviewRequestDto`. Location
+        signals are passed as flat fields, not a nested object.
       properties:
-        text: { type: string, maxLength: 500 }
-        sourceLanguage: { type: string, example: en }
-        location:
-          type: object
-          properties:
-            latitude: { type: number }
-            longitude: { type: number }
-            userEnteredPlace: { type: string }
-    SignalCandidate:
+        freeText: { type: string, maxLength: 500 }
+        userLatitude: { type: number, nullable: true }
+        userLongitude: { type: number, nullable: true }
+        selectedWard: { type: string, nullable: true }
+        locale: { type: string, nullable: true, example: en }
+        knownCity: { type: string, nullable: true }
+        countryCode: { type: string, nullable: true, example: KE }
+    LocationSource:
+      type: string
+      description: |
+        Canonical wire values for `SignalLocation.locationSource` and
+        `SignalSubmitRequest.locationSource`. Mirrors
+        `Hali.Contracts.Signals.LocationSource`.
+
+          * `nlp` — derived from CSI-NLP extraction, unchanged by the user.
+          * `user_edit` — user accepted or edited the human-readable label;
+            coordinates remain device-GPS or NLP-suggested.
+          * `place_search` — user picked a Nominatim-backed place from the
+            C11 low-confidence fallback picker (search results OR
+            `Use my current location`). Both label and coordinates are
+            authoritative from the picker.
+          * `map_pin` — user refined location by dropping / dragging a
+            marker on the map fallback surface (C11.1). Coordinates come
+            from the marker position; the label is reverse-geocoded on
+            marker release via `/v1/places/reverse`.
+      enum: [nlp, user_edit, place_search, map_pin]
+    SignalLocation:
       type: object
+      description: |
+        Mirrors `Hali.Contracts.Signals.SignalLocationDto`. Resolved location
+        descriptors and a confidence score.
+      required:
+        [areaName, roadName, junctionName, landmarkName, facilityName,
+         locationLabel, locationPrecisionType, locationConfidence, locationSource]
       properties:
-        category: { type: string }
-        subcategorySlug: { type: string }
-        conditionSlug: { type: string, nullable: true }
-        neutralSummary: { type: string }
-        locationLabel: { type: string }
+        areaName: { type: string, nullable: true }
+        roadName: { type: string, nullable: true }
+        junctionName: { type: string, nullable: true }
+        landmarkName: { type: string, nullable: true }
+        facilityName: { type: string, nullable: true }
+        locationLabel: { type: string, nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
         locationConfidence: { type: number, minimum: 0, maximum: 1 }
-        temporalType: { type: string }
-    ExistingClusterCandidate:
-      type: object
-      properties:
-        clusterId: { type: string, format: uuid }
-        summary: { type: string }
-        locationLabel: { type: string }
-        rawConfirmationCount: { type: integer }
+        locationSource: { $ref: '#/components/schemas/LocationSource' }
     SignalPreviewResponse:
       type: object
+      description: |
+        Single extraction result. Mirrors `SignalPreviewResponseDto`. The
+        previously-documented `candidates[]` and `existingClusterCandidates[]`
+        arrays do NOT exist in the backend.
+
+        `requiresLocationFallback` (C11) is the server-authoritative flag
+        indicating the NLP-extracted location is too weak to submit as-is;
+        the composer routes the user into the place-search / current-location
+        picker when it is true. See `LocationFallbackPolicy` in the backend.
+      required:
+        [category, subcategorySlug, conditionSlug, conditionConfidence, location,
+         temporalType, neutralSummary, shouldSuggestJoin, requiresLocationFallback]
       properties:
-        candidates:
-          type: array
-          items: { $ref: '#/components/schemas/SignalCandidate' }
-        existingClusterCandidates:
-          type: array
-          items: { $ref: '#/components/schemas/ExistingClusterCandidate' }
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        subcategorySlug: { type: string }
+        conditionSlug: { type: string, nullable: true }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1 }
+        location: { $ref: '#/components/schemas/SignalLocation' }
+        temporalType: { type: string, nullable: true }
+        neutralSummary: { type: string, nullable: true }
+        shouldSuggestJoin: { type: boolean }
+        requiresLocationFallback:
+          type: boolean
+          description: |
+            True when the composer MUST route the user into the low-confidence
+            location fallback picker before allowing submit. Triggered when
+            `location.locationConfidence < 0.5` OR `location.locationLabel`
+            is blank.
     SignalSubmitRequest:
       type: object
-      required: [candidate, deviceFingerprint, idempotencyKey]
+      description: |
+        Flat shape — no nested `candidate` wrapper. `spatialCellId` is derived
+        server-side from lat/lng and must NOT be sent by the client.
+
+        When `locationSource` is `place_search`, `locationLabel` is required
+        (non-blank). The server rejects unknown `locationSource` values with
+        `validation.invalid_location_source`.
+      required:
+        [idempotencyKey, deviceHash, freeText, category, subcategorySlug,
+         conditionConfidence, latitude, longitude, locationConfidence, locationSource]
       properties:
-        candidate: { $ref: '#/components/schemas/SignalCandidate' }
-        joinClusterId: { type: string, format: uuid, nullable: true }
-        deviceFingerprint: { type: string }
         idempotencyKey: { type: string }
-    ParticipationRequest:
+        deviceHash: { type: string }
+        freeText: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        subcategorySlug: { type: string }
+        conditionSlug: { type: string, nullable: true }
+        conditionConfidence: { type: number, minimum: 0, maximum: 1 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        locationLabel: { type: string, nullable: true }
+        locationPrecisionType: { type: string, nullable: true }
+        locationConfidence: { type: number, minimum: 0, maximum: 1 }
+        locationSource: { $ref: '#/components/schemas/LocationSource' }
+        temporalType: { type: string, nullable: true }
+        neutralSummary: { type: string, nullable: true }
+        sourceLanguage: { type: string, nullable: true }
+    PlaceCandidate:
       type: object
-      required: [type, idempotencyKey]
+      description: |
+        A single geocoding candidate returned by the C11 places endpoints.
+        Mirrors `Hali.Contracts.Signals.PlaceCandidateDto`. Every candidate
+        is resolved to a Hali locality (otherwise filtered out by the
+        backend); the composer uses this to supply authoritative submit
+        coordinates and label.
+      required:
+        [displayName, latitude, longitude, localityId, wardName, cityName]
+      properties:
+        displayName: { type: string }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        localityId: { type: string, format: uuid, nullable: true }
+        wardName: { type: string, nullable: true }
+        cityName: { type: string, nullable: true }
+    SignalSubmitResponse:
+      type: object
+      required: [signalEventId, clusterId, isNewCluster, clusterState, localityId, createdAt]
+      properties:
+        signalEventId: { type: string, format: uuid }
+        clusterId: { type: string, format: uuid }
+        isNewCluster: { type: boolean }
+        clusterState: { type: string, enum: [unconfirmed, active, possible_restoration, resolved] }
+        localityId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    # ── Clusters / Participation ─────────────────────────────────────
+    ClusterResponse:
+      type: object
+      description: |
+        Mirrors `Hali.Contracts.Clusters.ClusterResponseDto`. CIVIS internals
+        (civis_score, wrab, sds, macf, raw_confirmation_count, account_id,
+        device_id) are intentionally NOT present.
+      required:
+        [id, state, category, subcategorySlug, title, summary, locationLabel,
+         affectedCount, observingCount, createdAt, updatedAt,
+         activatedAt, possibleRestorationAt, resolvedAt, officialPosts, myParticipation]
+      properties:
+        id: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [unconfirmed, active, possible_restoration, resolved]
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        subcategorySlug: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        locationLabel:
+          type: string
+          nullable: true
+          description: >
+            Canonical human-readable location label for the cluster, e.g.
+            "Ngong Road near Adams Arcade, Kilimani". Null when the
+            originating signal did not include a resolved location label.
+        affectedCount: { type: integer }
+        observingCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        possibleRestorationAt: { type: string, format: date-time, nullable: true }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        officialPosts:
+          type: array
+          items: { $ref: '#/components/schemas/OfficialPostResponse' }
+        myParticipation:
+          oneOf:
+            - $ref: '#/components/schemas/MyParticipation'
+            - type: 'null'
+          description: |
+            Per-caller participation snapshot. Null for unauthenticated callers
+            or callers with no participation row on this cluster. Used by the
+            mobile UI to gate the "Add Further Context" and restoration-response
+            CTAs server-side. The same gating is also enforced at the trust
+            boundary in POST /v1/clusters/{id}/context and
+            POST /v1/clusters/{id}/restoration-response.
+        restorationRatio:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: |
+            Fraction of restoration responses that voted 'yes'. Populated only when
+            state == possible_restoration (null otherwise, and null when no restoration
+            responses have been recorded yet). Equal to restorationYesVotes divided by
+            restorationTotalVotes. Exposed as a pre-computed server value — mobile must
+            not derive it from other fields.
+        restorationYesVotes:
+          type: integer
+          nullable: true
+          description: |
+            Count of 'restoration_yes' votes on this cluster. Populated only when
+            state == possible_restoration. Aggregate count only — no individual
+            vote attribution.
+        restorationTotalVotes:
+          type: integer
+          nullable: true
+          description: |
+            Total count of restoration responses on this cluster (participation
+            types restoration_yes + restoration_no + restoration_unsure).
+            Populated only when state == possible_restoration. Aggregate count
+            only.
+    MyParticipation:
+      type: object
+      description: |
+        Mirrors `Hali.Contracts.Clusters.MyParticipationDto`. Server's verdict
+        on what the calling user may currently do on this cluster.
+      required: [type, createdAt, canAddContext, canRespondToRestoration]
       properties:
         type:
           type: string
-          enum: [affected, observing, no_longer_affected, restoration_yes, restoration_no, restoration_unsure]
-        contextText: { type: string, maxLength: 150, nullable: true }
-        idempotencyKey: { type: string }
+          enum:
+            [affected, observing, no_longer_affected,
+             restoration_yes, restoration_no, restoration_unsure]
+        createdAt: { type: string, format: date-time }
+        canAddContext:
+          type: boolean
+          description: |
+            True iff type=affected AND now is within ContextEditWindowMinutes
+            (default 2) of createdAt. Mobile must gate "Add Further Context"
+            on this flag — local timing alone is not sufficient.
+        canRespondToRestoration:
+          type: boolean
+          description: |
+            True iff type=affected. Mobile must only show the restoration
+            response CTA when this is true.
+    ParticipationRequest:
+      type: object
+      description: |
+        Mirrors `ParticipationRequestDto`. `type` accepts only the three core
+        participation values. Restoration votes use the dedicated endpoint
+        `POST /v1/clusters/{id}/restoration-response`.
+      required: [type, deviceHash]
+      properties:
+        type:
+          type: string
+          enum: [affected, observing, no_longer_affected]
+        deviceHash: { type: string }
+        idempotencyKey: { type: string, nullable: true }
+    ContextRequest:
+      type: object
+      required: [text, deviceHash]
+      properties:
+        text: { type: string }
+        deviceHash: { type: string }
+    RestorationResponseRequest:
+      type: object
+      description: |
+        Mirrors `RestorationResponseRequestDto`. Field is `response`, not
+        `type`, and the accepted values are domain terms, not `restoration_*`.
+      required: [response, deviceHash]
+      properties:
+        response:
+          type: string
+          enum: [still_affected, restored, not_sure]
+        deviceHash: { type: string }
+
+    # ── Official Posts ───────────────────────────────────────────────
     OfficialPostCreateRequest:
       type: object
-      required: [officialPostType, title, body, scopes]
+      description: |
+        Mirrors `CreateOfficialPostRequestDto`. The geo-scope is passed as
+        the flat fields `localityId` / `corridorName` — there is no `scopes[]`
+        array on the backend.
+      required: [type, category, title, body]
       properties:
-        officialPostType:
+        type:
           type: string
           enum: [live_update, scheduled_disruption, advisory_public_notice]
-        category: { type: string, nullable: true }
+        category: { $ref: '#/components/schemas/CivicCategory' }
         title: { type: string, maxLength: 220 }
         body: { type: string, maxLength: 5000 }
         startsAt: { type: string, format: date-time, nullable: true }
         endsAt: { type: string, format: date-time, nullable: true }
         relatedClusterId: { type: string, format: uuid, nullable: true }
-        scopes:
-          type: array
-          items:
-            type: object
-            properties:
-              localityId: { type: string, format: uuid, nullable: true }
-              corridorName: { type: string, nullable: true }
-    PagedSection:
+        isRestorationClaim: { type: boolean, default: false }
+        localityId: { type: string, format: uuid, nullable: true }
+        corridorName: { type: string, nullable: true }
+    OfficialPostResponse:
       type: object
-      description: A paginated section of home feed items
+      required:
+        [id, institutionId, type, category, title, body, startsAt, endsAt,
+         status, relatedClusterId, isRestorationClaim, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        institutionId: { type: string, format: uuid }
+        type: { type: string }
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        title: { type: string }
+        body: { type: string }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        status: { type: string }
+        relatedClusterId: { type: string, format: uuid, nullable: true }
+        isRestorationClaim: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    # ── Users ────────────────────────────────────────────────────────
+    NotificationSettings:
+      type: object
+      properties:
+        clusterActivated: { type: boolean }
+        restorationPrompt: { type: boolean }
+        clusterResolved: { type: boolean }
+    UserMeResponse:
+      type: object
+      required: [id, displayName, phoneE164, email, status, createdAt, notificationSettings]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, nullable: true }
+        phoneE164: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        notificationSettings:
+          $ref: '#/components/schemas/NotificationSettings'
+
+    # ── Home Feed ────────────────────────────────────────────────────
+    ClusterPagedSection:
+      type: object
+      description: Paginated section containing ClusterResponse items.
+      required: [items, nextCursor, totalCount]
       properties:
         items:
           type: array
-          items: {}
+          items:
+            $ref: '#/components/schemas/ClusterResponse'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Opaque base64-encoded cursor; null means no more pages
+        totalCount:
+          type: integer
+    OfficialPostPagedSection:
+      type: object
+      description: Paginated section containing OfficialPostResponse items.
+      required: [items, nextCursor, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfficialPostResponse'
         nextCursor:
           type: string
           nullable: true
@@ -535,20 +1493,21 @@ components:
           type: integer
     HomeResponse:
       type: object
+      required: [activeNow, officialUpdates, recurringAtThisTime, otherActiveSignals]
       properties:
         activeNow:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Non-recurring active clusters in followed localities (max 20)
         officialUpdates:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/OfficialPostPagedSection'
           description: Official posts for followed localities (max 5)
         recurringAtThisTime:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Recurring clusters in followed localities (max 10)
         otherActiveSignals:
           allOf:
-            - $ref: '#/components/schemas/PagedSection'
+            - $ref: '#/components/schemas/ClusterPagedSection'
           description: Active clusters outside followed localities (max 10)

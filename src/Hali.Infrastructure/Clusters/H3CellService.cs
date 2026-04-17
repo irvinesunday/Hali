@@ -2,12 +2,20 @@ using System;
 using System.Linq;
 using H3;
 using H3.Algorithms;
+using H3.Model;
 using Hali.Application.Clusters;
 
 namespace Hali.Infrastructure.Clusters;
 
 public class H3CellService : IH3CellService
 {
+	public string LatLngToCell(double latitudeDegrees, double longitudeDegrees, int resolution)
+	{
+		var latLng = new LatLng(latitudeDegrees, longitudeDegrees);
+		H3Index cell = H3Index.FromLatLng(latLng, resolution);
+		return ((ulong)cell).ToString("x");
+	}
+
 	public string[] GetKRingCells(string h3CellId, int k)
 	{
 		H3Index origin = Convert.ToUInt64(h3CellId, 16);

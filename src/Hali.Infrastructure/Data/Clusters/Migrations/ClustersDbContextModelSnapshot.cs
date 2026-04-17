@@ -186,6 +186,11 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("location_label_id");
 
+                    b.Property<string>("LocationLabelText")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("location_label_text");
+
                     b.Property<int?>("Macf")
                         .HasColumnType("integer")
                         .HasColumnName("macf");
