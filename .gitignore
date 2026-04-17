@@ -133,3 +133,7 @@ agent_outputs/master_orchestrator.log
 
 # ── Expo generated type declarations ────────────────────────────────────────
 expo-env.d.ts
+
+# Data Protection key ring (see src/Hali.Api/Program.cs — do not commit)
+data-protection-keys/
+**/data-protection-keys/

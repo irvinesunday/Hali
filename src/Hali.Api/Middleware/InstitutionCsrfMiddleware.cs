@@ -12,11 +12,13 @@ namespace Hali.Api.Middleware;
 
 /// <summary>
 /// Double-submit CSRF check for cookie-authenticated writes on the
-/// institution surface. The token is delivered on session creation via
-/// both a response body field AND a non-httpOnly cookie; the web app
-/// copies the cookie value into an <c>X-CSRF-Token</c> header on every
-/// write request. The middleware requires the header to match the
-/// server-stored hash of the cookie.
+/// institution surface. The CSRF plaintext is delivered on session
+/// creation via the <c>hali_institution_csrf</c> cookie (non-httpOnly
+/// so the web app can read it); the response body itself does NOT
+/// echo the token. The web app copies the cookie value into an
+/// <c>X-CSRF-Token</c> header on every write request. This middleware
+/// hashes the header value and compares it against the server-stored
+/// hash on the session row.
 ///
 /// Read-only verbs (GET / HEAD / OPTIONS) and requests that do NOT
 /// carry an institution session cookie are skipped — this lets JWT

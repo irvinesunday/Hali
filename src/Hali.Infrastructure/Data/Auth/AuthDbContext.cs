@@ -128,6 +128,7 @@ public class AuthDbContext : DbContext
 			e.Property((WebSession x) => x.RevokedAt).HasColumnName("revoked_at");
 			e.HasIndex((WebSession x) => x.SessionTokenHash).IsUnique().HasDatabaseName("uq_web_sessions_token");
 			e.HasIndex((WebSession x) => x.AccountId).HasDatabaseName("ix_web_sessions_account");
+			e.HasIndex((WebSession x) => x.AbsoluteExpiresAt).HasDatabaseName("ix_web_sessions_absolute_expires");
 		});
 		modelBuilder.Entity(delegate(EntityTypeBuilder<TotpSecret> e)
 		{
@@ -150,7 +151,7 @@ public class AuthDbContext : DbContext
 			e.Property((TotpRecoveryCode x) => x.CodeHash).HasColumnName("code_hash").HasMaxLength(128);
 			e.Property((TotpRecoveryCode x) => x.UsedAt).HasColumnName("used_at");
 			e.Property((TotpRecoveryCode x) => x.CreatedAt).HasColumnName("created_at");
-			e.HasIndex(new string[] { "AccountId", "CodeHash" }).IsUnique().HasDatabaseName("uq_totp_recovery_codes");
+			e.HasIndex((TotpRecoveryCode x) => new { x.AccountId, x.CodeHash }).IsUnique().HasDatabaseName("uq_totp_recovery_codes");
 		});
 		modelBuilder.Entity(delegate(EntityTypeBuilder<MagicLinkToken> e)
 		{
@@ -165,6 +166,7 @@ public class AuthDbContext : DbContext
 			e.Property((MagicLinkToken x) => x.CreatedAt).HasColumnName("created_at");
 			e.HasIndex((MagicLinkToken x) => x.TokenHash).IsUnique().HasDatabaseName("uq_magic_link_tokens_hash");
 			e.HasIndex((MagicLinkToken x) => x.DestinationEmail).HasDatabaseName("ix_magic_link_tokens_email");
+			e.HasIndex((MagicLinkToken x) => x.ExpiresAt).HasDatabaseName("ix_magic_link_tokens_expires");
 		});
 	}
 }

@@ -13,13 +13,18 @@ namespace Hali.Api.Middleware;
 
 /// <summary>
 /// Resolves and validates institution-web sessions from the
-/// <c>hali_institution_session</c> cookie on requests under
-/// <c>/v1/institution*</c>. When a session is present AND valid, the
-/// middleware attaches a <see cref="ClaimsPrincipal"/> describing the
-/// caller so downstream controllers consume the same pattern as the
-/// JWT flow. When the cookie is invalid / expired / idle-expired, a
-/// canonical <c>ApiErrorResponse</c> is written and the pipeline is
-/// short-circuited.
+/// <c>hali_institution_session</c> cookie. Applies to requests under
+/// <c>/v1/institution*</c>, <c>/v1/institution-admin*</c>, and the
+/// session + totp sub-paths of <c>/v1/auth/institution/*</c>. Anonymous
+/// magic-link endpoints (<c>/v1/auth/institution/magic-link/*</c>)
+/// intentionally fall through.
+///
+/// When a session is present AND valid, the middleware attaches a
+/// <see cref="ClaimsPrincipal"/> describing the caller so downstream
+/// controllers consume the same pattern as the JWT flow. When the
+/// cookie is invalid / expired / idle-expired, a canonical
+/// <c>ApiErrorResponse</c> is written and the pipeline is
+/// short-circuited with a distinct error code per reason.
 ///
 /// The middleware deliberately ignores requests that carry a JWT Bearer
 /// token — citizen flows continue to use JWT and must not be subjected
@@ -105,6 +110,17 @@ public sealed class InstitutionSessionMiddleware
 
         WebSession session = validation.Session!;
 
+        // Stamp the in-memory session's last_activity_at up front so any
+        // controller that reads HttpContext.Items["InstitutionWebSession"]
+        // during the request (e.g. /session/refresh) sees the fresh
+        // timestamp in its response body. The DB write is deferred
+        // until after the downstream pipeline succeeds, so a rejected
+        // request (CSRF / authorization / domain-level failure) does
+        // NOT persist a timer reset even though the in-memory copy was
+        // updated — the session row itself only advances on success.
+        DateTime touchedAt = DateTime.UtcNow;
+        session.LastActivityAt = touchedAt;
+
         // Build a ClaimsPrincipal mirroring the JWT-flow shape. Role +
         // institution_id must match the existing [Authorize(Roles = ...)]
         // attributes on institution controllers. NameIdentifier maps to
@@ -127,25 +143,22 @@ public sealed class InstitutionSessionMiddleware
 
         await _next(context);
 
-        // Touch the session AFTER downstream middleware + controller run,
-        // and only on a successful response. This ensures a CSRF-rejected
-        // or authorization-rejected write does NOT extend the idle timer
-        // (which would let a misbehaving client keep a session alive by
-        // hammering invalid requests). Awaited so the scoped DbContext
-        // outlives the write. Errors are swallowed — they shouldn't mask
-        // the original response the downstream pipeline produced.
+        // Persist the touch only on a successful response so a CSRF- or
+        // authorization-rejected write does NOT extend the idle timer.
+        // The in-memory session.LastActivityAt was already stamped above
+        // so controllers saw the fresh value; this call is the durable
+        // side of that update. OperationCanceledException is swallowed
+        // so a client disconnect during cleanup can't mask the original
+        // response.
         if (context.Response.StatusCode < 400)
         {
-            DateTime touchedAt = DateTime.UtcNow;
             try
             {
                 await sessions.TouchAsync(session.Id, context.RequestAborted);
-                session.LastActivityAt = touchedAt;
             }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
             {
-                // Client disconnected — nothing to do. The touch will be
-                // attempted on the next successful request.
+                // Client disconnected — next successful request will touch.
             }
         }
     }
