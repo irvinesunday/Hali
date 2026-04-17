@@ -1,6 +1,14 @@
-// Token barrel — the concrete token set is introduced by the
-// design-system extraction work. Keeping this file so downstream
-// imports from "@hali/design-system/tokens" resolve cleanly ahead of
-// that work.
+// Token barrel. Explicit re-exports so consumers can see the surface
+// area in one place and treeshaking has named entry points.
 
-export const DesignSystemVersion = "0.0.0";
+export * from "./colors";
+export * from "./spacing";
+export * from "./radius";
+export * from "./typography";
+
+/**
+ * Package version sentinel for downstream import-existence checks
+ * before the concrete component set lands. Bump when the token set
+ * changes in a way that breaks consumers.
+ */
+export const DesignSystemVersion = "0.1.0";
