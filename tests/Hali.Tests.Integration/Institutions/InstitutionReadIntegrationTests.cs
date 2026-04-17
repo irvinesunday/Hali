@@ -1,15 +1,11 @@
 using System;
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Hali.Tests.Integration.Helpers;
 using Hali.Tests.Integration.Infrastructure;
-using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using Xunit;
 
@@ -20,6 +16,12 @@ namespace Hali.Tests.Integration.Institutions;
 /// endpoints introduced by #195. Each endpoint is exercised on the happy
 /// path AND on the forbidden / cross-institution paths — a deliberate
 /// symmetry the PR quality gates mandate (G4.b).
+///
+/// #241 — auth setup for every institution-scoped call now goes through
+/// <see cref="InstitutionAuthHelper"/> so the tests exercise the real
+/// magic-link + session flow (role="institution") rather than minted
+/// JWTs. Citizen 403 checks keep the bearer path via the helper because
+/// citizens never use magic link.
 /// </summary>
 [Collection("Integration")]
 [Trait("Category", "Integration")]
@@ -38,9 +40,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Overview_InstitutionRole_ReturnsScopedSummary()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync("/v1/institution/overview");
+        var resp = await session.Client.GetAsync("/v1/institution/overview");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -53,7 +56,8 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task Overview_CitizenRole_Returns403()
     {
-        using var citizen = CreateCitizenClient();
+        using var citizen = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "citizen", institutionId: null);
         var resp = await citizen.GetAsync("/v1/institution/overview");
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
@@ -77,8 +81,9 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         var seedA = await SeedInstitutionWithActiveClusterAsync();
         var seedB = await SeedEmptyInstitutionAsync();
 
-        using var clientB = CreateInstitutionClient(seedB.InstitutionId);
-        var resp = await clientB.GetAsync("/v1/institution/signals");
+        using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seedB.InstitutionId);
+        var resp = await sessionB.Client.GetAsync("/v1/institution/signals");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -90,9 +95,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_List_HappyPath_ReturnsOwnedCluster()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync("/v1/institution/signals");
+        var resp = await session.Client.GetAsync("/v1/institution/signals");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -105,9 +111,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_InvalidStateFilter_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync("/v1/institution/signals?state=not_a_real_state");
+        var resp = await session.Client.GetAsync("/v1/institution/signals?state=not_a_real_state");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -120,10 +127,11 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Signals_ListPagination_EmitsNextCursorAndHonoursIt()
     {
         var seed = await SeedInstitutionWithClustersAsync(clusterCount: 3);
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
         // limit=2 with 3 clusters → expect a next cursor
-        var first = await client.GetAsync("/v1/institution/signals?limit=2");
+        var first = await session.Client.GetAsync("/v1/institution/signals?limit=2");
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(2, firstBody.GetProperty("items").GetArrayLength());
@@ -131,7 +139,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         Assert.False(string.IsNullOrEmpty(cursor));
 
         // Next page returns the third cluster and nulls the cursor
-        var second = await client.GetAsync($"/v1/institution/signals?limit=2&cursor={Uri.EscapeDataString(cursor!)}");
+        var second = await session.Client.GetAsync($"/v1/institution/signals?limit=2&cursor={Uri.EscapeDataString(cursor!)}");
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(1, secondBody.GetProperty("items").GetArrayLength());
@@ -146,9 +154,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task SignalDetail_InScope_ReturnsCluster()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync($"/v1/institution/signals/{seed.ClusterId}");
+        var resp = await session.Client.GetAsync($"/v1/institution/signals/{seed.ClusterId}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -161,8 +170,9 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         var seedA = await SeedInstitutionWithActiveClusterAsync();
         var seedB = await SeedEmptyInstitutionAsync();
 
-        using var clientB = CreateInstitutionClient(seedB.InstitutionId);
-        var resp = await clientB.GetAsync($"/v1/institution/signals/{seedA.ClusterId}");
+        using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seedB.InstitutionId);
+        var resp = await sessionB.Client.GetAsync($"/v1/institution/signals/{seedA.ClusterId}");
 
         // 404 (not 403) — an institution can never confirm the existence of
         // another institution's cluster via this route.
@@ -181,9 +191,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task Areas_ReturnsInstitutionJurisdictions()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync("/v1/institution/areas");
+        var resp = await session.Client.GetAsync("/v1/institution/areas");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -201,9 +212,10 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
         await SeedOfficialPostAsync(seed.InstitutionId, seed.LocalityId, seed.ClusterId, type: "live_update");
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.GetAsync("/v1/institution/activity");
+        var resp = await session.Client.GetAsync("/v1/institution/activity");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -216,11 +228,23 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     // /v1/official-posts additions: responseStatus + severity validation
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // /v1/official-posts is NOT covered by InstitutionSessionMiddleware's
+    // path list (see src/Hali.Api/Middleware/InstitutionSessionMiddleware.cs,
+    // which only resolves the institution session cookie on
+    // /v1/institution*, /v1/institution-admin*, and specific auth sub-paths).
+    // It authorises solely via JwtBearer. These tests therefore keep the
+    // bearer path via the helper — switching to session would produce a
+    // 401 even though the helper minted a valid session, because the
+    // middleware never gets a chance to attach the principal.
+    // -----------------------------------------------------------------------
+
     [Fact]
     public async Task OfficialPost_LiveUpdate_WithResponseStatus_Persists()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await client.PostAsJsonAsync("/v1/official-posts", new
         {
@@ -242,7 +266,8 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_NonLiveUpdate_WithResponseStatus_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await client.PostAsJsonAsync("/v1/official-posts", new
         {
@@ -265,7 +290,8 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_ScheduledDisruption_WithSeverity_Persists()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await client.PostAsJsonAsync("/v1/official-posts", new
         {
@@ -286,7 +312,8 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task OfficialPost_WithInvalidSeverity_Returns400()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var client = CreateInstitutionClient(seed.InstitutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         var resp = await client.PostAsJsonAsync("/v1/official-posts", new
         {
@@ -312,7 +339,8 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     public async Task PublicCluster_AfterLiveUpdate_ExposesResponseStatus()
     {
         var seed = await SeedInstitutionWithActiveClusterAsync();
-        using var institutionClient = CreateInstitutionClient(seed.InstitutionId);
+        using var institutionClient = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         // Post a live_update carrying a response status
         var post = await institutionClient.PostAsJsonAsync("/v1/official-posts", new
@@ -335,7 +363,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // Seed + auth helpers
+    // Seed helpers (unchanged from pre-#241)
     // -----------------------------------------------------------------------
 
     private sealed record InstitutionSeed(
@@ -464,40 +492,5 @@ VALUES
         }
         var body = await resp.Content.ReadAsStringAsync();
         Assert.Fail($"Expected 201 Created but got {(int)resp.StatusCode} {resp.StatusCode}. Body: {body}");
-    }
-
-    private HttpClient CreateInstitutionClient(Guid institutionId)
-    {
-        var jwt = MintJwt(Guid.NewGuid(), role: "institution", institutionId: institutionId);
-        return CreateAuthenticatedClient(jwt);
-    }
-
-    private HttpClient CreateCitizenClient()
-    {
-        var jwt = MintJwt(Guid.NewGuid(), role: "citizen", institutionId: null);
-        return CreateAuthenticatedClient(jwt);
-    }
-
-    private static string MintJwt(Guid accountId, string role, Guid? institutionId)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestConstants.JwtSecret));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new System.Collections.Generic.List<Claim>
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
-            new Claim(ClaimTypes.Role, role),
-        };
-        if (institutionId.HasValue)
-        {
-            claims.Add(new Claim("institution_id", institutionId.Value.ToString()));
-        }
-        var token = new JwtSecurityToken(
-            issuer: TestConstants.JwtIssuer,
-            audience: TestConstants.JwtAudience,
-            claims: claims,
-            notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(10),
-            signingCredentials: creds);
-        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

@@ -1,23 +1,17 @@
 using System;
-using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Hali.Application.Auth;
 using Hali.Domain.Entities.Auth;
 using Hali.Domain.Enums;
 using Hali.Infrastructure.Data.Auth;
+using Hali.Tests.Integration.Helpers;
 using Hali.Tests.Integration.Infrastructure;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using Xunit;
 
@@ -29,6 +23,16 @@ namespace Hali.Tests.Integration.InstitutionAdmin;
 /// Covers happy paths, forbidden-path (institution-member + citizen),
 /// cross-institution isolation, step-up gating on writes, role
 /// elevation guard, and the last-admin-demote guard.
+///
+/// #241 — every auth setup goes through <see cref="InstitutionAuthHelper"/>.
+/// Tests that exercise the bearer boundary (read endpoints under
+/// [Authorize(Roles = "institution_admin")], citizen 403 checks, and
+/// the "bearer-JWT cannot satisfy step-up" assertion) keep the bearer
+/// path via <see cref="InstitutionAuthHelper.CreateBearerClient"/>
+/// because that boundary IS the thing under test. Tests that require
+/// a fresh step-up stamp use
+/// <see cref="InstitutionAuthHelper.CreateSessionAsync"/> which drives
+/// the real magic-link + TOTP-confirm flow.
 /// </summary>
 [Collection("Integration")]
 [Trait("Category", "Integration")]
@@ -40,14 +44,15 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
         : base(factory) { }
 
     // -----------------------------------------------------------------------
-    // GET /users
+    // GET /users — bearer-JWT auth (reads are not step-up gated)
     // -----------------------------------------------------------------------
 
     [Fact]
     public async Task ListUsers_InstitutionAdmin_ReturnsOwnInstitutionUsers()
     {
         var (institutionId, adminId, memberId) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = CreateBearerClient(adminId, "institution_admin", institutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, adminId, role: "institution_admin", institutionId: institutionId);
 
         var resp = await client.GetAsync("/v1/institution-admin/users");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -63,7 +68,8 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     public async Task ListUsers_InstitutionMember_Returns403()
     {
         var (institutionId, _, memberId) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = CreateBearerClient(memberId, "institution", institutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, memberId, role: "institution", institutionId: institutionId);
 
         var resp = await client.GetAsync("/v1/institution-admin/users");
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
@@ -72,7 +78,8 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task ListUsers_Citizen_Returns403()
     {
-        using var client = CreateBearerClient(Guid.NewGuid(), "citizen", institutionId: null);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, Guid.NewGuid(), role: "citizen", institutionId: null);
         var resp = await client.GetAsync("/v1/institution-admin/users");
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
@@ -85,14 +92,15 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // GET /users/{id}
+    // GET /users/{id} — bearer-JWT auth
     // -----------------------------------------------------------------------
 
     [Fact]
     public async Task GetUser_InSameInstitution_ReturnsDetail()
     {
         var (institutionId, adminId, memberId) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = CreateBearerClient(adminId, "institution_admin", institutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, adminId, role: "institution_admin", institutionId: institutionId);
 
         var resp = await client.GetAsync($"/v1/institution-admin/users/{memberId}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -108,7 +116,8 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
         var (_, _, memberB) = await SeedInstitutionWithAdminAndMemberAsync(
             institutionName: "Other Institution", emailPrefix: "other");
 
-        using var adminAClient = CreateBearerClient(adminA, "institution_admin", institutionA);
+        using var adminAClient = InstitutionAuthHelper.CreateBearerClient(
+            Factory, adminA, role: "institution_admin", institutionId: institutionA);
         var resp = await adminAClient.GetAsync($"/v1/institution-admin/users/{memberB}");
 
         // 404 (not 403) so admin A cannot probe user IDs from institution B.
@@ -119,7 +128,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // POST /users/invite (step-up required)
+    // POST /users/invite — bearer asserts step-up boundary; session drives happy path
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -127,9 +136,11 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     {
         // Bearer-JWT flows cannot satisfy step-up (it lives under the
         // cookie session + TOTP surface). Even an institution_admin
-        // bearer token is rejected on the write endpoint.
+        // bearer token is rejected on the write endpoint. This assertion
+        // IS the thing under test — keep the bearer path.
         var (institutionId, adminId, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = CreateBearerClient(adminId, "institution_admin", institutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, adminId, role: "institution_admin", institutionId: institutionId);
 
         var resp = await client.PostAsJsonAsync("/v1/institution-admin/users/invite", new
         {
@@ -145,14 +156,17 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task InviteUser_WithStepUpSession_HappyPath_ReturnsInvite()
     {
-        var (institutionId, adminId, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = await LogInAdminWithStepUpAsync(adminId, institutionId);
+        // Helper creates the institution + admin; drives magic-link verify
+        // and TOTP enroll + confirm so step_up_verified_at is fresh.
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", withStepUp: true);
 
-        var resp = await PostWithCsrfAsync(client, "/v1/institution-admin/users/invite", new
-        {
-            email = "newcomer@example.com",
-            role = "institution_user",
-        });
+        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
+            session, "/v1/institution-admin/users/invite", new
+            {
+                email = $"newcomer-{Guid.NewGuid():N}@example.com",
+                role = "institution_user",
+            });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.True(Guid.TryParse(body.GetProperty("inviteId").GetString(), out _));
@@ -162,14 +176,15 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task InviteUser_ElevationAttempt_Returns403ElevationGuard()
     {
-        var (institutionId, adminId, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = await LogInAdminWithStepUpAsync(adminId, institutionId);
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", withStepUp: true);
 
-        var resp = await PostWithCsrfAsync(client, "/v1/institution-admin/users/invite", new
-        {
-            email = "elevated@example.com",
-            role = "institution_admin",
-        });
+        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
+            session, "/v1/institution-admin/users/invite", new
+            {
+                email = $"elevated-{Guid.NewGuid():N}@example.com",
+                role = "institution_admin",
+            });
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("institution_admin.elevation_requires_approval",
@@ -179,15 +194,20 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task InviteUser_EmailAlreadyInUse_Returns409()
     {
-        var (institutionId, adminId, memberId) = await SeedInstitutionWithAdminAndMemberAsync();
-        string existingEmail = await GetEmailAsync(memberId);
+        // Create institution + a member first so its email is reserved,
+        // then log in an admin in the same institution via the helper
+        // and attempt to invite using that member's email.
+        var (institutionId, memberEmail) = await SeedInstitutionWithMemberAsync();
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", institutionId: institutionId,
+            withStepUp: true);
 
-        using var client = await LogInAdminWithStepUpAsync(adminId, institutionId);
-        var resp = await PostWithCsrfAsync(client, "/v1/institution-admin/users/invite", new
-        {
-            email = existingEmail,
-            role = "institution_user",
-        });
+        var resp = await InstitutionAuthHelper.PostWithCsrfAsync(
+            session, "/v1/institution-admin/users/invite", new
+            {
+                email = memberEmail,
+                role = "institution_user",
+            });
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("institution_admin.email_already_in_use",
@@ -195,19 +215,22 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // PUT /users/{id}/role
+    // PUT /users/{id}/role — session + step-up required
     // -----------------------------------------------------------------------
 
     [Fact]
     public async Task ChangeRole_ElevationAttempt_Returns403()
     {
-        var (institutionId, adminId, memberId) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = await LogInAdminWithStepUpAsync(adminId, institutionId);
+        var (institutionId, memberId, _) = await SeedInstitutionWithMemberIdAsync();
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", institutionId: institutionId,
+            withStepUp: true);
 
-        var resp = await PutWithCsrfAsync(client, $"/v1/institution-admin/users/{memberId}/role", new
-        {
-            role = "institution_admin",
-        });
+        var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
+            session, $"/v1/institution-admin/users/{memberId}/role", new
+            {
+                role = "institution_admin",
+            });
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("institution_admin.elevation_requires_approval",
@@ -217,15 +240,16 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task ChangeRole_DemoteLastAdmin_Returns409()
     {
-        // Seed an institution with exactly ONE admin — demoting that
-        // admin (even self) must be blocked to prevent a lockout.
-        var (institutionId, adminId, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        using var client = await LogInAdminWithStepUpAsync(adminId, institutionId);
+        // Helper creates the single admin in a fresh institution; trying
+        // to demote that admin (self) must be blocked to prevent lockout.
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", withStepUp: true);
 
-        var resp = await PutWithCsrfAsync(client, $"/v1/institution-admin/users/{adminId}/role", new
-        {
-            role = "institution_user",
-        });
+        var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
+            session, $"/v1/institution-admin/users/{session.AccountId}/role", new
+            {
+                role = "institution_user",
+            });
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("institution_admin.last_admin_cannot_demote",
@@ -235,15 +259,17 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task ChangeRole_DemoteAdmin_WithTwoAdmins_Succeeds()
     {
-        // With 2 admins present, demoting one is allowed.
-        var (institutionId, adminA, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        var adminB = await SeedSecondAdminAsync(institutionId, "adminB@example.com");
+        // Two admins in the institution: the helper's (session.AccountId)
+        // + a seeded second admin (adminB). Demoting adminB is allowed.
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", withStepUp: true);
+        Guid adminB = await SeedSecondAdminAsync(session.InstitutionId);
 
-        using var client = await LogInAdminWithStepUpAsync(adminA, institutionId);
-        var resp = await PutWithCsrfAsync(client, $"/v1/institution-admin/users/{adminB}/role", new
-        {
-            role = "institution_user",
-        });
+        var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
+            session, $"/v1/institution-admin/users/{adminB}/role", new
+            {
+                role = "institution_user",
+            });
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
 
         // Confirm the flag was actually flipped.
@@ -254,15 +280,22 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task ChangeRole_CrossInstitutionTarget_Returns404()
     {
-        var (institutionA, adminA, _) = await SeedInstitutionWithAdminAndMemberAsync();
-        var (_, _, memberB) = await SeedInstitutionWithAdminAndMemberAsync(
-            institutionName: "Other", emailPrefix: "b");
+        // Helper logs the admin into institution A; member B lives in a
+        // separately seeded institution B. SeedInstitutionWithMemberIdAsync
+        // (not SeedInstitutionWithMemberAsync) is used so memberB is the
+        // account Guid — the route has a `{userId:guid}` constraint and
+        // would reject a non-Guid segment with an empty-bodied 404 from
+        // the router, masking the controller's NotFoundException envelope.
+        using var session = await InstitutionAuthHelper.CreateSessionAsync(
+            Factory, role: "institution_admin", withStepUp: true);
+        var (_, memberB, _) = await SeedInstitutionWithMemberIdAsync(
+            institutionName: "Other");
 
-        using var client = await LogInAdminWithStepUpAsync(adminA, institutionA);
-        var resp = await PutWithCsrfAsync(client, $"/v1/institution-admin/users/{memberB}/role", new
-        {
-            role = "institution_user",
-        });
+        var resp = await InstitutionAuthHelper.PutWithCsrfAsync(
+            session, $"/v1/institution-admin/users/{memberB}/role", new
+            {
+                role = "institution_user",
+            });
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("institution_admin.user_not_found",
@@ -270,7 +303,7 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // GET /scope
+    // GET /scope — bearer-JWT auth
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -279,7 +312,8 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
         var (institutionId, adminId, _) = await SeedInstitutionWithAdminAndMemberAsync();
         await SeedJurisdictionAsync(institutionId, FakeLocalityLookupRepository.TestLocalityId);
 
-        using var client = CreateBearerClient(adminId, "institution_admin", institutionId);
+        using var client = InstitutionAuthHelper.CreateBearerClient(
+            Factory, adminId, role: "institution_admin", institutionId: institutionId);
         var resp = await client.GetAsync("/v1/institution-admin/scope");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
@@ -289,125 +323,21 @@ public sealed class InstitutionAdminIntegrationTests : IntegrationTestBase
     }
 
     // =======================================================================
-    // Test helpers
+    // Seed helpers
     // =======================================================================
 
-    private string? _csrfPlaintext;
-
-    private async Task<HttpClient> LogInAdminWithStepUpAsync(Guid adminId, Guid institutionId)
-    {
-        // Mint a magic-link + verify + TOTP enroll + TOTP confirm
-        // directly via the services. The end state: an institution-web
-        // session cookie with step_up_verified_at stamped.
-        await EnsureAdminEmailNormalisedAsync(adminId);
-        string email = await GetEmailAsync(adminId);
-
-        using var scope = Factory.Services.CreateScope();
-        var magic = scope.ServiceProvider.GetRequiredService<IMagicLinkService>();
-        MagicLinkIssued issued = await magic.IssueAsync(email, default);
-
-        // Bind the magic link row to the admin's account id via direct
-        // UPDATE — the real flow does this at IssueAsync time via the
-        // email-to-account join, but the test wants a deterministic tie.
-        await using (var conn = new NpgsqlConnection(TestConstants.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using var cmd = new NpgsqlCommand(
-                "UPDATE magic_link_tokens SET account_id = @aid WHERE token_hash = @hash", conn);
-            cmd.Parameters.AddWithValue("aid", adminId);
-            cmd.Parameters.AddWithValue("hash", magic.HashToken(issued.PlaintextToken));
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        var client = Factory.CreateClient();
-        var verify = await client.PostAsJsonAsync("/v1/auth/institution/magic-link/verify", new
-        {
-            token = issued.PlaintextToken,
-        });
-        verify.EnsureSuccessStatusCode();
-        _csrfPlaintext = ExtractCookieValue(verify, "hali_institution_csrf");
-
-        // Enroll TOTP and confirm with the current code so the session
-        // carries a fresh step_up_verified_at.
-        var enroll = await PostWithCsrfAsync(client, "/v1/auth/institution/totp/enroll");
-        enroll.EnsureSuccessStatusCode();
-
-        string currentCode = await ComputeCurrentCodeAsync(adminId);
-        var confirm = await PostWithCsrfAsync(client, "/v1/auth/institution/totp/confirm", new
-        {
-            code = currentCode,
-        });
-        confirm.EnsureSuccessStatusCode();
-
-        // The session row was created with role snapshotted from Account.
-        // The seed flagged adminId as IsInstitutionAdmin=true, so role=
-        // "institution_admin" on the session row.
-        return client;
-    }
-
-    private async Task<HttpResponseMessage> PostWithCsrfAsync(HttpClient client, string path, object? body = null)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Post, path);
-        if (_csrfPlaintext is not null) req.Headers.Add("X-CSRF-Token", _csrfPlaintext);
-        req.Content = body is null
-            ? new StringContent("", Encoding.UTF8, "application/json")
-            : JsonContent.Create(body);
-        return await client.SendAsync(req);
-    }
-
-    private async Task<HttpResponseMessage> PutWithCsrfAsync(HttpClient client, string path, object body)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Put, path);
-        if (_csrfPlaintext is not null) req.Headers.Add("X-CSRF-Token", _csrfPlaintext);
-        req.Content = JsonContent.Create(body);
-        return await client.SendAsync(req);
-    }
-
-    private static string? ExtractCookieValue(HttpResponseMessage response, string cookieName)
-    {
-        if (!response.Headers.TryGetValues("Set-Cookie", out var cookies)) return null;
-        string prefix = cookieName + "=";
-        foreach (var raw in cookies)
-        {
-            if (!raw.StartsWith(prefix, StringComparison.Ordinal)) continue;
-            int semicolon = raw.IndexOf(';');
-            return semicolon < 0 ? raw[prefix.Length..] : raw[prefix.Length..semicolon];
-        }
-        return null;
-    }
-
-    private async Task<string> ComputeCurrentCodeAsync(Guid accountId)
-    {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        var secret = await db.TotpSecrets.FirstAsync(s => s.AccountId == accountId);
-        var protector = scope.ServiceProvider
-            .GetRequiredService<IDataProtectionProvider>()
-            .CreateProtector("hali-institution-totp-secrets");
-        string base32 = protector.Unprotect(secret.SecretEncrypted);
-        byte[] raw = TotpService.DecodeBase32(base32);
-        long step = TotpService.GetCurrentStep(DateTimeOffset.UtcNow);
-        return TotpService.ComputeCode(raw, step);
-    }
-
-    // ---- Seeding ------------------------------------------------------
-
+    /// <summary>
+    /// Seeds a fresh institution + an admin account + a member account.
+    /// Returned ids are used by tests that authenticate via bearer JWT
+    /// and therefore need control over the account identities on either
+    /// side of the auth boundary.
+    /// </summary>
     private async Task<(Guid institutionId, Guid adminId, Guid memberId)>
         SeedInstitutionWithAdminAndMemberAsync(
             string institutionName = "Test Institution",
             string emailPrefix = "a")
     {
-        Guid institutionId;
-        await using (var conn = new NpgsqlConnection(TestConstants.ConnectionString))
-        {
-            await conn.OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
-INSERT INTO institutions (id, name, type, is_verified, created_at)
-VALUES (gen_random_uuid(), @name, 'utility', true, now())
-RETURNING id", conn);
-            cmd.Parameters.AddWithValue("name", institutionName);
-            institutionId = (Guid)(await cmd.ExecuteScalarAsync())!;
-        }
+        Guid institutionId = await InsertInstitutionAsync(institutionName);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -441,14 +371,83 @@ RETURNING id", conn);
         return (institutionId, admin.Id, member.Id);
     }
 
-    private async Task<Guid> SeedSecondAdminAsync(Guid institutionId, string email)
+    /// <summary>
+    /// Seeds an institution + a single member account (no admin — the
+    /// admin comes from <see cref="InstitutionAuthHelper.CreateSessionAsync"/>
+    /// in tests that need a fresh step-up session). Returns both the
+    /// institution id AND the member's email so callers testing the
+    /// "email already in use" path don't need a second DB round-trip.
+    /// </summary>
+    private async Task<(Guid institutionId, string memberEmail)>
+        SeedInstitutionWithMemberAsync(
+            string institutionName = "Test Institution",
+            string memberEmailPrefix = "member")
+    {
+        Guid institutionId = await InsertInstitutionAsync(institutionName);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+
+        var member = new Account
+        {
+            Id = Guid.NewGuid(),
+            Email = $"{memberEmailPrefix}-{Guid.NewGuid():N}@example.com",
+            IsEmailVerified = true,
+            AccountType = AccountType.InstitutionUser,
+            InstitutionId = institutionId,
+            IsInstitutionAdmin = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Accounts.Add(member);
+        await db.SaveChangesAsync();
+
+        return (institutionId, member.Email!);
+    }
+
+    /// <summary>
+    /// Variant of <see cref="SeedInstitutionWithMemberAsync"/> that also
+    /// returns the member account id — callers that need the id to
+    /// construct a role-change URL, not just the email.
+    /// </summary>
+    private async Task<(Guid institutionId, Guid memberId, string memberEmail)>
+        SeedInstitutionWithMemberIdAsync(string institutionName = "Test Institution")
+    {
+        Guid institutionId = await InsertInstitutionAsync(institutionName);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+
+        var member = new Account
+        {
+            Id = Guid.NewGuid(),
+            Email = $"member-{Guid.NewGuid():N}@example.com",
+            IsEmailVerified = true,
+            AccountType = AccountType.InstitutionUser,
+            InstitutionId = institutionId,
+            IsInstitutionAdmin = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Accounts.Add(member);
+        await db.SaveChangesAsync();
+
+        return (institutionId, member.Id, member.Email!);
+    }
+
+    /// <summary>
+    /// Seeds an additional admin account in an existing institution so
+    /// the "two admins present, demoting one succeeds" scenario has a
+    /// demotion target that isn't the self-demote last-admin guard.
+    /// </summary>
+    private async Task<Guid> SeedSecondAdminAsync(Guid institutionId)
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var account = new Account
         {
             Id = Guid.NewGuid(),
-            Email = $"{Guid.NewGuid():N}-{email}".ToLowerInvariant(),
+            Email = $"admin2-{Guid.NewGuid():N}@example.com",
             IsEmailVerified = true,
             AccountType = AccountType.InstitutionUser,
             InstitutionId = institutionId,
@@ -459,6 +458,18 @@ RETURNING id", conn);
         db.Accounts.Add(account);
         await db.SaveChangesAsync();
         return account.Id;
+    }
+
+    private static async Task<Guid> InsertInstitutionAsync(string name)
+    {
+        await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+INSERT INTO institutions (id, name, type, is_verified, created_at)
+VALUES (gen_random_uuid(), @name, 'utility', true, now())
+RETURNING id", conn);
+        cmd.Parameters.AddWithValue("name", name);
+        return (Guid)(await cmd.ExecuteScalarAsync())!;
     }
 
     private static async Task SeedJurisdictionAsync(Guid institutionId, Guid localityId)
@@ -473,64 +484,11 @@ VALUES (gen_random_uuid(), @instId, @locId, now())", conn);
         await cmd.ExecuteNonQueryAsync();
     }
 
-    private async Task<string> GetEmailAsync(Guid accountId)
-    {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        var account = await db.Accounts.FirstAsync(a => a.Id == accountId);
-        return account.Email!;
-    }
-
     private async Task<string> GetAccountRoleAsync(Guid accountId)
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var account = await db.Accounts.FirstAsync(a => a.Id == accountId);
         return account.IsInstitutionAdmin ? "institution_admin" : "institution_user";
-    }
-
-    private async Task EnsureAdminEmailNormalisedAsync(Guid accountId)
-    {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        var account = await db.Accounts.FirstAsync(a => a.Id == accountId);
-        if (account.Email is not null)
-        {
-            account.Email = account.Email.ToLowerInvariant();
-            await db.SaveChangesAsync();
-        }
-    }
-
-    // ---- JWT minting for bearer-auth tests ---------------------------
-
-    private HttpClient CreateBearerClient(Guid accountId, string role, Guid? institutionId)
-    {
-        var jwt = MintJwt(accountId, role, institutionId);
-        var client = Factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-        return client;
-    }
-
-    private static string MintJwt(Guid accountId, string role, Guid? institutionId)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(TestConstants.JwtSecret));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new System.Collections.Generic.List<Claim>
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
-            new Claim(ClaimTypes.Role, role),
-        };
-        if (institutionId.HasValue)
-        {
-            claims.Add(new Claim("institution_id", institutionId.Value.ToString()));
-        }
-        var token = new JwtSecurityToken(
-            issuer: TestConstants.JwtIssuer,
-            audience: TestConstants.JwtAudience,
-            claims: claims,
-            notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(10),
-            signingCredentials: creds);
-        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }
