@@ -6,13 +6,16 @@ on:
       - develop
       - main
 
+permissions:
+  contents: read
+
 jobs:
   auth-matrix-guard:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect changed files
         id: changed
@@ -40,11 +43,19 @@ jobs:
             MATRIX_UPDATED=true
           fi
 
-          # Check for sensitive module changes using path prefixes.
+          # Sensitive path regex — matches on path prefixes that exist today.
           # Substring matching (e.g. "auth") is intentionally avoided to prevent
           # false positives on documentation files, OAuth references, etc.
-          if echo "$CHANGED" | grep -E -q \
-            "(src/Hali\.Modules\.Auth/|src/Hali\.Modules\.Institutions/|Hali\.Api/Middleware/|02_openapi\.yaml)"; then
+          # Paths reflect the actual repo layout:
+          #   - src/Hali.Application/Auth/   (auth use cases)
+          #   - src/Hali.Infrastructure/Auth/ (token storage, hashing, etc.)
+          #   - src/Hali.Api/Middleware/       (auth middleware)
+          #   - src/Hali.Application/Institution (Phase 2 — forward-looking)
+          #   - src/Hali.Infrastructure/Institution (Phase 2 — forward-looking)
+          #   - 02_openapi.yaml               (API surface)
+          SENSITIVE_PATTERN="(src/Hali\.Application/Auth/|src/Hali\.Infrastructure/Auth/|src/Hali\.Api/Middleware/|src/Hali\.Application/Institution|src/Hali\.Infrastructure/Institution|02_openapi\.yaml)"
+
+          if echo "$CHANGED" | grep -E -q "$SENSITIVE_PATTERN"; then
             SENSITIVE=true
           fi
 
@@ -65,8 +76,7 @@ jobs:
             echo "docs/arch/AUTHORIZATION_COVERAGE_MATRIX.md"
             echo ""
             echo "Files that triggered this check:"
-            echo "$CHANGED" | tr ' ' '\n' | grep -E \
-              "(Hali\.Modules\.Auth/|Hali\.Modules\.Institutions/|Hali\.Api/Middleware/|02_openapi\.yaml)"
+            echo "$CHANGED" | tr ' ' '\n' | grep -E "$SENSITIVE_PATTERN"
             echo ""
             echo "Update the matrix and include it in this PR."
             exit 1
