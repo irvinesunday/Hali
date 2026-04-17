@@ -1,6 +1,8 @@
+using System;
 using System.Threading.Tasks;
 using Hali.Tests.Integration.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Xunit;
@@ -39,24 +41,41 @@ public sealed class DataProtectionIntegrationTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task DataProtection_PersistsKeyToDatabase_OnFirstUse()
+    public async Task DataProtection_KeyRing_PersistsCreatedKeysToDatabase()
     {
-        // Force the key ring to materialise by calling Protect — the
-        // first call writes the seed key to the data_protection_keys
-        // table via the EF-backed XmlRepository. Without #243's
-        // PersistKeysToDbContext wiring, the ring would live only
-        // in memory and this row count would stay at zero.
-        IDataProtector protector = Factory.Services
-            .GetRequiredService<IDataProtectionProvider>()
-            .CreateProtector("hali.integration-test.persistence");
+        // Invoke the key manager directly so the test proves PERSISTENCE
+        // rather than cache behaviour: CreateNewKey unconditionally calls
+        // IXmlRepository.StoreElement, which with #243's
+        // PersistKeysToDbContext wiring writes a new row to
+        // data_protection_keys. Without the wiring, the default
+        // XmlRepository would write elsewhere and the row count delta
+        // would stay at zero.
+        //
+        // Asserting on a count DELTA (not an absolute count) keeps the
+        // test stable across runs: leftover rows from earlier tests do
+        // not mask a regression, and we do NOT truncate the table —
+        // truncating would desync the Data Protection in-memory key
+        // cache from the DB and destabilise other integration tests that
+        // rely on the shared IDataProtectionProvider (e.g. the TOTP
+        // tests in InstitutionAuthIntegrationTests).
+        var keyManager = Factory.Services.GetRequiredService<IKeyManager>();
+        long countBefore = await CountKeyRingRowsAsync();
 
-        _ = protector.Protect("warm-up");
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        keyManager.CreateNewKey(activationDate: now, expirationDate: now.AddDays(90));
 
+        long countAfter = await CountKeyRingRowsAsync();
+        Assert.True(
+            countAfter > countBefore,
+            $"Expected row count to increase after CreateNewKey. Before: {countBefore}, after: {countAfter}.");
+    }
+
+    private static async Task<long> CountKeyRingRowsAsync()
+    {
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
             "SELECT COUNT(*) FROM data_protection_keys", conn);
-        long rowCount = (long)(await cmd.ExecuteScalarAsync())!;
-        Assert.True(rowCount >= 1, "Expected at least one row in data_protection_keys.");
+        return (long)(await cmd.ExecuteScalarAsync())!;
     }
 }

@@ -272,13 +272,17 @@ replicates across nodes.
 - **Production gate**: `DataProtection:CertPath` and
   `DataProtection:CertPassword` MUST be provisioned before institution
   users are onboarded to production. Production fails-fast at startup
-  if `CertPath` is configured but the file cannot be loaded (missing
-  or invalid) — a misconfigured production deployment must not
-  silently run unprotected.
+  in **both** of these cases — a misconfigured production deployment
+  must not silently run unprotected:
+  - `CertPath` is configured but the file cannot be loaded (missing
+    or invalid)
+  - `CertPath` is not configured at all (no fallback — DPAPI is not
+    canonical for Production)
 - **Non-Production degradation**: dev and staging log an ERROR and
   continue unprotected if the cert is configured but missing, so a
   broken shared mount does not block local work. If the cert is not
-  configured at all, startup logs a WARNING and keys are unprotected.
+  configured at all outside Production, startup logs a WARNING and
+  keys are unprotected.
 - **Dev-machine escape hatch**: when no cert is configured on Windows,
   the key ring uses DPAPI (user-scoped). DPAPI is **never** acceptable
   for staging or production — operators must provision a cert.

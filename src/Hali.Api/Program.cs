@@ -58,9 +58,13 @@ builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSect
 //     unprotected.
 //   * Cert configured + missing/invalid + non-Production: log ERROR
 //     and continue so developers are not blocked by an ops issue.
-//   * Cert unconfigured + Windows: DPAPI (dev-machine escape hatch
-//     only, never canonical). Log WARNING.
-//   * Cert unconfigured + other OS: log WARNING, keys unprotected.
+//   * Cert unconfigured + Production: throw. DPAPI is not canonical
+//     for Production even on Windows, and running unprotected under
+//     Production is never acceptable per SECURITY_POSTURE.md §5.
+//   * Cert unconfigured + Windows (non-Production): DPAPI
+//     (dev-machine escape hatch only). Log WARNING.
+//   * Cert unconfigured + other OS (non-Production): log WARNING,
+//     keys unprotected.
 //
 // AddInfrastructure must run BEFORE AddDataProtection so the
 // HaliDataProtectionDbContext is registered in DI when
@@ -127,6 +131,16 @@ if (!string.IsNullOrWhiteSpace(certPath))
         Console.Error.WriteLine(
             "[data-protection] ERROR: certificate configured but file not found — starting unprotected");
     }
+}
+else if (builder.Environment.IsProduction())
+{
+    // Fail-fast: Production must never run unprotected. The posture
+    // doc (docs/arch/SECURITY_POSTURE.md §5) names DataProtection:CertPath
+    // a pre-onboarding requirement. DPAPI is explicitly NOT canonical for
+    // production even on Windows — it is a Windows dev-machine escape hatch.
+    throw new InvalidOperationException(
+        "Data Protection certificate is required in Production. " +
+        "Set DataProtection:CertPath to a provisioned PFX file.");
 }
 else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 {
