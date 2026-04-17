@@ -189,9 +189,9 @@ what can be reported upstream.
 
 - Phone number (raw or partial)
 - OTP code
-- Device identifier raw (use a per-install install_id hash — see
-  `apps/citizen-mobile/src/lib/install-id.ts` for the canonical
-  helper once introduced)
+- Device identifier raw (use a per-install install_id hash — use
+  the canonical helper once it is introduced in citizen mobile; see
+  #206 for the scheduled instrumentation work)
 - Free-text signal content
 - GPS coordinates beyond the ward resolution level
 
@@ -290,8 +290,11 @@ not as a follow-up.
   - `category` → the eight canonical `CivicCategory` values
   - `actor_type` → `citizen` / `institution` / `institution_admin` /
     `hali_ops` / `anonymous`
-  - `reason_code` → the reason-code catalog in
-    `Hali.Application.Errors.ReasonCodes` / equivalent
+  - `reason_code` → no centralised reason-code catalog exists yet
+    in the codebase (there is an `ErrorCodes` type plus ad-hoc
+    reason strings on entities such as `CivisDecision`). Introduce
+    a single canonical bounded catalog before `reason_code` is used
+    as a metric tag
 - Tags for `cluster_id`, `account_id`, `device_id`, and free-text are
   **never** applied to metrics. They belong in logs and traces only.
 
