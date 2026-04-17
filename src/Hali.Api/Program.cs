@@ -60,6 +60,12 @@ builder.Services.AddSingleton<Hali.Application.Observability.ClustersMetrics>();
 // counter emitted from ExpoPushNotificationService / DevicesController.
 builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMetrics>();
 
+// Typed feature flag registry + evaluator. Stateless, in-process, singleton.
+// See docs/arch/FEATURE_FLIGHTING_MODEL.md for the policy and
+// src/Hali.Application/FeatureFlags/FeatureFlags.cs for the canonical catalog.
+builder.Services.AddSingleton<Hali.Application.FeatureFlags.IFeatureFlagService,
+    Hali.Application.FeatureFlags.FeatureFlagService>();
+
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
 string jwtIssuer = builder.Configuration["Auth:JwtIssuer"] ?? "hali";
