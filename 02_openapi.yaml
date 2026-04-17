@@ -881,6 +881,7 @@ paths:
         Clients do not see the flag's kind, owner, targeting rules, or
         rollout metadata — just the resolved boolean value. See
         `docs/arch/FEATURE_FLIGHTING_MODEL.md` §4.
+      security: []
       parameters:
         - in: query
           name: localityId
@@ -893,6 +894,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ResolvedFeatureFlagsResponse' }
+        '400':
+          description: |
+            Query parameter validation failure — e.g. `localityId` is not
+            a valid UUID.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ── Admin ───────────────────────────────────────────────────────────
   /v1/admin/institutions:
