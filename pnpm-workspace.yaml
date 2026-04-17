@@ -1,0 +1,15 @@
+# Hali monorepo workspaces.
+#
+# - apps/*      — deployable applications (citizen-mobile, and future
+#                 institution-web, institution-admin-web, hali-ops-web)
+# - packages/*  — shared libraries consumed by apps (contracts,
+#                 design-system, config)
+#
+# Note: apps/citizen-mobile currently uses npm and ships its own
+# package-lock.json. Leaving it in the workspace list does not force
+# a migration — pnpm at the root only discovers workspace packages
+# and does not override an app's own package manager.
+
+packages:
+  - "apps/*"
+  - "packages/*"

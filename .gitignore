@@ -67,6 +67,9 @@ dist/
 web-build/
 *.jsbundle
 
+# ── Turborepo ─────────────────────────────────────────────────────────────────
+.turbo/
+
 # ── React Native ─────────────────────────────────────────────────────────────
 android/.gradle
 android/app/build/
