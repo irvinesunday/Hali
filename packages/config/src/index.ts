@@ -31,9 +31,10 @@ export type SignalState = (typeof SIGNAL_STATES)[number];
 
 // Composer character limit for the citizen signal-submit free-text
 // field. Mirrors the backend max-length constraint in the signal
-// submit DTO. Shared here so both the mobile composer and any future
-// web submission UI use the same value.
-export const SIGNAL_TEXT_MAX_LENGTH = 300;
+// submit DTO (see SignalPreviewRequest.freeText in 02_openapi.yaml
+// and apps/citizen-mobile/src/config/constants.ts). Shared here so
+// any future web submission UI uses the same value.
+export const SIGNAL_TEXT_MAX_LENGTH = 500;
 
 // Maximum wards a citizen can follow. Mirrors the rule in
 // CLAUDE.md and the WardFollow service constraint.

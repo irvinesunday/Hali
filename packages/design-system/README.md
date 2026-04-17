@@ -5,9 +5,9 @@ Shared Hali design system tokens and primitives.
 **Web-only.** Never import this package from `apps/citizen-mobile`.
 Mobile ships its own React Native theme in
 `apps/citizen-mobile/src/theme/` because React Native style primitives
-and web CSS are not interchangeable. Keeping them separate is a
-deliberate boundary — see `docs/arch/FEATURE_FLIGHTING_MODEL.md` and
-`CLAUDE.md` stack rules.
+and web CSS are not interchangeable. The rule is stated explicitly in
+`CLAUDE.md` under "Stack rules": _"Do NOT import /packages/design-system
+into citizen-mobile"_.
 
 ## Usage
 
