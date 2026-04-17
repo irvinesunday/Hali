@@ -1,75 +1,98 @@
-// Canonical color tokens extracted from the v0 reference artifacts
-// (docs/reference-ui/v0/v0-hali-*-ui.zip). These are WEB-ONLY — the
-// citizen mobile app maintains its own React Native theme in
-// apps/citizen-mobile/src/theme/colors.ts because OKLCH and
-// semantic CSS tokens are not representable in React Native.
+// Canonical color tokens, extracted from the v0 reference artifacts
+// under docs/reference-ui/v0/. WEB-ONLY — the citizen mobile app
+// maintains its own React Native theme in
+// apps/citizen-mobile/src/theme/colors.ts because OKLCH and semantic
+// CSS tokens are not representable in React Native.
 //
-// The two v0 surfaces differ subtly — the citizen mobile reference
-// uses a cooler primary (oklch 0.55 0.12 190) while the institution
-// reference uses a slightly more saturated variant (oklch 0.65 0.12
-// 180). Both are captured here so each web consumer picks the
-// surface-correct palette; convergence decisions are deferred to the
-// Phase 1.5 UI/UX synthesis work.
+// Architecture (per Phase 1.5 design intent clarification and
+// subsequent human review gate):
+//
+//   SharedSemanticColors  — structural chrome + shared meaning,
+//                            unified across surfaces.
+//   CitizenColors         — surface override; warmer, softer,
+//                            ambient register.
+//   InstitutionColors     — surface override; cooler, sharper,
+//                            operational register.
+//
+// Shared semantic base carries meaning that is identical across
+// surfaces (what "card" means, what "border" means). Where a token
+// is semantically shared but rendered differently per surface — e.g.
+// `destructive` carries the same "error/danger" meaning but the
+// citizen surface renders it softer and the institution surface
+// renders it sharper — the token lives in the surface override
+// layers, not in the shared base. This is the "shared semantic base
+// with surface-level rendering differences (not fully unified)"
+// rule.
 
 /**
- * Canonical citizen web palette — matches the v0 mobile UI artifact
- * (`v0-hali-mobile-ui/app/globals.css`). Values are raw OKLCH strings
- * so downstream consumers can feed them directly into Tailwind v4 or
- * CSS custom properties without lossy hex conversion.
+ * Shared base: structural chrome that every surface consumes
+ * identically. Divergent v0 values for these tokens were minor
+ * chrome drift and have been reconciled per the classification rule
+ * (see `docs/reference-ui/v0/phase-1.5-visual-audit.md` §8).
+ */
+export const SharedSemanticColors = {
+  card: "oklch(1 0 0)",
+  cardForeground: "oklch(0.225 0.02 210)",
+  popover: "oklch(1 0 0)",
+  popoverForeground: "oklch(0.225 0.02 210)",
+  border: "oklch(0.91 0.01 190)",
+  input: "oklch(0.92 0.01 190)",
+  muted: "oklch(0.955 0.007 190)",
+  mutedForeground: "oklch(0.5 0.02 210)",
+} as const;
+
+/**
+ * Citizen surface override — warmer, softer, empathetic register.
+ * Source: `docs/reference-ui/v0/v0-hali-mobile-ui.zip:app/globals.css`.
+ *
+ * Intentional divergences from InstitutionColors:
+ *   primary      — cooler hue-190 teal at lightness 0.55 (softer feel)
+ *   foreground   — slightly cooler body text
+ *   destructive  — warmer, less saturated error hue (matches the
+ *                  surface's empathetic register while preserving
+ *                  the shared "error/danger" semantic)
  */
 export const CitizenColors = {
   background: "oklch(0.98 0.005 200)",
   foreground: "oklch(0.25 0.02 220)",
-  card: "oklch(1 0 0)",
-  cardForeground: "oklch(0.25 0.02 220)",
-  popover: "oklch(1 0 0)",
-  popoverForeground: "oklch(0.25 0.02 220)",
   primary: "oklch(0.55 0.12 190)",
   primaryForeground: "oklch(0.99 0 0)",
   secondary: "oklch(0.94 0.01 200)",
   secondaryForeground: "oklch(0.35 0.02 220)",
-  muted: "oklch(0.95 0.005 200)",
-  mutedForeground: "oklch(0.50 0.02 220)",
   accent: "oklch(0.92 0.02 180)",
   accentForeground: "oklch(0.30 0.02 220)",
   destructive: "oklch(0.60 0.15 30)",
-  // NOTE: the v0 artifact ships --destructive-foreground equal to
-  // --destructive, which leaves destructive text unreadable on
-  // destructive backgrounds. We deviate from the artifact here and
-  // use the same near-white as primaryForeground so contrast works.
   destructiveForeground: "oklch(0.99 0 0)",
-  border: "oklch(0.90 0.01 200)",
-  input: "oklch(0.92 0.01 200)",
   ring: "oklch(0.55 0.12 190)",
 } as const;
 
 /**
- * Canonical institution web palette — matches the v0 institution UI
- * artifact (`v0-hali-institution-ui/app/globals.css`). Sidebar-prefixed
- * tokens are included because the institution dashboard shell has a
- * persistent sidebar while the citizen mobile reference does not.
+ * Institution surface override — cooler, sharper, decisive register.
+ * Source: `docs/reference-ui/v0/v0-hali-institution-ui.zip:app/globals.css`.
+ *
+ * Intentional divergences from CitizenColors:
+ *   primary      — hue-180 teal at lightness 0.65 (sharper,
+ *                  authoritative)
+ *   foreground   — darker, less blue-hued body text for denser
+ *                  dashboard content
+ *   destructive  — more saturated, sharper error hue (matches the
+ *                  operational register; same shared "error/danger"
+ *                  semantic as citizen)
+ *
+ * Sidebar tokens apply only to the institution dashboard shell and
+ * have no citizen counterpart.
  */
 export const InstitutionColors = {
   background: "oklch(0.985 0.002 180)",
   foreground: "oklch(0.2 0.02 200)",
-  card: "oklch(1 0 0)",
-  cardForeground: "oklch(0.2 0.02 200)",
-  popover: "oklch(1 0 0)",
-  popoverForeground: "oklch(0.2 0.02 200)",
   primary: "oklch(0.65 0.12 180)",
   primaryForeground: "oklch(0.99 0 0)",
   secondary: "oklch(0.96 0.01 180)",
   secondaryForeground: "oklch(0.25 0.02 200)",
-  muted: "oklch(0.96 0.008 180)",
-  mutedForeground: "oklch(0.5 0.02 200)",
   accent: "oklch(0.92 0.03 180)",
   accentForeground: "oklch(0.25 0.02 200)",
   destructive: "oklch(0.577 0.245 27.325)",
-  // Same deviation as citizen: v0 ships foreground==destructive which
-  // is unreadable. Near-white foreground preserves contrast.
   destructiveForeground: "oklch(0.99 0 0)",
-  border: "oklch(0.92 0.01 180)",
-  input: "oklch(0.92 0.01 180)",
   ring: "oklch(0.65 0.12 180)",
   sidebar: "oklch(0.99 0.005 180)",
   sidebarForeground: "oklch(0.25 0.02 200)",
@@ -106,3 +129,19 @@ export const ConditionBadgeClassNames = {
 } as const;
 
 export type ConditionBadgeKey = keyof typeof ConditionBadgeClassNames;
+
+/**
+ * Helpers that assemble a complete token set for a given surface by
+ * layering a surface override on top of the shared base. Downstream
+ * consumers typically import one of these rather than mixing base +
+ * override manually.
+ */
+export const citizenTheme = {
+  ...SharedSemanticColors,
+  ...CitizenColors,
+} as const;
+
+export const institutionTheme = {
+  ...SharedSemanticColors,
+  ...InstitutionColors,
+} as const;

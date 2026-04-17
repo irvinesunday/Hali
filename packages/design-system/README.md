@@ -10,55 +10,103 @@ and web CSS are not interchangeable. The rule is stated explicitly in
 `CLAUDE.md` under "Stack rules": _"Do NOT import /packages/design-system
 into citizen-mobile"_.
 
+## Architecture: shared base + surface overrides
+
+Per Phase 1.5 design intent clarification, divergent surface colours
+are **intentional theming**, not conflicts to unify. Tokens are
+organised into three layers:
+
+1. **`SharedSemanticColors`** — structural chrome + shared meaning
+   (border, muted, input, card, popover, destructive). Unified across
+   surfaces.
+2. **`CitizenColors`** — surface override for the citizen mobile
+   preview / future citizen web. Warmer, softer, empathetic register.
+3. **`InstitutionColors`** — surface override for the institution
+   dashboard. Cooler, sharper, decisive register.
+
+The package also exports pre-composed themes:
+
+- `citizenTheme = { ...SharedSemanticColors, ...CitizenColors }`
+- `institutionTheme = { ...SharedSemanticColors, ...InstitutionColors }`
+
+Downstream consumers typically import the composed theme rather than
+mixing layers manually.
+
+### Why the divergence is modelled this way
+
+| Token | Citizen | Institution | Rationale |
+|---|---|---|---|
+| `primary` | `oklch(0.55 0.12 190)` — warmer, softer | `oklch(0.65 0.12 180)` — cooler, sharper | Intentional surface divergence per product doctrine |
+| `foreground` | `oklch(0.25 0.02 220)` | `oklch(0.2 0.02 200)` — darker | Institution surface is denser and needs higher-contrast body text |
+| `border`, `muted`, `input` | shared | shared | Structural chrome — no emotional register difference |
+| `destructive` | shared (converged to institution value) | shared | Error states need equal legibility on both surfaces |
+| `sidebar*` | n/a | defined | Only the institution shell has a persistent sidebar |
+
+Full rationale: `docs/arch/hali_institution_ux_layout_spec.md` and
+`docs/reference-ui/v0/phase-1.5-visual-audit.md` §8.
+
 ## Canonical vs reference-only
 
 | Layer | Status |
 |---|---|
-| **Color tokens** (`CitizenColors`, `InstitutionColors`) | **Canonical** — extracted from `docs/reference-ui/v0/v0-hali-*-ui.zip` `app/globals.css`. The two surfaces differ; see §5 of `docs/reference-ui/v0/mobile-token-visual-audit.md` for the cross-surface flags. |
-| **Condition badge class names** (`ConditionBadgeClassNames`) | **Canonical** — mirrors the explicit `issue-card.tsx` mapping in the v0 mobile UI, which is the authoritative source for condition → palette mapping. |
-| **Spacing scale** | **Canonical** — aligned with the mobile theme (4px base, xs..6xl steps). |
-| **Radius scale** | **Canonical default** (`0.75rem`), derived steps for `sm`/`md` per shadcn/ui convention. |
-| **Typography tokens** (Geist family, weights, sizes, line-heights) | **Canonical** — Geist matches both v0 surfaces; scale aligned with citizen mobile. |
-| **Component primitives** (buttons, inputs, cards, shells) | **Reference-only** — v0 artifacts ship concrete components but they are NOT imported into this package. Phase 1.5 synthesis decides which patterns become canonical; Phase 3 implementation ships them. |
+| **Color tokens** (shared base + surface overrides) | **Canonical** — extracted from the v0 artifacts and reconciled per the classification rule |
+| **Condition badge class names** (`ConditionBadgeClassNames`) | **Canonical** — mirrors the v0 mobile `issue-card.tsx` mapping, which is the authoritative source for condition → palette mapping |
+| **Spacing scale** | **Canonical** — 4px base, xs..6xl steps |
+| **Radius scale** | **Canonical default** (`0.75rem`), derived sm/md per shadcn/ui convention |
+| **Typography tokens** (Geist family, weights, scale, line-heights) | **Canonical** — Geist matches both v0 surfaces |
+| **Component primitives** (buttons, cards, shells) | **Reference-only** — the v0 artifacts ship concrete components but they are NOT imported into this package. Phase 1.5 synthesis defines the institution patterns (`docs/arch/hali_institution_component_patterns.md`); Phase 3 institution-web implementation ships them. |
 
 ## Usage
 
 ```ts
 import {
+  SharedSemanticColors,
   CitizenColors,
   InstitutionColors,
+  citizenTheme,
+  institutionTheme,
   ConditionBadgeClassNames,
   Spacing,
   Radius,
   FontFamily,
   FontSize,
+  FontWeight,
   DesignSystemVersion,
 } from "@hali/design-system";
+
+// Institution web consumer
+const theme = institutionTheme;
+
+// Or layer manually for a one-off override
+const theme = { ...SharedSemanticColors, ...InstitutionColors, primary: "custom-value" };
 ```
 
-Consumers typically feed these into Tailwind v4 (via CSS custom
-properties generated at build time) or CSS-in-JS at runtime. The
-package exports raw values (OKLCH strings, rem strings, numeric
-weights) so the consumer picks the consumption strategy — the
-package does not ship a Tailwind config of its own yet; that lands
-with the first web app build.
+Consumers feed these into Tailwind v4 (via CSS custom properties
+generated at build time) or CSS-in-JS. The package exports raw values
+(OKLCH strings, rem strings, numeric weights) — the consumer picks
+the consumption strategy. The package does not ship a Tailwind
+config of its own; that lands with the first web app build.
 
 ## What lives here vs not
 
 - ✅ Token values extracted verbatim from the v0 reference artifacts.
-- ✅ Cross-surface variants (citizen vs institution) when the v0 surfaces
-  differ.
-- ✅ Shared constants that both surfaces consume identically
-  (condition-badge palette, font family, radius default).
-- ❌ Concrete React components (ship with each web app, or land after
-  Phase 1.5 decides on the canonical component set).
-- ❌ Tailwind config (one Tailwind config per app — the shared tokens
-  are imported into each app's config rather than centralised here).
-- ❌ React Native primitives (mobile ships its own theme).
+- ✅ Cross-surface variants (citizen vs institution) when the surface
+  register is deliberately different.
+- ✅ Shared structural + semantic tokens where both surfaces have
+  the same meaning.
+- ❌ Concrete React components — Phase 3 ships those.
+- ❌ Tailwind config — one config per app, importing from this package.
+- ❌ React Native primitives — mobile ships its own theme.
 
 ## See also
 
+- `docs/arch/hali_institution_ux_layout_spec.md` — institution
+  dashboard UX + layout (where tokens are applied).
+- `docs/arch/hali_institution_component_patterns.md` — reusable
+  component patterns that consume these tokens.
+- `docs/reference-ui/v0/phase-1.5-visual-audit.md` — citations and
+  classification of every cross-surface difference.
 - `docs/reference-ui/v0/mobile-token-visual-audit.md` — retroactive
-  audit of the citizen mobile theme against the v0 artifacts.
+  audit of the citizen mobile theme.
 - `docs/arch/SECURITY_POSTURE.md` §6 — secure defaults for new web apps.
 - `docs/arch/OBSERVABILITY_MODEL.md` §5 — institution web telemetry.
