@@ -15,9 +15,12 @@ public interface IInstitutionSessionService
     /// <summary>
     /// Mints a new session for the given account, returning the opaque
     /// session + CSRF tokens (plaintext, single use). The absolute
-    /// expiry is stamped at creation and never extended.
+    /// expiry is stamped at creation and never extended. The role
+    /// argument (<c>institution</c> or <c>institution_admin</c>) is
+    /// snapshotted on the row so middleware can emit the claim without
+    /// an extra Account lookup per request.
     /// </summary>
-    Task<SessionCreated> CreateAsync(Guid accountId, Guid? institutionId, CancellationToken ct);
+    Task<SessionCreated> CreateAsync(Guid accountId, Guid? institutionId, string role, CancellationToken ct);
 
     /// <summary>
     /// Resolves + validates a session cookie. Returns the session on

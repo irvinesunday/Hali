@@ -55,6 +55,31 @@ public static class ErrorCodes
     public const string AuthTotpNotConfirmed = "auth.totp_not_confirmed";
     public const string AuthStepUpRequired = "auth.step_up_required";
 
+    // --- institution_admin.* --- Phase 2 institution-admin routes (#196).
+    /// <summary>
+    /// An institution_admin attempted to elevate another account to the
+    /// institution_admin role. Self-service elevation is blocked until
+    /// the approval flow lands (deferred by design — see #196 scope).
+    /// </summary>
+    public const string InstitutionAdminElevationRequiresApproval = "institution_admin.elevation_requires_approval";
+    /// <summary>
+    /// An institution_admin attempted to demote themselves while they
+    /// are the last institution_admin for their institution — guards
+    /// against a lockout where nobody can manage the institution.
+    /// </summary>
+    public const string InstitutionAdminLastAdminCannotDemote = "institution_admin.last_admin_cannot_demote";
+    /// <summary>
+    /// A user-management request targeted a userId outside the acting
+    /// admin's institution. Returned as 404 to prevent cross-institution
+    /// user-existence probing.
+    /// </summary>
+    public const string InstitutionAdminUserNotFound = "institution_admin.user_not_found";
+    /// <summary>
+    /// An invite destination email is already bound to an existing
+    /// account (either in this institution or another).
+    /// </summary>
+    public const string InstitutionAdminEmailAlreadyInUse = "institution_admin.email_already_in_use";
+
     // --- cluster.* ---
     public const string ClusterNotFound = "cluster.not_found";
 

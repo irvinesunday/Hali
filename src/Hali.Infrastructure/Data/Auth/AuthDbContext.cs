@@ -51,6 +51,7 @@ public class AuthDbContext : DbContext
 			e.Property((Account x) => x.NotificationSettings).HasColumnName("notification_settings").HasColumnType("jsonb");
 			e.Property((Account x) => x.InstitutionId).HasColumnName("institution_id");
 			e.Property((Account x) => x.IsBlocked).HasColumnName("is_blocked");
+			e.Property((Account x) => x.IsInstitutionAdmin).HasColumnName("is_institution_admin");
 			e.HasIndex((Account x) => x.Email).IsUnique().HasDatabaseName("uq_accounts_email");
 			e.HasIndex((Account x) => x.PhoneE164).IsUnique().HasDatabaseName("uq_accounts_phone");
 		});
@@ -126,6 +127,7 @@ public class AuthDbContext : DbContext
 			e.Property((WebSession x) => x.AbsoluteExpiresAt).HasColumnName("absolute_expires_at");
 			e.Property((WebSession x) => x.StepUpVerifiedAt).HasColumnName("step_up_verified_at");
 			e.Property((WebSession x) => x.RevokedAt).HasColumnName("revoked_at");
+			e.Property((WebSession x) => x.Role).HasColumnName("role").HasMaxLength(30);
 			e.HasIndex((WebSession x) => x.SessionTokenHash).IsUnique().HasDatabaseName("uq_web_sessions_token");
 			e.HasIndex((WebSession x) => x.AccountId).HasDatabaseName("ix_web_sessions_account");
 			e.HasIndex((WebSession x) => x.AbsoluteExpiresAt).HasDatabaseName("ix_web_sessions_absolute_expires");

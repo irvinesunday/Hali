@@ -53,4 +53,14 @@ public class WebSession
     public DateTime? StepUpVerifiedAt { get; set; }
 
     public DateTime? RevokedAt { get; set; }
+
+    /// <summary>
+    /// Role snapshotted at session creation. Values: <c>institution</c>,
+    /// <c>institution_admin</c>. The middleware emits this value as the
+    /// role claim on every request, so a change to the account's
+    /// <c>is_institution_admin</c> flag only takes effect on next login.
+    /// This bounds privilege escalation / de-escalation to the session's
+    /// 12 h absolute lifetime.
+    /// </summary>
+    public string Role { get; set; } = "institution";
 }

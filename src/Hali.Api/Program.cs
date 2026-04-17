@@ -92,6 +92,9 @@ builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
 builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Phase 2 institution-admin routes (#196).
+builder.Services.AddScoped<Hali.Application.InstitutionAdmin.IInstitutionAdminService,
+    Hali.Application.InstitutionAdmin.InstitutionAdminService>();
 // Institution email sender — NoOp binding is deliberately restricted to
 // non-Production environments. A production deployment must register
 // its own IInstitutionEmailSender (real SES/SendGrid/etc) BEFORE this

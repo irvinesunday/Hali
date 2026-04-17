@@ -125,12 +125,24 @@ public sealed class InstitutionSessionMiddleware
         // institution_id must match the existing [Authorize(Roles = ...)]
         // attributes on institution controllers. NameIdentifier maps to
         // the account id so the existing `User.FindFirstValue(NameIdentifier)`
-        // pattern in controllers works without modification.
+        // pattern in controllers works without modification. The role
+        // comes from the session row (snapshotted at session creation —
+        // `institution` or `institution_admin`), so a server-side change
+        // to the account's admin flag takes effect on the next login
+        // rather than mid-session.
+        string sessionRole = string.IsNullOrWhiteSpace(session.Role) ? "institution" : session.Role;
         var claims = new System.Collections.Generic.List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, session.AccountId.ToString()),
-            new Claim(ClaimTypes.Role, "institution"),
+            new Claim(ClaimTypes.Role, sessionRole),
         };
+        // institution_admin callers also satisfy any [Authorize(Roles =
+        // "institution")] gate, because the operational routes are
+        // available to admins too.
+        if (sessionRole == "institution_admin")
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "institution"));
+        }
         if (session.InstitutionId.HasValue)
         {
             claims.Add(new Claim("institution_id", session.InstitutionId.Value.ToString()));

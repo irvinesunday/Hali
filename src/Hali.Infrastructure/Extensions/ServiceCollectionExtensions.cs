@@ -4,6 +4,7 @@ using Hali.Application.Auth;
 using Hali.Application.Clusters;
 using Hali.Application.Feedback;
 using Hali.Application.Home;
+using Hali.Application.InstitutionAdmin;
 using Hali.Application.Institutions;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
@@ -13,6 +14,7 @@ using Hali.Infrastructure.Advisories;
 using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Home;
+using Hali.Infrastructure.InstitutionAdmin;
 using Hali.Infrastructure.Institutions;
 using Hali.Infrastructure.Data;
 using Hali.Infrastructure.Data.Advisories;
@@ -102,6 +104,8 @@ public static class ServiceCollectionExtensions
 		// production-grade binding to be registered explicitly in
 		// Production (failing-fast on missing binding).
 		services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
+		// Phase 2 institution-admin routes (#196).
+		services.AddScoped<IInstitutionAdminRepository, InstitutionAdminRepository>();
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();

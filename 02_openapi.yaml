@@ -1177,6 +1177,212 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ── Institution Admin (Phase 2) ────────────────────────────────────
+  #
+  # All /v1/institution-admin/* routes require a JWT or institution
+  # session that carries role=institution_admin. Write endpoints
+  # (invite, role-change) additionally enforce step-up auth — the
+  # session's step_up_verified_at must be within the configured window
+  # (default 5 minutes). Bearer-JWT callers cannot satisfy step-up
+  # (it lives under the cookie / TOTP surface) and receive
+  # auth.step_up_required on writes.
+
+  /v1/institution-admin/users:
+    get:
+      tags: [Admin]
+      summary: List users in the acting admin's institution
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminUserListResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution_admin role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/{userId}:
+    get:
+      tags: [Admin]
+      summary: Get a user's detail (scoped to the acting admin's institution)
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminUserDetailResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Caller lacks institution_admin role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            User not found or belongs to a different institution
+            (institution_admin.user_not_found — 404 is deliberate to
+            prevent cross-institution existence probes).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/invite:
+    post:
+      tags: [Admin]
+      summary: Invite a new institution user
+      description: |
+        Write endpoint — requires step-up auth within the configured
+        window. Invite-time elevation to institution_admin is blocked
+        (institution_admin.elevation_requires_approval); supply
+        role=institution_user and promote later via PUT /role once
+        the approval flow lands.
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteInstitutionUserRequest' }
+      responses:
+        '200':
+          description: Invite issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteInstitutionUserResponse' }
+        '400':
+          description: Missing / invalid email (validation.missing_field)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Missing institution_admin role (auth.role_insufficient),
+            step-up required (auth.step_up_required), CSRF missing /
+            mismatch (auth.csrf_missing / auth.csrf_mismatch), or
+            elevation requested without approval
+            (institution_admin.elevation_requires_approval).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: |
+            Email already bound to an existing account
+            (institution_admin.email_already_in_use).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/{userId}/role:
+    put:
+      tags: [Admin]
+      summary: Change a user's role (demote admin → user only)
+      description: |
+        Write endpoint — requires step-up auth. Elevation to
+        institution_admin is blocked; demotion to institution_user is
+        allowed except when the target is the last remaining admin
+        (institution_admin.last_admin_cannot_demote).
+      security:
+        - institutionSessionAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeUserRoleRequest' }
+      responses:
+        '204':
+          description: Role changed
+        '400':
+          description: Validation failure (validation.failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Missing institution_admin role, step-up required, CSRF
+            missing / mismatch, or elevation requested
+            (institution_admin.elevation_requires_approval).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            User not found or belongs to a different institution
+            (institution_admin.user_not_found).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: |
+            Target is the last institution_admin in the institution
+            (institution_admin.last_admin_cannot_demote).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/scope:
+    get:
+      tags: [Admin]
+      summary: Get the acting admin's institution + jurisdiction scope
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Scope payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminScopeResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Missing institution_admin role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   # ── Home Feed ───────────────────────────────────────────────────────
   /v1/home:
     get:
@@ -1550,6 +1756,10 @@ components:
         - device.not_found
         - institution.invalid_state_filter
         - institution.missing_fields
+        - institution_admin.elevation_requires_approval
+        - institution_admin.email_already_in_use
+        - institution_admin.last_admin_cannot_demote
+        - institution_admin.user_not_found
         - invite.already_accepted
         - invite.expired
         - invite.invalid
@@ -2312,3 +2522,84 @@ components:
             Seconds during which the step-up verification remains fresh.
             Privileged endpoints reject requests whose verifiedAt is
             older than this window.
+
+    # ── Institution Admin (Phase 2) ───────────────────────────────────
+    InviteInstitutionUserRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+          description: |
+            `institution_admin` is rejected today with
+            `institution_admin.elevation_requires_approval`; supply
+            `institution_user` and promote later once the approval flow
+            lands.
+    InviteInstitutionUserResponse:
+      type: object
+      required: [inviteId, expiresAt]
+      properties:
+        inviteId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+    ChangeUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+          description: |
+            Only `institution_user` (demotion) is allowed today.
+            `institution_admin` returns
+            `institution_admin.elevation_requires_approval`.
+    InstitutionAdminUserListItem:
+      type: object
+      required: [id, email, displayName, role, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+        createdAt: { type: string, format: date-time }
+    InstitutionAdminUserListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionAdminUserListItem' }
+    InstitutionAdminUserDetailResponse:
+      type: object
+      required: [id, email, displayName, role, status, isBlocked, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+        status: { type: string }
+        isBlocked: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InstitutionAdminScopeJurisdiction:
+      type: object
+      required: [id, localityId, corridorName, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        localityId: { type: string, format: uuid, nullable: true }
+        corridorName: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+    InstitutionAdminScopeResponse:
+      type: object
+      required: [institutionId, institutionName, jurisdictions]
+      properties:
+        institutionId: { type: string, format: uuid }
+        institutionName: { type: string }
+        jurisdictions:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionAdminScopeJurisdiction' }
