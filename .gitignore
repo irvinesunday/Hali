@@ -37,8 +37,13 @@ coverage-report/
 # ── NuGet ─────────────────────────────────────────────────────────────────────
 *.nupkg
 *.snupkg
+# Ignore NuGet restore output (typically under .NET project bin/obj or legacy
+# solution-level packages/), but never ignore the repo-root /packages/ monorepo
+# workspace directory.
 **/[Pp]ackages/*
 !**/[Pp]ackages/build/
+!/packages/
+!/packages/**
 *.nuspec
 project.lock.json
 project.fragment.lock.json
