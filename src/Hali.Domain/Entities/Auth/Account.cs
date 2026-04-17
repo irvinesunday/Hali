@@ -32,4 +32,13 @@ public class Account
     public Guid? InstitutionId { get; set; }
 
     public bool IsBlocked { get; set; }
+
+    /// <summary>
+    /// Institution-admin marker for an <see cref="AccountType.InstitutionUser"/>
+    /// account. True when the user may manage their own institution's
+    /// user list via <c>/v1/institution-admin/*</c>. Distinct from
+    /// <see cref="AccountType.Admin"/>, which is the Hali-ops platform
+    /// admin — an institution_admin never crosses institution boundaries.
+    /// </summary>
+    public bool IsInstitutionAdmin { get; set; }
 }

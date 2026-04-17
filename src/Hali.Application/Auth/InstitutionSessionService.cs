@@ -26,7 +26,7 @@ public sealed class InstitutionSessionService : IInstitutionSessionService
         _opts = options.Value;
     }
 
-    public async Task<SessionCreated> CreateAsync(Guid accountId, Guid? institutionId, CancellationToken ct)
+    public async Task<SessionCreated> CreateAsync(Guid accountId, Guid? institutionId, string role, CancellationToken ct)
     {
         DateTime now = DateTime.UtcNow;
         string sessionPlain = GenerateBase64UrlToken(SessionTokenByteLength);
@@ -42,6 +42,7 @@ public sealed class InstitutionSessionService : IInstitutionSessionService
             CreatedAt = now,
             LastActivityAt = now,
             AbsoluteExpiresAt = now.AddHours(_opts.SessionAbsoluteHours),
+            Role = role,
         };
 
         await _repo.SaveWebSessionAsync(session, ct);

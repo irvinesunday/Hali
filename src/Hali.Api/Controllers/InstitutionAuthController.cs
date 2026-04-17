@@ -106,8 +106,12 @@ public sealed class InstitutionAuthController : ControllerBase
                 message: "Invalid or expired magic link.");
         }
 
+        // Role snapshotted at session creation — institution_admin when
+        // the account carries the per-institution admin flag, otherwise
+        // the bare institution role.
+        string role = account.IsInstitutionAdmin ? "institution_admin" : "institution";
         SessionCreated created = await _sessions.CreateAsync(
-            account.Id, account.InstitutionId, ct);
+            account.Id, account.InstitutionId, role, ct);
 
         IssueSessionCookies(created);
 

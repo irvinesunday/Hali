@@ -58,6 +58,17 @@ export const ERROR_CODES = {
   INSTITUTION_INVALID_STATE_FILTER: 'institution.invalid_state_filter',
   INSTITUTION_MISSING_FIELDS: 'institution.missing_fields',
 
+  // institution_admin.*
+  INSTITUTION_ADMIN_ELEVATION_REQUIRES_APPROVAL:
+    'institution_admin.elevation_requires_approval',
+  INSTITUTION_ADMIN_EMAIL_ALREADY_IN_USE:
+    'institution_admin.email_already_in_use',
+  INSTITUTION_ADMIN_INSTITUTION_NOT_FOUND:
+    'institution_admin.institution_not_found',
+  INSTITUTION_ADMIN_LAST_ADMIN_CANNOT_DEMOTE:
+    'institution_admin.last_admin_cannot_demote',
+  INSTITUTION_ADMIN_USER_NOT_FOUND: 'institution_admin.user_not_found',
+
   // invite.*
   INVITE_ALREADY_ACCEPTED: 'invite.already_accepted',
   INVITE_EXPIRED: 'invite.expired',

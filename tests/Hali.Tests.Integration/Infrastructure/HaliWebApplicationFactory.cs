@@ -248,6 +248,8 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
         // B5: institution auth columns (idempotent — adds only if missing)
         await ExecAsync(conn, "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS institution_id uuid NULL");
         await ExecAsync(conn, "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_blocked boolean NOT NULL DEFAULT false");
+        // Phase 2 institution-admin (#196): per-user admin flag within an institution.
+        await ExecAsync(conn, "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_institution_admin boolean NOT NULL DEFAULT false");
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS institution_invites (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -281,6 +283,10 @@ CREATE TABLE IF NOT EXISTS web_sessions (
 )");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_web_sessions_account ON web_sessions(account_id)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_web_sessions_absolute_expires ON web_sessions(absolute_expires_at)");
+        // Phase 2 institution-admin (#196): role snapshotted at session
+        // creation so the middleware can emit the role claim without an
+        // extra Account lookup per request.
+        await ExecAsync(conn, "ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS role varchar(30) NOT NULL DEFAULT 'institution'");
 
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS totp_secrets (

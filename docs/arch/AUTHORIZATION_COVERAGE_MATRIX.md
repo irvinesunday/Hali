@@ -105,12 +105,22 @@ Columns:
 | `GET /v1/institution/areas` | InstitutionController | class-level | `institution_id` from JWT; rows bounded to `institution_jurisdictions` owned by the caller | ✓ |
 | `GET /v1/institution/activity` | InstitutionController | class-level | `institution_id` from JWT; activity feed bounded to caller's localities | ✓ |
 
-### Admin
+### Admin (Hali-ops)
 
 | Route | Controller | Decorator | Policy / scope | Tested? |
 |---|---|---|---|---|
 | `POST /v1/admin/institutions` | AdminController | `[Authorize(Roles = "admin")]` (class-level) | Admin-only; creates institution + invite | ~ (forbidden path for citizen + institution roles tested in `ForbiddenRoleEnvelopeTests`; happy path not integration-tested due to DB setup cost) |
 | `DELETE /v1/admin/institutions/{id}/access` | AdminController | inherited | Admin-only; blocks accounts + revokes refresh tokens | ~ (forbidden path tested for citizen role; happy path not integration-tested) |
+
+### Institution admin (Phase 2 — #196)
+
+| Route | Controller | Decorator | Policy / scope | Tested? |
+|---|---|---|---|---|
+| `GET /v1/institution-admin/users` | InstitutionAdminController | `[Authorize(Roles = "institution_admin")]` (class-level) | Institution-admin-only; list scoped to acting admin's institution_id (JWT claim or session); citizens + plain institution members rejected with `auth.role_insufficient` | ✓ |
+| `GET /v1/institution-admin/users/{userId}` | InstitutionAdminController | class-level | Cross-institution target returns 404 (`institution_admin.user_not_found`) — 404 deliberate to prevent existence probe | ✓ |
+| `POST /v1/institution-admin/users/invite` | InstitutionAdminController | class-level + step-up gate | Writes require session with fresh step-up (bearer-JWT rejected with `auth.step_up_required`); elevation to `institution_admin` at invite time rejected (`institution_admin.elevation_requires_approval`); duplicate email rejected (`institution_admin.email_already_in_use`) | ✓ |
+| `PUT /v1/institution-admin/users/{userId}/role` | InstitutionAdminController | class-level + step-up gate | Elevation blocked (`institution_admin.elevation_requires_approval`); demotion of the last admin blocked (`institution_admin.last_admin_cannot_demote`); cross-institution target → 404 | ✓ |
+| `GET /v1/institution-admin/scope` | InstitutionAdminController | class-level | Returns the acting admin's institution + jurisdictions (scoped server-side) | ✓ |
 
 ### Feature flags (new — #194)
 
@@ -126,13 +136,12 @@ Every planned endpoint must land in this matrix with both happy-path
 and forbidden-path integration tests at merge time. The contracts are
 already defined in `docs/arch/hali_institution_backend_contract_implications.md`:
 
-| Route | Planned decorator | Planned policy |
-|---|---|---|
-| `/v1/institution-admin/*` | `[Authorize(Roles = "admin")]` (or a new `institution_admin` role — decided in #196) | Institution-admin scope, single institution |
-
-The five `/v1/institution/*` operational routes and the field additions
-on `/v1/clusters/{id}` + `/v1/official-posts` landed with #195 and are
-recorded above. The institution-admin surface remains pending on #196.
+All Phase 2 planned rows have landed. #195 added the five
+`/v1/institution/*` operational routes plus the field additions on
+`/v1/clusters/{id}` + `/v1/official-posts`. #197 added the
+institution-auth surface under `/v1/auth/institution/*`. #196 added
+the five `/v1/institution-admin/*` routes with step-up gating on
+writes. All are recorded above.
 
 ---
 

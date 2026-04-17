@@ -82,20 +82,28 @@ public class AuthService : IAuthService
     private async Task<TokenResponseDto> IssueTokenPairAsync(Guid accountId, Guid deviceId, DateTime now, CancellationToken ct)
     {
         Account? account = await _repo.FindAccountByIdAsync(accountId, ct);
-        string accessToken = IssueAccessToken(accountId, account?.AccountType ?? AccountType.Citizen, account?.InstitutionId, now);
+        string accessToken = IssueAccessToken(
+            accountId,
+            account?.AccountType ?? AccountType.Citizen,
+            account?.InstitutionId,
+            now,
+            account?.IsInstitutionAdmin ?? false);
         var (plainRefreshToken, refreshEntity) = CreateRefreshToken(accountId, deviceId, now);
         await _repo.SaveRefreshTokenAsync(refreshEntity, ct);
         return new TokenResponseDto(accessToken, plainRefreshToken, _opts.JwtExpiryMinutes * 60);
     }
 
-    private string IssueAccessToken(Guid accountId, AccountType accountType, Guid? institutionId, DateTime now)
+    private string IssueAccessToken(Guid accountId, AccountType accountType, Guid? institutionId, DateTime now, bool isInstitutionAdmin)
     {
         SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opts.JwtSecret));
         SigningCredentials signingCredentials = new SigningCredentials(key, "HS256");
-        string role = accountType switch
+        // institution_admin is a finer-grained marker on an InstitutionUser
+        // account. Hali-ops Admin (AccountType.Admin) is unchanged.
+        string role = (accountType, isInstitutionAdmin) switch
         {
-            AccountType.InstitutionUser => "institution",
-            AccountType.Admin => "admin",
+            (AccountType.InstitutionUser, true) => "institution_admin",
+            (AccountType.InstitutionUser, false) => "institution",
+            (AccountType.Admin, _) => "admin",
             _ => "citizen"
         };
         var claims = new List<Claim>
