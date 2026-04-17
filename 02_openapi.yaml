@@ -24,6 +24,7 @@ tags:
   - name: Devices
   - name: Feedback
   - name: Admin
+  - name: FeatureFlags
 paths:
   # ── Auth ────────────────────────────────────────────────────────────
   /v1/auth/otp:
@@ -865,6 +866,34 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ── Feature flags ───────────────────────────────────────────────────
+  /v1/feature-flags:
+    get:
+      tags: [FeatureFlags]
+      summary: Resolved client-visible feature flags for the current context
+      description: |
+        Returns the resolved value for every flag in the backend registry
+        that is marked `client_visible`. Server-only flags are never
+        returned regardless of the caller's role. Anonymous callers are
+        supported — their resolved values use `actor_type = "anonymous"`.
+
+        The response shape is a flat `flags` object keyed by flag name.
+        Clients do not see the flag's kind, owner, targeting rules, or
+        rollout metadata — just the resolved boolean value. See
+        `docs/arch/FEATURE_FLIGHTING_MODEL.md` §4.
+      parameters:
+        - in: query
+          name: localityId
+          schema: { type: string, format: uuid }
+          required: false
+          description: Optional locality id for locality-scoped rule evaluation.
+      responses:
+        '200':
+          description: Resolved flags for the current request context.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolvedFeatureFlagsResponse' }
+
   # ── Admin ───────────────────────────────────────────────────────────
   /v1/admin/institutions:
     post:
@@ -970,6 +999,19 @@ components:
         - safety
         - governance
         - infrastructure
+    ResolvedFeatureFlagsResponse:
+      type: object
+      required: [flags]
+      properties:
+        flags:
+          type: object
+          description: |
+            Flat map from flag name (dot-delimited snake_case, e.g.
+            `mobile.home.condition_badge.enabled`) to the resolved boolean
+            value for the current request context.
+          additionalProperties:
+            type: boolean
+
     FeedbackRequest:
       type: object
       required: [rating]

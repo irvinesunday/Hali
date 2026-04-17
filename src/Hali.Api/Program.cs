@@ -66,6 +66,11 @@ builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMe
 builder.Services.AddSingleton<Hali.Application.FeatureFlags.IFeatureFlagService,
     Hali.Application.FeatureFlags.FeatureFlagService>();
 
+// Context factory wires JWT claims + IHostEnvironment into
+// FeatureFlagEvaluationContext for the /v1/feature-flags endpoint.
+builder.Services.AddSingleton<Hali.Api.FeatureFlags.IFeatureFlagContextFactory,
+    Hali.Api.FeatureFlags.FeatureFlagContextFactory>();
+
 string jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret is required");
 string jwtIssuer = builder.Configuration["Auth:JwtIssuer"] ?? "hali";
