@@ -94,17 +94,24 @@ public class ParticipationRepository : IParticipationRepository
 		{
 			return new Dictionary<Guid, RestorationCountSnapshot>();
 		}
+		// Filter to restoration participation types in the WHERE clause so
+		// clusters whose only rows are non-restoration participations
+		// (e.g. Affected only) are excluded from the GROUP BY output
+		// entirely. The interface contract is "clusters with no recorded
+		// restoration responses are omitted" — callers materialise the
+		// zero-count snapshot themselves.
 		var snapshots = await _db.Participations
-			.Where(p => clusterIds.Contains(p.ClusterId))
+			.Where(p => clusterIds.Contains(p.ClusterId)
+				&& (p.ParticipationType == ParticipationType.RestorationYes
+					|| p.ParticipationType == ParticipationType.RestorationNo
+					|| p.ParticipationType == ParticipationType.RestorationUnsure))
 			.GroupBy(p => p.ClusterId)
 			.Select(g => new
 			{
 				ClusterId = g.Key,
 				Yes = g.Count(p => p.ParticipationType == ParticipationType.RestorationYes),
 				No = g.Count(p => p.ParticipationType == ParticipationType.RestorationNo),
-				Total = g.Count(p => p.ParticipationType == ParticipationType.RestorationYes
-					|| p.ParticipationType == ParticipationType.RestorationNo
-					|| p.ParticipationType == ParticipationType.RestorationUnsure),
+				Total = g.Count(),
 			})
 			.ToListAsync(ct);
 		var result = new Dictionary<Guid, RestorationCountSnapshot>(snapshots.Count);

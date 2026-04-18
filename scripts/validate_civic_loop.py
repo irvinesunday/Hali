@@ -235,7 +235,10 @@ def run_loop(*, dry_run: bool) -> None:
         bearer=citizen_jwt,
         body=submit_body,
     )
-    _assert(status == 201, f"signal submit expected 201, got {status}: {body}")
+    # SignalsController.Submit returns 200 (not 201) per the OpenAPI
+    # contract — POST semantics here are idempotent replay-safe ingest,
+    # not a resource-creation endpoint.
+    _assert(status == 200, f"signal submit expected 200, got {status}: {body}")
     _assert(isinstance(body, dict) and "clusterId" in body, "signal submit missing clusterId")
     cluster_id = body["clusterId"]
     print(f"[ok] signal submitted, cluster_id={cluster_id}")
