@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ClusterDetailResponse } from "../api/types";
+import { InstitutionWebFlagKeys } from "../featureFlags/FeatureFlagsProvider";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../test/mockFetch";
 import { renderWithProviders } from "../test/renderWithProviders";
 
@@ -115,5 +116,33 @@ describe("ClusterDetailScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/couldn't load this signal/i);
     });
+  });
+
+  it("hides the Post an update trigger when the post-update kill switch is off", async () => {
+    mockFetch({
+      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+    });
+
+    renderWithProviders({
+      pathname: `/signals/${clusterId}`,
+      flagOverride: { [InstitutionWebFlagKeys.postUpdateEnabled]: false },
+    });
+
+    await screen.findByRole("heading", { level: 2, name: /power outage on ngong road/i });
+    expect(screen.queryByRole("button", { name: /post an update/i })).not.toBeInTheDocument();
+  });
+
+  it("hides the Mark as restored trigger when the restoration kill switch is off", async () => {
+    mockFetch({
+      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+    });
+
+    renderWithProviders({
+      pathname: `/signals/${clusterId}`,
+      flagOverride: { [InstitutionWebFlagKeys.restorationClaimEnabled]: false },
+    });
+
+    await screen.findByRole("heading", { level: 2, name: /power outage on ngong road/i });
+    expect(screen.queryByRole("button", { name: /mark as restored/i })).not.toBeInTheDocument();
   });
 });

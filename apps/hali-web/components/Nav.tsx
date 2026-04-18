@@ -102,6 +102,9 @@ export default function Nav() {
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
+    // Seed initial state so anchor-links / scroll-restoration don't leave the
+    // nav stuck in the transparent style after a scrolled load.
+    handleScroll()
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])

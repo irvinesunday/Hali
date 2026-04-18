@@ -9,6 +9,10 @@ import type {
   OfficialPostCreateRequest,
   OfficialPostResponse,
 } from "../../api/types";
+import {
+  InstitutionWebFlagKeys,
+  useFeatureFlag,
+} from "../../featureFlags/FeatureFlagsProvider";
 import { institutionKeys } from "../../query/keys";
 
 // Institution restoration action per Hali doctrine:
@@ -56,6 +60,7 @@ export function RestorationActionCard({
   resolvedAt,
 }: RestorationActionCardProps) {
   const [composerOpen, setComposerOpen] = useState(false);
+  const restorationEnabled = useFeatureFlag(InstitutionWebFlagKeys.restorationClaimEnabled);
 
   if (clusterState === "resolved") {
     return <ResolvedBanner resolvedAt={resolvedAt} />;
@@ -72,6 +77,14 @@ export function RestorationActionCard({
   }
 
   if (clusterState !== "active") {
+    return null;
+  }
+
+  // Read-only screens remain under the master gate; only the
+  // mutation CTA is hidden when the kill switch flips. The composer
+  // modal is not mounted so a user deep-linking to a stale tab
+  // can't re-use a cached modal render.
+  if (!restorationEnabled) {
     return null;
   }
 

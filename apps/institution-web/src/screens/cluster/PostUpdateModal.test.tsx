@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FeatureFlagsTestProvider } from "../../test/featureFlagsTestProvider";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../../test/mockFetch";
 import { PostUpdateModal } from "./PostUpdateModal";
 
@@ -13,12 +14,14 @@ function renderModal(overrides?: Partial<ComponentProps<typeof PostUpdateModal>>
   });
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <PostUpdateModal
-        clusterId={overrides?.clusterId ?? "cluster-1"}
-        clusterCategory={overrides?.clusterCategory ?? "electricity"}
-        open={overrides?.open ?? true}
-        onClose={onClose}
-      />
+      <FeatureFlagsTestProvider>
+        <PostUpdateModal
+          clusterId={overrides?.clusterId ?? "cluster-1"}
+          clusterCategory={overrides?.clusterCategory ?? "electricity"}
+          open={overrides?.open ?? true}
+          onClose={onClose}
+        />
+      </FeatureFlagsTestProvider>
     </QueryClientProvider>,
   );
   return { ...result, onClose, queryClient };

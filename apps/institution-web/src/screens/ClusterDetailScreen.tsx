@@ -6,6 +6,10 @@ import type { OfficialPostResponse } from "../api/types";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { institutionKeys } from "../query/keys";
+import {
+  InstitutionWebFlagKeys,
+  useFeatureFlag,
+} from "../featureFlags/FeatureFlagsProvider";
 import { PostUpdateModal } from "./cluster/PostUpdateModal";
 import { RestorationActionCard } from "./cluster/RestorationActionCard";
 import { formatDurationSeconds } from "./signalFormatting";
@@ -26,6 +30,7 @@ import { formatDurationSeconds } from "./signalFormatting";
 export function ClusterDetailScreen() {
   const { clusterId } = useParams<{ clusterId: string }>();
   const [postModalOpen, setPostModalOpen] = useState(false);
+  const postUpdateEnabled = useFeatureFlag(InstitutionWebFlagKeys.postUpdateEnabled);
 
   const cluster = useQuery({
     queryKey: institutionKeys.signalDetail(clusterId ?? ""),
@@ -75,13 +80,15 @@ export function ClusterDetailScreen() {
             <p className="text-sm text-muted-foreground">{signal.locationLabel}</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => setPostModalOpen(true)}
-          className="shrink-0 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
-        >
-          Post an update
-        </button>
+        {postUpdateEnabled ? (
+          <button
+            type="button"
+            onClick={() => setPostModalOpen(true)}
+            className="shrink-0 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
+          >
+            Post an update
+          </button>
+        ) : null}
       </header>
 
       {signal.summary ? (
@@ -136,12 +143,14 @@ export function ClusterDetailScreen() {
         Back to signals
       </Link>
 
-      <PostUpdateModal
-        clusterId={signal.id}
-        clusterCategory={signal.category}
-        open={postModalOpen}
-        onClose={() => setPostModalOpen(false)}
-      />
+      {postUpdateEnabled ? (
+        <PostUpdateModal
+          clusterId={signal.id}
+          clusterCategory={signal.category}
+          open={postModalOpen}
+          onClose={() => setPostModalOpen(false)}
+        />
+      ) : null}
     </article>
   );
 }
