@@ -8,13 +8,15 @@ function Exploder(): never {
 
 describe("RootErrorBoundary", () => {
   // React logs the caught error to the console; swallow it so the test
-  // output stays clean.
-  const originalError = console.error;
+  // output stays clean. Keep the spy handle and restore via
+  // mockRestore() — reassigning console.error directly leaves the spy
+  // bookkeeping behind and can leak between test files.
+  let errorSpy: ReturnType<typeof vi.spyOn>;
   beforeAll(() => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
   afterAll(() => {
-    console.error = originalError;
+    errorSpy.mockRestore();
   });
 
   it("renders children when nothing throws", () => {

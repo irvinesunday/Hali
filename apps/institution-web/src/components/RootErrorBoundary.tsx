@@ -10,9 +10,9 @@ interface RootErrorBoundaryState {
 
 // Application-root error boundary. Local error boundaries scoped to
 // individual surfaces (signal list, signal detail, post-update modal,
-// restoration CTA) land in later Phase 3 issues. This one is the last
-// line of defence — if it fires, something escaped every other
-// boundary and we show a neutral recovery surface.
+// restoration CTA) land in later Phase 2 institution issues. This one
+// is the last line of defence — if it fires, something escaped every
+// other boundary and we show a neutral recovery surface.
 //
 // Error reporting transport (Sentry / equivalent) is wired in #207.
 // For the scaffold we log to the console so runtime errors aren't

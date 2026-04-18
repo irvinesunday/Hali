@@ -3,51 +3,17 @@
 @tailwind utilities;
 
 /*
- * Institution surface theme variables.
+ * Institution surface chrome.
  *
- * Token values mirror @hali/design-system's SharedSemanticColors +
- * InstitutionColors composition (see packages/design-system/src/tokens/
- * colors.ts → InstitutionTheme). They are declared here as CSS custom
- * properties so Tailwind can resolve theme colours through
- * var(--color-*) without hardcoding OKLCH strings at call sites.
- *
- * To change a token, update the design-system package first, then
- * mirror the value here. Never edit one side in isolation.
+ * Colour tokens are NOT declared here. They are sourced from
+ * @hali/design-system (tokens/cssVariables.ts → institutionCssVariables)
+ * and applied to :root at application boot — see src/main.tsx. This
+ * keeps the design-system package the single source of truth for
+ * token values; globals.css holds only surface resets and base
+ * element rules.
  */
 
 @layer base {
-  :root {
-    --color-card: oklch(1 0 0);
-    --color-card-foreground: oklch(0.225 0.02 210);
-    --color-popover: oklch(1 0 0);
-    --color-popover-foreground: oklch(0.225 0.02 210);
-    --color-border: oklch(0.91 0.01 190);
-    --color-input: oklch(0.92 0.01 190);
-    --color-muted: oklch(0.955 0.007 190);
-    --color-muted-foreground: oklch(0.5 0.02 210);
-
-    --color-background: oklch(0.985 0.002 180);
-    --color-foreground: oklch(0.2 0.02 200);
-    --color-primary: oklch(0.65 0.12 180);
-    --color-primary-foreground: oklch(0.99 0 0);
-    --color-secondary: oklch(0.96 0.01 180);
-    --color-secondary-foreground: oklch(0.25 0.02 200);
-    --color-accent: oklch(0.92 0.03 180);
-    --color-accent-foreground: oklch(0.25 0.02 200);
-    --color-destructive: oklch(0.577 0.245 27.325);
-    --color-destructive-foreground: oklch(0.99 0 0);
-    --color-ring: oklch(0.65 0.12 180);
-
-    --color-sidebar: oklch(0.99 0.005 180);
-    --color-sidebar-foreground: oklch(0.25 0.02 200);
-    --color-sidebar-primary: oklch(0.65 0.12 180);
-    --color-sidebar-primary-foreground: oklch(0.99 0 0);
-    --color-sidebar-accent: oklch(0.96 0.01 180);
-    --color-sidebar-accent-foreground: oklch(0.25 0.02 200);
-    --color-sidebar-border: oklch(0.92 0.01 180);
-    --color-sidebar-ring: oklch(0.65 0.12 180);
-  }
-
   html,
   body,
   #root {
