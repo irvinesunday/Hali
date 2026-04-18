@@ -6,7 +6,6 @@
 //
 // Deliberate omissions from `ClusterDetailResponse` vs the server's
 // `ClusterResponse` schema:
-// - `officialPosts` — rendered by the post-update card landing in #203
 // - `myParticipation` — gating for the restoration CTA landing in #204
 // - `restorationRatio` / `restorationYesVotes` / `restorationTotalVotes`
 //   — consumed alongside the restoration CTA in #204
@@ -66,6 +65,60 @@ export interface InstitutionSignalsResponse {
   readonly nextCursor: string | null;
 }
 
+export type OfficialPostType = "live_update" | "scheduled_disruption" | "advisory_public_notice";
+
+export type OfficialPostResponseStatus =
+  | "acknowledged"
+  | "teams_dispatched"
+  | "teams_on_site"
+  | "work_ongoing"
+  | "restoration_in_progress"
+  | "service_restored";
+
+export type OfficialPostSeverity = "minor" | "moderate" | "major";
+
+export type CivicCategorySlug =
+  | "roads"
+  | "transport"
+  | "electricity"
+  | "water"
+  | "environment"
+  | "safety"
+  | "governance"
+  | "infrastructure";
+
+export interface OfficialPostResponse {
+  readonly id: string;
+  readonly institutionId: string;
+  readonly type: OfficialPostType | string;
+  readonly category: CivicCategorySlug | string;
+  readonly title: string;
+  readonly body: string;
+  readonly startsAt: string | null;
+  readonly endsAt: string | null;
+  readonly status: string;
+  readonly relatedClusterId: string | null;
+  readonly isRestorationClaim: boolean;
+  readonly createdAt: string;
+  readonly responseStatus: OfficialPostResponseStatus | null;
+  readonly severity: OfficialPostSeverity | null;
+}
+
+export interface OfficialPostCreateRequest {
+  readonly type: OfficialPostType;
+  readonly category: CivicCategorySlug | string;
+  readonly title: string;
+  readonly body: string;
+  readonly startsAt?: string | null;
+  readonly endsAt?: string | null;
+  readonly relatedClusterId?: string | null;
+  readonly isRestorationClaim?: boolean;
+  readonly localityId?: string | null;
+  readonly corridorName?: string | null;
+  readonly responseStatus?: OfficialPostResponseStatus | null;
+  readonly severity?: OfficialPostSeverity | null;
+}
+
 export interface ClusterDetailResponse {
   readonly id: string;
   readonly state: string;
@@ -82,4 +135,5 @@ export interface ClusterDetailResponse {
   readonly resolvedAt: string | null;
   readonly locationLabel: string | null;
   readonly responseStatus: string | null;
+  readonly officialPosts: ReadonlyArray<OfficialPostResponse>;
 }

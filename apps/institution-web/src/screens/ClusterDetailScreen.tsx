@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getInstitutionSignal } from "../api/institution";
+import type { OfficialPostResponse } from "../api/types";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { institutionKeys } from "../query/keys";
+import { PostUpdateModal } from "./cluster/PostUpdateModal";
 import { formatDurationSeconds } from "./signalFormatting";
 
 // Institution-scoped cluster detail. Pulls from
@@ -13,11 +16,13 @@ import { formatDurationSeconds } from "./signalFormatting";
 // as a transport failure (we deliberately don't leak the distinction
 // between "forbidden" and "missing").
 //
-// Post-update (#203) and restoration-response (#204) actions slot in
-// as peer cards on this screen; they read the same cluster query and
-// invalidate it on success.
+// Post-update (#203) is wired here as a peer card: the button opens
+// `PostUpdateModal`, which invalidates this cluster's query on
+// success so the new post surfaces in the list without an explicit
+// refetch. The restoration CTA (#204) slots in next to it.
 export function ClusterDetailScreen() {
   const { clusterId } = useParams<{ clusterId: string }>();
+  const [postModalOpen, setPostModalOpen] = useState(false);
 
   const cluster = useQuery({
     queryKey: institutionKeys.signalDetail(clusterId ?? ""),
@@ -54,16 +59,26 @@ export function ClusterDetailScreen() {
   const timeActiveSeconds = signal.activatedAt
     ? Math.max(0, Math.floor((Date.now() - new Date(signal.activatedAt).getTime()) / 1000))
     : 0;
+  const officialPosts = signal.officialPosts ?? [];
 
   return (
     <article className="max-w-3xl space-y-6">
-      <header className="space-y-1">
-        <h2 className="text-xl font-semibold text-foreground">
-          {signal.title ?? "Untitled signal"}
-        </h2>
-        {signal.locationLabel ? (
-          <p className="text-sm text-muted-foreground">{signal.locationLabel}</p>
-        ) : null}
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold text-foreground">
+            {signal.title ?? "Untitled signal"}
+          </h2>
+          {signal.locationLabel ? (
+            <p className="text-sm text-muted-foreground">{signal.locationLabel}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPostModalOpen(true)}
+          className="shrink-0 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
+        >
+          Post an update
+        </button>
       </header>
 
       {signal.summary ? (
@@ -84,12 +99,36 @@ export function ClusterDetailScreen() {
         ) : null}
       </dl>
 
+      <section aria-label="Official updates" className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Official updates
+        </h3>
+        {officialPosts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No official updates posted yet. Use the button above to publish one.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {officialPosts.map((post) => (
+              <OfficialPostCard key={post.id} post={post} />
+            ))}
+          </ul>
+        )}
+      </section>
+
       <Link
         to="/signals"
         className="inline-block text-sm font-medium text-foreground underline underline-offset-2"
       >
         Back to signals
       </Link>
+
+      <PostUpdateModal
+        clusterId={signal.id}
+        clusterCategory={signal.category}
+        open={postModalOpen}
+        onClose={() => setPostModalOpen(false)}
+      />
     </article>
   );
 }
@@ -100,5 +139,27 @@ function DetailField({ label, value }: { readonly label: string; readonly value:
       <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="text-sm font-medium text-foreground">{value}</dd>
     </div>
+  );
+}
+
+function OfficialPostCard({ post }: { readonly post: OfficialPostResponse }) {
+  return (
+    <li
+      data-testid="official-post-card"
+      className="rounded-md border border-border bg-card p-3 text-sm"
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-medium text-foreground">{post.title}</span>
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          {post.type.replace(/_/g, " ")}
+        </span>
+      </div>
+      <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{post.body}</p>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>Status: {post.status}</span>
+        {post.responseStatus ? <span>Response: {post.responseStatus}</span> : null}
+        {post.severity ? <span>Severity: {post.severity}</span> : null}
+      </div>
+    </li>
   );
 }
