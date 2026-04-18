@@ -3,6 +3,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { InstitutionShell } from "./shell/InstitutionShell";
 import { OverviewScreen } from "./screens/OverviewScreen";
 import { SignalsScreen } from "./screens/SignalsScreen";
+import { ClusterDetailScreen } from "./screens/ClusterDetailScreen";
 import { AreasScreen } from "./screens/AreasScreen";
 import { MetricsScreen } from "./screens/MetricsScreen";
 import { NotFoundScreen } from "./screens/NotFoundScreen";
@@ -25,6 +26,11 @@ export const institutionRoutes: RouteObject[] = [
     children: [
       { index: true, element: <OverviewScreen />, handle: { title: "Overview" } },
       { path: "signals", element: <SignalsScreen />, handle: { title: "Live Signals" } },
+      {
+        path: "signals/:clusterId",
+        element: <ClusterDetailScreen />,
+        handle: { title: "Signal detail" },
+      },
       { path: "areas", element: <AreasScreen />, handle: { title: "Areas" } },
       { path: "metrics", element: <MetricsScreen />, handle: { title: "Metrics" } },
       { path: "*", element: <NotFoundScreen />, handle: { title: "Page not found" } },
