@@ -69,6 +69,37 @@ describe("RestorationActionCard", () => {
     expect(screen.getByText(/no citizen responses yet/i)).toBeInTheDocument();
   });
 
+  it("falls back to em-dashes (never NaN) when the backend omits the restoration fields entirely", () => {
+    // Simulate a partial deployment where the server response is
+    // missing the three fields — runtime receives `undefined`. The UI
+    // must not render `NaN%`. Bypass `renderCard` here because its
+    // `?? null` coalesces undefined back to null and would silently
+    // duplicate the "no responses yet" case instead of exercising the
+    // partial-deploy path.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RestorationActionCard
+          clusterId="cluster-1"
+          clusterState="possible_restoration"
+          clusterCategory="electricity"
+          restorationRatio={undefined}
+          restorationYesVotes={undefined}
+          restorationTotalVotes={undefined}
+          resolvedAt={null}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+    // The deploy-artifact hint, not the "no responses yet" copy that
+    // would lie about a real product state.
+    expect(screen.getByText(/data unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no citizen responses yet/i)).not.toBeInTheDocument();
+  });
+
   it("renders the resolved banner when the cluster is resolved", () => {
     renderCard({
       clusterState: "resolved",
