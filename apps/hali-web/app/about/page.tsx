@@ -19,7 +19,7 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <main>
+    <main id="main">
       <AboutHero />
       <MissionStatement />
       <PlatformDoctrine />

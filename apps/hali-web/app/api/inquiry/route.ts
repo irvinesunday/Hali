@@ -30,30 +30,18 @@ interface InquiryPayload {
   message?: string
 }
 
-async function persistInquiry(payload: InquiryPayload & { at: string }) {
-  // Append to data/inquiries.json — create-if-missing, preserves prior inquiries.
+// Append-only NDJSON persistence — one JSON object per line. Eliminates the
+// read-modify-write cycle that the previous JSON-array implementation used,
+// which lost concurrent writes. Async so we don't block the event loop during
+// disk I/O. Note: this is still not safe across multiple serverless instances
+// (no inter-instance locking, and the filesystem is ephemeral on serverless).
+// Acceptable for MVP / local / staging; production durability is a post-launch
+// concern (database or queue).
+async function persistEntry(filename: string, entry: object): Promise<void> {
   const dataDir = path.resolve(process.cwd(), 'data')
-  const file = path.join(dataDir, 'inquiries.json')
   await fs.mkdir(dataDir, { recursive: true })
-  let existing: Array<InquiryPayload & { at: string }> = []
-  try {
-    const raw = await fs.readFile(file, 'utf8')
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      // File exists but has an unexpected shape. Refuse to overwrite — this
-      // likely means something else wrote to the file; surfacing the error
-      // is safer than silently replacing prior data.
-      throw new Error('inquiries.json is not an array')
-    }
-    existing = parsed
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException | null)?.code
-    // Only treat "file does not exist yet" as empty state. Any other failure
-    // (corruption, permission, I/O) re-throws so we don't clobber prior data.
-    if (code !== 'ENOENT') throw err
-  }
-  existing.push(payload)
-  await fs.writeFile(file, JSON.stringify(existing, null, 2), 'utf8')
+  const filePath = path.join(dataDir, filename)
+  await fs.appendFile(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
 }
 
 export async function POST(request: NextRequest) {
@@ -118,7 +106,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await persistInquiry(payload)
+    await persistEntry('inquiries.ndjson', payload)
   } catch (err) {
     // Persistence is the primary contract — fail closed if we can't save.
     console.error('[inquiry] persistence failed', err)
