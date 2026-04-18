@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   const notifyEmail = process.env.NOTIFY_EMAIL
   if (resendApiKey && notifyEmail) {
     try {
-      await fetch('https://api.resend.com/emails', {
+      const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${resendApiKey}`,
@@ -61,6 +61,11 @@ export async function POST(request: NextRequest) {
           text: `New signup: ${email}`,
         }),
       })
+      if (!res.ok) {
+        // fetch only throws on network errors; surface 4xx/5xx explicitly.
+        const body = await res.text().catch(() => '')
+        console.warn('[notify] resend delivery non-2xx', res.status, body.slice(0, 500))
+      }
     } catch (err) {
       // Email delivery is best-effort; signup is already persisted.
       console.warn('[notify] resend delivery failed', err)

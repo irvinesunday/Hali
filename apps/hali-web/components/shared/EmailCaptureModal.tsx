@@ -63,17 +63,17 @@ export default function EmailCaptureModal({ open, onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-hali-foreground/40 backdrop-blur-sm flex items-center justify-center px-4"
-      onClick={onClose}
-      aria-hidden="true"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div
+        className="absolute inset-0 bg-hali-foreground/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        className="bg-hali-background rounded-2xl shadow-xl max-w-md w-full p-6 relative"
-        onClick={(e) => e.stopPropagation()}
+        className="relative bg-hali-background rounded-2xl shadow-xl max-w-md w-full p-6"
       >
         <button
           type="button"
@@ -117,6 +117,7 @@ export default function EmailCaptureModal({ open, onClose }: Props) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Your email address"
+                aria-label="Email address"
                 className="w-full rounded-lg border border-hali-border px-4 py-3 text-hali-foreground bg-hali-background placeholder:text-hali-muted-foreground focus:outline-none focus:ring-2 focus:ring-hali-primary"
               />
 
