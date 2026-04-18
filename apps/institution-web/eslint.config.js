@@ -44,6 +44,12 @@ export default [
       ...jsxA11yPlugin.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
+      // `no-undef` is disabled for TS files — TypeScript's own
+      // type resolver already flags genuinely-undefined references,
+      // and the ESLint rule doesn't understand DOM lib types like
+      // `RequestInit` / `RequestInfo` that the fetch helper and
+      // test utilities legitimately use.
+      "no-undef": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
