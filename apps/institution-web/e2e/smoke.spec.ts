@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ClusterDetailResponse, OfficialPostResponse } from "../src/api/types";
 
 // Shell + dashboard smoke. Asserts the Vite dev server boots, the
 // router mounts the institution shell, every primary nav target
@@ -119,30 +120,63 @@ test.describe("institution-web dashboard", () => {
     expect(errors, "no runtime errors across shell navigation").toEqual([]);
   });
 
-  test("opens cluster detail from the signals list", async ({ page }) => {
+  test("opens cluster detail from the signals list and posts a live update", async ({ page }) => {
+    const createdPost: OfficialPostResponse = {
+      id: "post-1",
+      institutionId: "inst-1",
+      type: "live_update",
+      category: "electricity",
+      title: "Teams dispatched to Ngong Road substation",
+      body: "Crews are en route. ETA 30 minutes.",
+      startsAt: null,
+      endsAt: null,
+      status: "published",
+      relatedClusterId: "cluster-1",
+      isRestorationClaim: false,
+      createdAt: "2026-04-18T04:00:00Z",
+      responseStatus: "teams_dispatched",
+      severity: null,
+    };
+
+    const clusterPayload: ClusterDetailResponse = {
+      id: "cluster-1",
+      state: "active",
+      category: "electricity",
+      subcategorySlug: "outage",
+      title: "Power outage on Ngong Road",
+      summary: "Several blocks along Ngong Road report no power.",
+      affectedCount: 18,
+      observingCount: 6,
+      createdAt: "2026-04-18T03:00:00Z",
+      updatedAt: "2026-04-18T05:00:00Z",
+      activatedAt: "2026-04-18T03:30:00Z",
+      possibleRestorationAt: null,
+      resolvedAt: null,
+      locationLabel: "Ngong Road near Adams Arcade, Kilimani",
+      responseStatus: "teams_dispatched",
+      officialPosts: [],
+    };
+
+    let postRequests = 0;
+
     await page.route("**/v1/institution/signals/cluster-1", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          id: "cluster-1",
-          state: "active",
-          category: "electricity",
-          subcategorySlug: "outage",
-          title: "Power outage on Ngong Road",
-          summary: "Several blocks along Ngong Road report no power.",
-          affectedCount: 18,
-          observingCount: 6,
-          createdAt: "2026-04-18T03:00:00Z",
-          updatedAt: "2026-04-18T05:00:00Z",
-          activatedAt: "2026-04-18T03:30:00Z",
-          possibleRestorationAt: null,
-          resolvedAt: null,
-          locationLabel: "Ngong Road near Adams Arcade, Kilimani",
-          responseStatus: "teams_dispatched",
-        }),
+        body: JSON.stringify(
+          postRequests > 0 ? { ...clusterPayload, officialPosts: [createdPost] } : clusterPayload,
+        ),
       }),
     );
+
+    await page.route("**/v1/official-posts", (route) => {
+      postRequests += 1;
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(createdPost),
+      });
+    });
 
     await page.goto("/signals");
     await page.getByRole("link", { name: /power outage on ngong road/i }).click();
@@ -150,6 +184,18 @@ test.describe("institution-web dashboard", () => {
       page.getByRole("heading", { level: 2, name: /power outage on ngong road/i }),
     ).toBeVisible();
     await expect(page.getByText(/ngong road near adams arcade/i)).toBeVisible();
+
+    await page.getByRole("button", { name: /post an update/i }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel(/^title$/i).fill("Teams dispatched to Ngong Road substation");
+    await dialog.getByLabel(/^body$/i).fill("Crews are en route. ETA 30 minutes.");
+    await dialog.getByLabel(/response status/i).selectOption("teams_dispatched");
+    await dialog.getByRole("button", { name: /post update/i }).click();
+
+    await expect(page.getByTestId("official-post-card")).toContainText(
+      /teams dispatched to ngong road substation/i,
+    );
   });
 
   test("renders a recovery surface for unknown routes", async ({ page }) => {
