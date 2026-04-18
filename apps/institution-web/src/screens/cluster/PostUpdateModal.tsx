@@ -134,18 +134,31 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
     onClose();
   };
 
+  // Reset the form + mutation status when the modal closes so a
+  // reopened composer is blank and any stale server error is gone —
+  // and so `isIdle` correctly flips back to `true` for the
+  // `draft.cancelled` gate in `handleClose`. `mutation.reset` is
+  // stable per TanStack Query v5 but isn't known-stable to React's
+  // dep checker, hence the ref wrapper (listing `mutation` would
+  // cause an infinite update loop).
+  const resetMutationRef = useRef(mutation.reset);
+  resetMutationRef.current = mutation.reset;
   useEffect(() => {
     if (open) {
       emitEvent(TelemetryEvents.OfficialPostDraftStarted, { cluster_category: clusterCategory });
       firstFieldRef.current?.focus();
     } else {
       resetForm();
+      resetMutationRef.current();
     }
   }, [open, clusterCategory]);
 
   // handleClose is a fresh closure each render; route the keydown
-  // handler through a ref so the listener attaches once per open and
-  // doesn't churn on every pending-state flip.
+  // handler through a ref so the listener sees the latest closure
+  // without the effect body having to re-capture it. The effect does
+  // still re-run when `open` or `mutation.isPending` flip — that's
+  // acceptable (the listener is cheap to add/remove) and keeps the
+  // Escape key gated on the pending state without a second ref.
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
   useEffect(() => {

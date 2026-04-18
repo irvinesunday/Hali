@@ -34,10 +34,13 @@ export class ApiError extends Error {
   }
 }
 
-// Collapse UUID segments and other obvious parameter shapes so tag
-// cardinality stays bounded. "/v1/institution/signals/<uuid>" becomes
-// "/v1/institution/signals/:id"; this is the bounded route-template
-// rule in OBSERVABILITY_MODEL.md §7.2.
+// Collapse UUID segments so tag cardinality stays bounded —
+// "/v1/institution/signals/<uuid>" becomes
+// "/v1/institution/signals/:id". UUIDs are the only path-parameter
+// shape Phase 2 routes emit today; if a numeric id or slug-only
+// parameter ever lands on an institution route, widen this matcher
+// (and its test coverage) at the same time. This is the bounded
+// route-template rule in OBSERVABILITY_MODEL.md §7.2.
 const UUID_SEGMENT =
   /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 

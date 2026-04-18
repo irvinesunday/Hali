@@ -269,8 +269,11 @@ function RestorationClaimModal({
     }
   }, [open]);
 
-  // Stable ref so the keydown listener attaches once per open and does
-  // not churn on every pending-state flip.
+  // `handleClose` is a fresh closure each render; route through a ref
+  // so the listener always sees the latest closure. The effect still
+  // re-runs when `open` or `mutation.isPending` flip — that's
+  // acceptable (add/remove listener is cheap) and keeps the Escape
+  // gate bound to the pending state without a second ref.
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
   useEffect(() => {
