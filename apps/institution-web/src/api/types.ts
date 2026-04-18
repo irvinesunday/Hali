@@ -6,11 +6,10 @@
 //
 // Deliberate omissions from `ClusterDetailResponse` vs the server's
 // `ClusterResponse` schema:
-// - `myParticipation` — gating for the restoration CTA landing in #204
-// - `restorationRatio` / `restorationYesVotes` / `restorationTotalVotes`
-//   — consumed alongside the restoration CTA in #204
-// Adding them now would bloat the type without a render path; they
-// slot in when those PRs wire the corresponding UI.
+// - `myParticipation` — citizen-scoped participation gating; the
+//   institution dashboard never acts as a citizen so this field is
+//   surplus to requirements.
+// Adding unused fields bloats the type without a render path.
 //
 // When the OpenAPI → TypeScript codegen pipeline lands, this file
 // deletes in favour of generated types re-exported from
@@ -119,9 +118,16 @@ export interface OfficialPostCreateRequest {
   readonly severity?: OfficialPostSeverity | null;
 }
 
+// `unconfirmed` is emitted by the server for clusters below the MACF
+// gate. The institution dashboard filters those out upstream and never
+// renders an unconfirmed detail page, so the restoration card only
+// branches across the remaining three states. Leaving the string wider
+// than the enum keeps the type tolerant of new server-side states.
+export type ClusterState = "unconfirmed" | "active" | "possible_restoration" | "resolved";
+
 export interface ClusterDetailResponse {
   readonly id: string;
-  readonly state: string;
+  readonly state: ClusterState | string;
   readonly category: string;
   readonly subcategorySlug: string | null;
   readonly title: string | null;
@@ -136,4 +142,7 @@ export interface ClusterDetailResponse {
   readonly locationLabel: string | null;
   readonly responseStatus: string | null;
   readonly officialPosts: ReadonlyArray<OfficialPostResponse>;
+  readonly restorationRatio: number | null;
+  readonly restorationYesVotes: number | null;
+  readonly restorationTotalVotes: number | null;
 }

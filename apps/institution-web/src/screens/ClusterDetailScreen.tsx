@@ -7,6 +7,7 @@ import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { institutionKeys } from "../query/keys";
 import { PostUpdateModal } from "./cluster/PostUpdateModal";
+import { RestorationActionCard } from "./cluster/RestorationActionCard";
 import { formatDurationSeconds } from "./signalFormatting";
 
 // Institution-scoped cluster detail. Pulls from
@@ -19,7 +20,9 @@ import { formatDurationSeconds } from "./signalFormatting";
 // Post-update (#203) is wired here as a peer card: the button opens
 // `PostUpdateModal`, which invalidates this cluster's query on
 // success so the new post surfaces in the list without an explicit
-// refetch. The restoration CTA (#204) slots in next to it.
+// refetch. Restoration (#204) sits below it as a state-aware card
+// (`RestorationActionCard`) so the composer and citizen-confirmation
+// banner share the same slot.
 export function ClusterDetailScreen() {
   const { clusterId } = useParams<{ clusterId: string }>();
   const [postModalOpen, setPostModalOpen] = useState(false);
@@ -98,6 +101,16 @@ export function ClusterDetailScreen() {
           <DetailField label="Active for" value={formatDurationSeconds(timeActiveSeconds)} />
         ) : null}
       </dl>
+
+      <RestorationActionCard
+        clusterId={signal.id}
+        clusterState={signal.state}
+        clusterCategory={signal.category}
+        restorationRatio={signal.restorationRatio}
+        restorationYesVotes={signal.restorationYesVotes}
+        restorationTotalVotes={signal.restorationTotalVotes}
+        resolvedAt={signal.resolvedAt}
+      />
 
       <section aria-label="Official updates" className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

@@ -23,6 +23,9 @@ const sampleCluster: ClusterDetailResponse = {
   resolvedAt: null,
   locationLabel: "Ngong Road near Adams Arcade, Kilimani",
   responseStatus: "teams_dispatched",
+  restorationRatio: null,
+  restorationYesVotes: null,
+  restorationTotalVotes: null,
   officialPosts: [
     {
       id: "post-1",
