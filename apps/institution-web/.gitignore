@@ -1,0 +1,17 @@
+# Vite build output
+dist/
+
+# Vitest coverage
+coverage/
+
+# Playwright artefacts
+playwright-report/
+test-results/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Local environment files (never commit real values — see .env.example)
+.env
+.env.local
+.env.*.local

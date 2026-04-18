@@ -79,6 +79,9 @@ web-build/
 # ── Turborepo ─────────────────────────────────────────────────────────────────
 .turbo/
 
+# ── TypeScript incremental build cache ───────────────────────────────────────
+*.tsbuildinfo
+
 # ── React Native ─────────────────────────────────────────────────────────────
 android/.gradle
 android/app/build/

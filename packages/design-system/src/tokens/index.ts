@@ -2,6 +2,7 @@
 // area in one place and treeshaking has named entry points.
 
 export * from "./colors";
+export * from "./cssVariables";
 export * from "./spacing";
 export * from "./radius";
 export * from "./typography";

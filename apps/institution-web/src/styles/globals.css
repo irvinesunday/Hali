@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Institution surface chrome.
+ *
+ * Colour tokens are NOT declared here. They are sourced from
+ * @hali/design-system (tokens/cssVariables.ts → institutionCssVariables)
+ * and applied to :root at application boot — see src/main.tsx. This
+ * keeps the design-system package the single source of truth for
+ * token values; globals.css holds only surface resets and base
+ * element rules.
+ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
