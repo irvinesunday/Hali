@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
+// RFC 5321 caps a full email at 254 chars; reject longer inputs before the
+// regex runs so an adversarial string can't trigger polynomial backtracking.
+const MAX_EMAIL_LENGTH = 254
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 async function persistSignup(email: string) {
@@ -29,7 +32,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid request' }, { status: 400 })
   }
   const email = (payload.email ?? '').trim().toLowerCase()
-  if (!email || !EMAIL_RE.test(email)) {
+  if (!email || email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
     return NextResponse.json({ success: false, error: 'Invalid email' }, { status: 400 })
   }
 
