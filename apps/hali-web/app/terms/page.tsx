@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'Terms of Use | Hali',
+  title: 'Terms of Use',
 }
 
 export default function TermsPage() {
