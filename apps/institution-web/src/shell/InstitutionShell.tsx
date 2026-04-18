@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { Outlet, useMatches } from "react-router-dom";
+import { emitEvent } from "../telemetry/emit";
+import { TelemetryEvents } from "../telemetry/events";
 import { isRouteHandle } from "./routeHandle";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -13,6 +16,11 @@ import { Topbar } from "./Topbar";
 // (see router.tsx). That keeps the shell correct for unmatched
 // routes — the NotFound surface's title is "Page not found", not
 // "Overview", which would otherwise mislead users on a 404.
+//
+// `dashboard.route.entered` fires whenever the active route's
+// `telemetryName` changes — once per navigation, never with the raw
+// path (so `/signals/:clusterId` contributes a single `cluster_detail`
+// bucket instead of one-per-cluster tag).
 export function InstitutionShell() {
   const matches = useMatches();
   const activeHandle = [...matches]
@@ -20,6 +28,12 @@ export function InstitutionShell() {
     .map((match) => match.handle)
     .find(isRouteHandle);
   const title = activeHandle?.title ?? "Hali Institution";
+  const telemetryName = activeHandle?.telemetryName;
+
+  useEffect(() => {
+    if (!telemetryName) return;
+    emitEvent(TelemetryEvents.DashboardRouteEntered, { route_name: telemetryName });
+  }, [telemetryName]);
 
   return (
     <div className="flex min-h-full">

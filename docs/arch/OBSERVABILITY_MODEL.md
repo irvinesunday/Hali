@@ -261,8 +261,8 @@ not as a follow-up.
   `home.request.started`, not `started.home.request`.
 - **Outcomes are one of:** `started`, `completed`, `failed`, `created`,
   `joined`, `confirmed`, `reverted`, `rejected`, `resolved`,
-  `snapshot`, `recorded`. If a new outcome word is needed, add it to
-  this list.
+  `snapshot`, `recorded`, `submitted`, `cancelled`, `denied`,
+  `entered`. If a new outcome word is needed, add it to this list.
 - **Never encode values in the event name.** Tag them instead.
   `cluster.activated` with tag `category=roads`, not
   `cluster.activated.roads`.

@@ -14,6 +14,8 @@ import {
   useFeatureFlag,
 } from "../../featureFlags/FeatureFlagsProvider";
 import { institutionKeys } from "../../query/keys";
+import { emitEvent } from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 
 // Institution restoration action per Hali doctrine:
 //
@@ -40,9 +42,13 @@ export interface RestorationActionCardProps {
   readonly clusterId: string;
   readonly clusterState: ClusterState | string;
   readonly clusterCategory: CivicCategorySlug | string;
-  readonly restorationRatio: number | null;
-  readonly restorationYesVotes: number | null;
-  readonly restorationTotalVotes: number | null;
+  // Widened to include `undefined` so the partial-deploy case (server
+  // omits the field entirely) is part of the prop contract, not an
+  // implicit assumption. AwaitingBanner distinguishes null vs undefined
+  // for the user-facing hint.
+  readonly restorationRatio: number | null | undefined;
+  readonly restorationYesVotes: number | null | undefined;
+  readonly restorationTotalVotes: number | null | undefined;
   readonly resolvedAt: string | null;
 }
 
@@ -101,7 +107,12 @@ export function RestorationActionCard({
       </p>
       <button
         type="button"
-        onClick={() => setComposerOpen(true)}
+        onClick={() => {
+          emitEvent(TelemetryEvents.RestorationClaimStarted, {
+            cluster_category: clusterCategory,
+          });
+          setComposerOpen(true);
+        }}
         className="mt-3 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
       >
         Mark as restored
@@ -137,12 +148,33 @@ function AwaitingBanner({
   yesVotes,
   totalVotes,
 }: {
-  readonly ratio: number | null;
-  readonly yesVotes: number | null;
-  readonly totalVotes: number | null;
+  readonly ratio: number | null | undefined;
+  readonly yesVotes: number | null | undefined;
+  readonly totalVotes: number | null | undefined;
 }) {
-  const percent = ratio !== null ? Math.round(ratio * 100) : null;
-  const countsKnown = yesVotes !== null && totalVotes !== null;
+  // Guard with `Number.isFinite` rather than `!== null`: during a
+  // partial deployment the backend may omit these fields entirely, in
+  // which case JSON.parse leaves them `undefined` at runtime even
+  // though TS models them as `number | null`. A bare `!== null` check
+  // lets `undefined` through and produces a `NaN%` render.
+  const hasRatio = typeof ratio === "number" && Number.isFinite(ratio);
+  const hasYesVotes = typeof yesVotes === "number" && Number.isFinite(yesVotes);
+  const hasTotalVotes = typeof totalVotes === "number" && Number.isFinite(totalVotes);
+  const percent = hasRatio ? Math.round(ratio * 100) : null;
+  const countsKnown = hasYesVotes && hasTotalVotes;
+
+  // Distinguish "intentional absence" (ratio === null — server returned
+  // the field, no votes yet) from "field missing at runtime" (undefined
+  // or non-finite — partial deploy where the new payload shape isn't
+  // out everywhere yet). The former is a real product state and gets a
+  // user-facing copy; the latter is a transient deploy artifact and
+  // gets the more honest "Data unavailable" hint so we don't lie to the
+  // operator.
+  const ratioHint = hasRatio
+    ? null
+    : ratio === null
+      ? "No citizen responses yet."
+      : "Data unavailable.";
   return (
     <section
       aria-label="Restoration status"
@@ -157,7 +189,7 @@ function AwaitingBanner({
         <Stat
           label="Confirmation ratio"
           value={percent !== null ? `${percent}%` : "—"}
-          hint={percent !== null ? null : "No citizen responses yet."}
+          hint={ratioHint}
         />
         <Stat
           label="Yes votes"
@@ -214,11 +246,34 @@ function RestorationClaimModal({
 
   const mutation = useMutation<OfficialPostResponse, Error, OfficialPostCreateRequest>({
     mutationFn: (request) => createOfficialPost(request),
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
+      emitEvent(TelemetryEvents.RestorationClaimCompleted, {
+        cluster_category: request.category,
+      });
       void queryClient.invalidateQueries({ queryKey: institutionKeys.signalDetail(clusterId) });
       onClose();
     },
+    onError: (error, request) => {
+      emitEvent(TelemetryEvents.RestorationClaimFailed, {
+        cluster_category: request.category,
+        status: error instanceof ApiError ? error.status : null,
+      });
+    },
   });
+
+  // `claim.cancelled` means "closed without submitting" in the funnel.
+  // Gate on `isIdle` so a close after a failed submit stays categorised
+  // as `claim.failed` rather than double-counting as a cancel. Tag with
+  // the same bounded `cluster_category` the rest of the restoration
+  // events carry so breakdowns stay consistent.
+  const handleClose = () => {
+    if (mutation.isIdle) {
+      emitEvent(TelemetryEvents.RestorationClaimCancelled, {
+        cluster_category: clusterCategory,
+      });
+    }
+    onClose();
+  };
 
   // Reset the form + mutation status when the modal closes so a
   // reopened composer is blank and any stale server error is gone.
@@ -239,16 +294,23 @@ function RestorationClaimModal({
     }
   }, [open]);
 
+  // `handleClose` is a fresh closure each render; route through a ref
+  // so the listener always sees the latest closure. The effect still
+  // re-runs when `open` or `mutation.isPending` flip — that's
+  // acceptable (add/remove listener is cheap) and keeps the Escape
+  // gate bound to the pending state without a second ref.
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !mutation.isPending) {
-        onClose();
+        handleCloseRef.current();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, mutation.isPending, onClose]);
+  }, [open, mutation.isPending]);
 
   if (!open) return null;
 
@@ -263,6 +325,9 @@ function RestorationClaimModal({
       return;
     }
 
+    emitEvent(TelemetryEvents.RestorationClaimSubmitted, {
+      cluster_category: clusterCategory,
+    });
     mutation.mutate({
       type: "live_update",
       category: clusterCategory,
@@ -300,7 +365,7 @@ function RestorationClaimModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={mutation.isPending}
             className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
             aria-label="Close"
@@ -362,7 +427,7 @@ function RestorationClaimModal({
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={mutation.isPending}
               className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-60"
             >

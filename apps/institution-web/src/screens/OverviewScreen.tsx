@@ -6,6 +6,8 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { institutionKeys } from "../query/keys";
+import { TelemetryEvents } from "../telemetry/events";
+import { useQueryTelemetry } from "../telemetry/useQueryTelemetry";
 
 // Institution home. Renders the summary counters and the top areas
 // strip returned by `GET /v1/institution/overview`. Detail drill-in
@@ -15,6 +17,16 @@ export function OverviewScreen() {
   const overview = useQuery({
     queryKey: institutionKeys.overview(),
     queryFn: getInstitutionOverview,
+  });
+
+  useQueryTelemetry({
+    startedEvent: TelemetryEvents.OverviewLoadStarted,
+    completedEvent: TelemetryEvents.OverviewLoadCompleted,
+    failedEvent: TelemetryEvents.OverviewLoadFailed,
+    isPending: overview.isPending,
+    isSuccess: overview.isSuccess,
+    isError: overview.isError,
+    error: overview.error,
   });
 
   if (overview.isLoading) {

@@ -20,7 +20,7 @@ export default function Footer() {
           {/* Left — wordmark + tagline */}
           <div className="space-y-3">
             <span className="font-display text-2xl font-normal">Hali</span>
-            <p className="text-sm text-hali-muted max-w-xs leading-relaxed">
+            <p className="text-sm text-hali-muted-foreground max-w-xs leading-relaxed">
               Civic infrastructure for real-world cities.
               <br />
               Know what&apos;s happening in your area — as it happens.
@@ -31,7 +31,7 @@ export default function Footer() {
           <div className="grid grid-cols-2 gap-10">
             {/* Product */}
             <div>
-              <p className="text-xs uppercase tracking-wide text-hali-muted mb-4 font-medium">
+              <p className="text-xs uppercase tracking-wide text-hali-muted-foreground mb-4 font-medium">
                 Product
               </p>
               <ul className="space-y-2" role="list">
@@ -50,7 +50,7 @@ export default function Footer() {
 
             {/* Legal */}
             <div>
-              <p className="text-xs uppercase tracking-wide text-hali-muted mb-4 font-medium">
+              <p className="text-xs uppercase tracking-wide text-hali-muted-foreground mb-4 font-medium">
                 Legal
               </p>
               <ul className="space-y-2" role="list">
@@ -71,7 +71,7 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-14 pt-6 border-t border-hali-background/10">
-          <p className="text-xs text-hali-muted">
+          <p className="text-xs text-hali-muted-foreground">
             &copy; 2026 Hali. All rights reserved.
           </p>
         </div>

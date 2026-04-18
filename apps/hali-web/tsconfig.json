@@ -5,6 +5,7 @@
     "allowJs": true,
     "noEmit": true,
     "declaration": false,
+    "declarationMap": false,
     "module": "esnext",
     "jsx": "preserve",
     "incremental": true,
