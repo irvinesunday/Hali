@@ -44,8 +44,10 @@ export function useQueryTelemetry(options: QueryTelemetryOptions): void {
   } = options;
 
   // Track the last emitted phase so we don't double-fire on re-renders.
-  // "idle" after a terminal event lets a subsequent pending flip back
-  // through started again (refetch path).
+  // The state machine is: idle → started → terminal → started → …
+  // After a terminal event the phase stays `terminal`; the next pending
+  // observation flips it back to `started` (refetch path), emitting a
+  // fresh started / completed-or-failed pair.
   const phaseRef = useRef<"idle" | "started" | "terminal">("idle");
 
   useEffect(() => {

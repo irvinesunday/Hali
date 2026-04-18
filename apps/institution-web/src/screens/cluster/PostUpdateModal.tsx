@@ -122,11 +122,13 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
     },
   });
 
-  // Distinguishes a deliberate close (Cancel / ✕ / Escape) from the
-  // post-success unmount the success handler triggers above. Without
-  // this we would emit `draft.cancelled` on every successful submit.
+  // `draft.cancelled` means "closed without submitting" in the funnel.
+  // Gate on `isIdle` so a close after a failed submit stays categorised
+  // as `create.failed` rather than double-counting as a cancel — and so
+  // the post-success unmount the success handler triggers above never
+  // fires it either.
   const handleClose = () => {
-    if (!mutation.isSuccess && !mutation.isPending) {
+    if (mutation.isIdle) {
       emitEvent(TelemetryEvents.OfficialPostDraftCancelled);
     }
     onClose();

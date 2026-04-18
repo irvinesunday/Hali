@@ -277,12 +277,34 @@ describe("RestorationActionCard", () => {
       });
     });
 
-    it("emits claim.cancelled when the operator closes without submitting", async () => {
-      renderCard({ clusterState: "active" });
+    it("emits claim.cancelled tagged with cluster_category when the operator closes without submitting", async () => {
+      renderCard({ clusterState: "active", clusterCategory: "water" });
       await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
       await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
       expect(names()).toContain(TelemetryEvents.RestorationClaimCancelled);
+      expect(recordOf(TelemetryEvents.RestorationClaimCancelled)?.tags).toMatchObject({
+        cluster_category: "water",
+      });
+    });
+
+    it("does not emit claim.cancelled when the composer closes after a failed submit", async () => {
+      mockFetch({
+        "/v1/official-posts": () => errorResponse(409, "cluster_not_active"),
+      });
+
+      renderCard({ clusterState: "active" });
+      await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Power is back.");
+      await userEvent.click(screen.getByRole("button", { name: /confirm restoration claim/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.RestorationClaimFailed);
+      });
+
+      await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+      expect(names()).not.toContain(TelemetryEvents.RestorationClaimCancelled);
     });
   });
 });

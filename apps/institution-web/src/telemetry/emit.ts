@@ -29,11 +29,18 @@ export interface TelemetryEventRecord {
 
 export type TelemetryTransport = (event: TelemetryEventRecord) => void;
 
-const isDevMode: boolean =
-  typeof import.meta !== "undefined" && Boolean(import.meta.env?.DEV);
+// `DEV` covers vite dev + vitest, so we narrow further: only the
+// actual dev-server run prints to console. Vitest (MODE === "test" or
+// `VITEST` set) stays silent so test suites that don't install a
+// transport aren't polluted with emission logs.
+const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
+const isTestMode: boolean = Boolean(
+  env && (env.MODE === "test" || (env as { VITEST?: boolean }).VITEST),
+);
+const isConsoleMode: boolean = Boolean(env?.DEV) && !isTestMode;
 
 function consoleTransport(event: TelemetryEventRecord): void {
-  if (!isDevMode) return;
+  if (!isConsoleMode) return;
   if (typeof console === "undefined" || typeof console.debug !== "function") return;
   console.debug("[telemetry]", event.name, event.tags);
 }
@@ -52,7 +59,7 @@ export function emitEvent(
   try {
     activeTransport(record);
   } catch (err) {
-    if (isDevMode && typeof console !== "undefined" && typeof console.warn === "function") {
+    if (isConsoleMode && typeof console !== "undefined" && typeof console.warn === "function") {
       console.warn("[telemetry] transport failed", err);
     }
   }

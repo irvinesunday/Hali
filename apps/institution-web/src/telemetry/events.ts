@@ -7,8 +7,9 @@
 // Names follow §6 of `docs/arch/OBSERVABILITY_MODEL.md`:
 //   - dot-delimited lowercase snake_case segments
 //   - subject → verb → outcome (e.g. `overview.load.completed`)
-//   - outcomes limited to: started, completed, failed, submitted,
-//     cancelled, denied, entered, rendered
+//   - outcomes in this file — started, completed, failed, submitted,
+//     cancelled, denied, entered — are all members of the canonical
+//     list in §6; adding a new one means editing that list first.
 //   - values (category, reason_code) are tags, not embedded in the name
 //
 // Events that belong to the auth flow (`auth.login.web`, etc.) will be

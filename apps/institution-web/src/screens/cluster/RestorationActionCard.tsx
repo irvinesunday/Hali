@@ -236,9 +236,16 @@ function RestorationClaimModal({
     },
   });
 
+  // `claim.cancelled` means "closed without submitting" in the funnel.
+  // Gate on `isIdle` so a close after a failed submit stays categorised
+  // as `claim.failed` rather than double-counting as a cancel. Tag with
+  // the same bounded `cluster_category` the rest of the restoration
+  // events carry so breakdowns stay consistent.
   const handleClose = () => {
-    if (!mutation.isSuccess && !mutation.isPending) {
-      emitEvent(TelemetryEvents.RestorationClaimCancelled);
+    if (mutation.isIdle) {
+      emitEvent(TelemetryEvents.RestorationClaimCancelled, {
+        cluster_category: clusterCategory,
+      });
     }
     onClose();
   };

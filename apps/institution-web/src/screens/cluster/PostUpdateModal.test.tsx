@@ -327,6 +327,27 @@ describe("PostUpdateModal", () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it("does not emit draft.cancelled when the modal closes after a failed submit", async () => {
+      mockFetch({
+        "/v1/official-posts": () => errorResponse(400, "invalid_category"),
+      });
+
+      const onClose = vi.fn();
+      renderModal({ onClose });
+      await userEvent.type(screen.getByLabelText(/^title$/i), "Teams dispatched");
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Crews are en route.");
+      await userEvent.click(screen.getByRole("button", { name: /post update/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.OfficialPostCreateFailed);
+      });
+
+      await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(names()).not.toContain(TelemetryEvents.OfficialPostDraftCancelled);
+    });
+
     it("does not emit draft.cancelled after a successful post", async () => {
       mockFetch({
         "/v1/official-posts": () =>
