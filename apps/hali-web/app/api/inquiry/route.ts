@@ -12,6 +12,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ALLOWED_CATEGORIES = ['roads', 'water', 'electricity', 'transport', 'other'] as const
 type Category = (typeof ALLOWED_CATEGORIES)[number]
 
+// Server-side upper bounds for free-text fields. Keep modest so a single
+// adversarial request can't bloat the persisted file or the notification email.
+const MAX_NAME = 120
+const MAX_ORGANISATION = 200
+const MAX_ROLE = 120
+const MAX_AREA = 200
+const MAX_MESSAGE = 500
+
 interface InquiryPayload {
   name: string
   organisation: string
@@ -69,12 +77,16 @@ export async function POST(request: NextRequest) {
 
   const isValid =
     name.length >= 2 &&
+    name.length <= MAX_NAME &&
     organisation.length >= 1 &&
+    organisation.length <= MAX_ORGANISATION &&
     role.length >= 1 &&
+    role.length <= MAX_ROLE &&
     emailRaw.length > 0 &&
     emailRaw.length <= MAX_EMAIL_LENGTH &&
     EMAIL_RE.test(emailRaw) &&
     area.length >= 1 &&
+    area.length <= MAX_AREA &&
     isValidCategory
 
   if (!isValid) {
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
     }
     const trimmed = messageRaw.trim()
-    if (trimmed.length > 500) {
+    if (trimmed.length > MAX_MESSAGE) {
       return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
     }
     message = trimmed || undefined

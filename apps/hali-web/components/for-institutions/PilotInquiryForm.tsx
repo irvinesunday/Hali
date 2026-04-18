@@ -86,6 +86,9 @@ export default function PilotInquiryForm() {
     const errors = validate(fields)
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
+      // Clear a stale server-side error banner so the user sees only the
+      // current per-field issues, not a leftover "something went wrong".
+      if (formState === 'error') setFormState('idle')
       return
     }
 
@@ -333,6 +336,7 @@ export default function PilotInquiryForm() {
                 name="message"
                 value={fields.message}
                 onChange={handleChange}
+                maxLength={500}
                 aria-invalid={!!fieldErrors.message}
                 aria-describedby={fieldErrors.message ? 'inq-message-error' : undefined}
                 className={`${inputBase} min-h-[120px] resize-y`}
