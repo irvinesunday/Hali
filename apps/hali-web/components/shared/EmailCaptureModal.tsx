@@ -33,6 +33,15 @@ export default function EmailCaptureModal({ open, onClose }: Props) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [open, onClose])
 
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
@@ -109,7 +118,7 @@ export default function EmailCaptureModal({ open, onClose }: Props) {
               We&apos;ll let you know when Hali launches in your area.
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               <input
                 ref={inputRef}
                 type="email"
