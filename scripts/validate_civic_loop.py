@@ -42,12 +42,17 @@ Environment variables (all optional; defaults target local dev):
                         transitions (default 120).
 
 Exit codes:
-    0  loop completed; every asserted invariant held.
-    1  loop failed; see stderr for the first failing assertion.
-    2  configuration error (missing env / unreachable API).
+    0  loop completed; every asserted invariant held. Also returned by
+       --dry-run even when the API health-check fails — dry-run is for
+       CI linting and does not gate on a live API.
+    1  loop failed, configuration was invalid, or the API health-check
+       failed in a non-dry-run; see stderr for the first reported
+       problem.
 
-The --dry-run flag performs config resolution and a health-check only,
-so CI can lint the harness without needing a full stack.
+The --dry-run flag performs config resolution and attempts an API
+health-check only. If the API is unreachable in dry-run mode, the
+script reports a warning and still exits successfully so CI can lint
+the harness without needing a full stack.
 """
 from __future__ import annotations
 

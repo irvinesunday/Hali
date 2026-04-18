@@ -153,8 +153,13 @@ State of the current authorization posture as of this audit:
 
 - Every non-anonymous endpoint has an explicit `[Authorize]` (or
   `[Authorize(Roles = …)]`) decorator.
-- `[AllowAnonymous]` is **explicit** on every public endpoint —
-  anonymous access is never implied by absence of `[Authorize]`.
+- Public endpoints are intentionally exposed anonymously, but not
+  all of them are annotated with `[AllowAnonymous]`; in the current
+  implementation (no fallback policy in `Program.cs`) some anonymous
+  access is implied by the absence of `[Authorize]` — notably
+  `AuthController`, whose OTP + token routes predate the
+  `[AllowAnonymous]`-everywhere convention. Phase 2 auth hardening
+  annotates the remaining endpoints explicitly.
 - The `POST /v1/institution/official-updates` controller (formerly
   `POST /v1/official-posts`) does NOT read the `institution_id` from
   a client-supplied header — it reads it from the JWT claim (this
