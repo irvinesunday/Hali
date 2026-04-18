@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
 export const runtime = 'nodejs'
@@ -11,15 +11,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // Append-only NDJSON persistence — one JSON object per line. Eliminates the
 // read-modify-write cycle that the previous JSON-array implementation used,
-// which lost concurrent writes. Note: this is still not safe across multiple
-// serverless instances (no inter-instance locking, and the filesystem is
-// ephemeral on serverless). Acceptable for MVP / local / staging; production
-// durability is a post-launch concern (database or queue).
-function persistEntry(filename: string, entry: object): void {
+// which lost concurrent writes. Async so we don't block the event loop during
+// disk I/O. Note: this is still not safe across multiple serverless instances
+// (no inter-instance locking, and the filesystem is ephemeral on serverless).
+// Acceptable for MVP / local / staging; production durability is a post-launch
+// concern (database or queue).
+async function persistEntry(filename: string, entry: object): Promise<void> {
   const dataDir = path.resolve(process.cwd(), 'data')
-  mkdirSync(dataDir, { recursive: true })
+  await fs.mkdir(dataDir, { recursive: true })
   const filePath = path.join(dataDir, filename)
-  appendFileSync(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
+  await fs.appendFile(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
 }
 
 export async function POST(request: NextRequest) {
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    persistEntry('signups.ndjson', { email, at: new Date().toISOString() })
+    await persistEntry('signups.ndjson', { email, at: new Date().toISOString() })
   } catch (err) {
     // Persistence is the primary contract — fail closed if we can't save.
     console.error('[notify] persistence failed', err)
