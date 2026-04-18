@@ -1,10 +1,15 @@
 export const metadata = {
   title: 'Privacy Policy',
+  openGraph: {
+    title: 'Privacy Policy | Hali',
+    url: 'https://gethali.app/privacy',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+  },
 }
 
 export default function PrivacyPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-20">
+    <main id="main" className="max-w-3xl mx-auto px-6 py-20">
       <h1 className="font-display text-3xl font-bold text-hali-foreground mb-4">
         Privacy Policy
       </h1>
