@@ -227,12 +227,15 @@ jobs:
           done
           curl -f http://localhost:8080/health
       - name: Run Dredd contract tests
+        # Declared non-blocking: contract drift surfaces as a failed step
+        # (visible in GitHub UI) without failing the job. Exit code propagates
+        # correctly — no `|| true`, which would mask real failures as green.
+        continue-on-error: true
         run: |
           dredd 02_openapi.yaml http://localhost:8080 \
             --hookfiles=tests/dredd-hooks.js \
             --reporter=junit \
-            --output=./test-results/dredd/contract-results.xml \
-            || true  # Don't fail CI while hooks are being developed
+            --output=./test-results/dredd/contract-results.xml
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: contract-test-results, path: ./test-results/dredd/ }

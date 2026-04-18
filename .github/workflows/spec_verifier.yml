@@ -59,8 +59,13 @@ jobs:
           python3 scripts/spec_verifier.py
 
       - name: Commit updated lessons if changed
+        # Push is best-effort: non-fast-forward against a moving branch is
+        # acceptable (next run picks it up). Declared non-blocking at the
+        # step level so failures stay visible in the UI instead of being
+        # masked by `|| true`.
+        continue-on-error: true
         run: |
           git add agent_prompts/agent_a_lessons.md
           git diff --staged --quiet || \
             git commit -m "lessons: post-CI spec verification update [skip ci]"
-          git push origin HEAD || true
+          git push origin HEAD
