@@ -42,9 +42,13 @@ export interface RestorationActionCardProps {
   readonly clusterId: string;
   readonly clusterState: ClusterState | string;
   readonly clusterCategory: CivicCategorySlug | string;
-  readonly restorationRatio: number | null;
-  readonly restorationYesVotes: number | null;
-  readonly restorationTotalVotes: number | null;
+  // Widened to include `undefined` so the partial-deploy case (server
+  // omits the field entirely) is part of the prop contract, not an
+  // implicit assumption. AwaitingBanner distinguishes null vs undefined
+  // for the user-facing hint.
+  readonly restorationRatio: number | null | undefined;
+  readonly restorationYesVotes: number | null | undefined;
+  readonly restorationTotalVotes: number | null | undefined;
   readonly resolvedAt: string | null;
 }
 
@@ -144,12 +148,33 @@ function AwaitingBanner({
   yesVotes,
   totalVotes,
 }: {
-  readonly ratio: number | null;
-  readonly yesVotes: number | null;
-  readonly totalVotes: number | null;
+  readonly ratio: number | null | undefined;
+  readonly yesVotes: number | null | undefined;
+  readonly totalVotes: number | null | undefined;
 }) {
-  const percent = ratio !== null ? Math.round(ratio * 100) : null;
-  const countsKnown = yesVotes !== null && totalVotes !== null;
+  // Guard with `Number.isFinite` rather than `!== null`: during a
+  // partial deployment the backend may omit these fields entirely, in
+  // which case JSON.parse leaves them `undefined` at runtime even
+  // though TS models them as `number | null`. A bare `!== null` check
+  // lets `undefined` through and produces a `NaN%` render.
+  const hasRatio = typeof ratio === "number" && Number.isFinite(ratio);
+  const hasYesVotes = typeof yesVotes === "number" && Number.isFinite(yesVotes);
+  const hasTotalVotes = typeof totalVotes === "number" && Number.isFinite(totalVotes);
+  const percent = hasRatio ? Math.round(ratio * 100) : null;
+  const countsKnown = hasYesVotes && hasTotalVotes;
+
+  // Distinguish "intentional absence" (ratio === null — server returned
+  // the field, no votes yet) from "field missing at runtime" (undefined
+  // or non-finite — partial deploy where the new payload shape isn't
+  // out everywhere yet). The former is a real product state and gets a
+  // user-facing copy; the latter is a transient deploy artifact and
+  // gets the more honest "Data unavailable" hint so we don't lie to the
+  // operator.
+  const ratioHint = hasRatio
+    ? null
+    : ratio === null
+      ? "No citizen responses yet."
+      : "Data unavailable.";
   return (
     <section
       aria-label="Restoration status"
@@ -164,7 +189,7 @@ function AwaitingBanner({
         <Stat
           label="Confirmation ratio"
           value={percent !== null ? `${percent}%` : "—"}
-          hint={percent !== null ? null : "No citizen responses yet."}
+          hint={ratioHint}
         />
         <Stat
           label="Yes votes"
