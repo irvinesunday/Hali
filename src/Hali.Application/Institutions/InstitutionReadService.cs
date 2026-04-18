@@ -199,6 +199,38 @@ public sealed class InstitutionReadService : IInstitutionReadService
         return new InstitutionAreasResponseDto(items);
     }
 
+    public async Task<InstitutionRestorationQueueResponseDto> GetRestorationQueueAsync(
+        Guid institutionId, Guid? areaId, CancellationToken ct)
+    {
+        IReadOnlyList<Guid> localityIds = await _repo.GetScopeLocalityIdsAsync(institutionId, areaId, ct);
+        if (localityIds.Count == 0)
+        {
+            return new InstitutionRestorationQueueResponseDto(Array.Empty<InstitutionRestorationQueueItemDto>());
+        }
+
+        IReadOnlyList<InstitutionRestorationRow> rows = await _repo.GetRestorationQueueAsync(localityIds, ct);
+        var items = new List<InstitutionRestorationQueueItemDto>(rows.Count);
+        foreach (var row in rows)
+        {
+            RestorationCountSnapshot snapshot = await _participationRepo.GetRestorationCountSnapshotAsync(row.ClusterId, ct);
+            double? ratio = snapshot.TotalResponses > 0
+                ? (double)snapshot.YesVotes / snapshot.TotalResponses
+                : (double?)null;
+            items.Add(new InstitutionRestorationQueueItemDto(
+                ClusterId: row.ClusterId,
+                Title: row.Title,
+                Category: row.Category,
+                LocalityId: row.LocalityId,
+                LocalityName: row.LocalityName,
+                PossibleRestorationAt: row.PossibleRestorationAt,
+                RestorationYes: snapshot.YesVotes,
+                StillAffected: snapshot.NoVotes,
+                TotalRestorationResponses: snapshot.TotalResponses,
+                RestorationRatio: ratio));
+        }
+        return new InstitutionRestorationQueueResponseDto(items);
+    }
+
     public async Task<InstitutionActivityResponseDto> GetActivityAsync(
         Guid institutionId, Guid? areaId, string? cursor, int limit, CancellationToken ct)
     {

@@ -411,8 +411,10 @@ Returns paginated `InstitutionClusterSummaryDto` — no CIVIS fields, no PII.
   "items": [
     {
       "clusterId": "uuid",
-      "clusterSummary": "...",
+      "title": "...",
+      "category": "electricity",
       "locationLabel": "...",
+      "area": { "id": "uuid", "name": "South B" },
       "possibleRestorationAt": "...",
       "restorationRatio": 0.42,
       "affectedVoteCount": 5,
@@ -420,9 +422,65 @@ Returns paginated `InstitutionClusterSummaryDto` — no CIVIS fields, no PII.
       "threshold": 0.60
     }
   ],
-  "pagination": { ... }
+  "nextCursor": "opaque | null"
 }
 ```
+Returns clusters in `possible_restoration` state within the caller's
+jurisdiction. Cursor-paginated.
+
+**POST /v1/institution/clusters/{clusterId}/acknowledge**
+```json
+// Request
+{
+  "idempotencyKey": "client-generated-uuid",
+  "note": "optional string up to 500 chars"
+}
+// Response 202
+{
+  "acknowledgementId": "uuid",
+  "clusterId": "uuid",
+  "recordedAt": "2026-04-18T12:00:00Z"
+}
+```
+Records an explicit operator acknowledge action. Emits an
+`institution.action.recorded` outbox event. Passive view tracking
+(`institution.cluster.viewed`) is intentionally deferred — see
+follow-up issue. Idempotent on `idempotencyKey`.
+
+---
+
+## Outbox event envelope (Phase 4)
+
+Every state-changing backend write emits a row in `outbox_events`
+within the same database transaction as the state change. Envelope
+schema (see `src/Hali.Domain/Entities/Clusters/OutboxEvent.cs`):
+
+| Column | Purpose |
+|---|---|
+| `id` (`eventId`) | Primary key, assigned server-side |
+| `aggregate_type` | Entity family — `signal_cluster`, `signal_event`, etc. |
+| `aggregate_id` | Identifier of the aggregate that changed |
+| `event_type` | Canonical event name (see table below) |
+| `schema_version` | String, e.g. `1.0` — distinct per event type, incremented on payload breaking changes |
+| `payload` | JSON payload scoped to the event |
+| `occurred_at` | UTC timestamp when the transition happened |
+| `published_at` | Set by the outbox relay once forwarded to Redis |
+
+Canonical event names (Phase 4):
+
+| Event | Aggregate type | Payload essentials |
+|---|---|---|
+| `signal.submitted` | `signal_event` | `signalEventId`, `clusterId`, `joined` |
+| `cluster.created` | `signal_cluster` | `clusterId`, `category`, `localityId` |
+| `cluster.activated` | `signal_cluster` | `clusterId`, `from`, `to`, `reasonCode` |
+| `cluster.possible_restoration` | `signal_cluster` | `clusterId`, `trigger` (`official` or `citizen_vote`) |
+| `cluster.restoration_confirmed` | `signal_cluster` | `clusterId`, `ratio`, `affectedVoteCount` |
+| `cluster.reverted_to_active` | `signal_cluster` | `clusterId`, `reasonCode` |
+| `institution.action.recorded` | `signal_cluster` | `clusterId`, `institutionId`, `actionType` (`acknowledge` for Phase 4), `acknowledgementId` |
+
+`correlationId` and `causationId` are deferred and tracked in a
+follow-up issue — they will be added to the payload body in a later
+phase.
 
 ---
 

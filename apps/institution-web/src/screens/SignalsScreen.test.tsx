@@ -42,7 +42,7 @@ describe("SignalsScreen", () => {
 
   it("renders a row per cluster with category, condition, and trend metrics", async () => {
     mockFetch({
-      "/v1/institution/signals": () => jsonResponse(sampleSignals),
+      "/v1/institution/clusters": () => jsonResponse(sampleSignals),
     });
 
     renderWithProviders({ pathname: "/signals" });
@@ -57,7 +57,7 @@ describe("SignalsScreen", () => {
 
   it("links each row to its cluster detail route", async () => {
     mockFetch({
-      "/v1/institution/signals": () => jsonResponse(sampleSignals),
+      "/v1/institution/clusters": () => jsonResponse(sampleSignals),
     });
 
     renderWithProviders({ pathname: "/signals" });
@@ -68,7 +68,7 @@ describe("SignalsScreen", () => {
 
   it("shows the empty state when the institution has no active signals", async () => {
     mockFetch({
-      "/v1/institution/signals": () => jsonResponse({ items: [], nextCursor: null }),
+      "/v1/institution/clusters": () => jsonResponse({ items: [], nextCursor: null }),
     });
 
     renderWithProviders({ pathname: "/signals" });
@@ -78,7 +78,7 @@ describe("SignalsScreen", () => {
 
   it("renders the error state when the list service fails", async () => {
     mockFetch({
-      "/v1/institution/signals": () => errorResponse(503),
+      "/v1/institution/clusters": () => errorResponse(503),
     });
 
     renderWithProviders({ pathname: "/signals" });
@@ -99,7 +99,7 @@ describe("SignalsScreen", () => {
     };
 
     mockFetch({
-      "/v1/institution/signals": (url) => {
+      "/v1/institution/clusters": (url) => {
         if (url.includes("cursor=page-2")) return jsonResponse(secondPage);
         return jsonResponse(firstPage);
       },

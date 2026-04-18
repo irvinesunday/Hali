@@ -162,6 +162,9 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 // Institution operational dashboard read service (#195).
 builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
+// Institution acknowledge write path (#207 Phase 4 — explicit action,
+// emits `institution.action.recorded`).
+builder.Services.AddScoped<IInstitutionAcknowledgeService, InstitutionAcknowledgeService>();
 // Phase 2 institution auth + session hardening (#197).
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();

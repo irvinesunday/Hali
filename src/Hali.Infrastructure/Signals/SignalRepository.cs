@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Application.Observability;
 using Hali.Application.Signals;
 using Hali.Domain.Entities.Clusters;
 using Hali.Domain.Entities.Signals;
@@ -76,9 +77,10 @@ public class SignalRepository : ISignalRepository
 			OutboxEvent outbox = new OutboxEvent
 			{
 				Id = Guid.NewGuid(),
-				AggregateType = "SignalEvent",
+				AggregateType = "signal_event",
 				AggregateId = signal.Id,
-				EventType = "signal_submitted",
+				EventType = ObservabilityEvents.SignalSubmitted,
+				SchemaVersion = ObservabilityEvents.SchemaVersionV1,
 				Payload = JsonSerializer.Serialize(new
 				{
 					signal_id = signal.Id,

@@ -35,8 +35,8 @@ export class ApiError extends Error {
 }
 
 // Collapse UUID segments so tag cardinality stays bounded —
-// "/v1/institution/signals/<uuid>" becomes
-// "/v1/institution/signals/:id". UUIDs are the only path-parameter
+// "/v1/institution/clusters/<uuid>" becomes
+// "/v1/institution/clusters/:id". UUIDs are the only path-parameter
 // shape Phase 2 routes emit today; if a numeric id or slug-only
 // parameter ever lands on an institution route, widen this matcher
 // (and its test coverage) at the same time. This is the bounded

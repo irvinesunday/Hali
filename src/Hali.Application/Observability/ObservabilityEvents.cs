@@ -57,9 +57,24 @@ public static class ObservabilityEvents
     public const string SignalClusterJoined = "signal.cluster.joined";
 
     // ── Cluster lifecycle ──────────────────────────────────────────────────
+    // These constants double as canonical outbox `event_type` values. Every
+    // cluster state transition writes the same string to the outbox that the
+    // structured log emits; see Phase 4 outbox taxonomy in
+    // `docs/arch/02_api_contracts.md` §Outbox event envelope.
+    public const string SignalSubmitted = "signal.submitted";
+    public const string ClusterCreated = "cluster.created";
     public const string ClusterActivated = "cluster.activated";
     public const string ClusterPossibleRestoration = "cluster.possible_restoration";
     public const string ClusterRestorationConfirmed = "cluster.restoration_confirmed";
     public const string ClusterRevertedToActive = "cluster.reverted_to_active";
     public const string ClusterResolvedByDecay = "cluster.resolved_by_decay";
+
+    // ── Institution actions ────────────────────────────────────────────────
+    public const string InstitutionActionRecorded = "institution.action.recorded";
+
+    // ── Outbox schema versions ─────────────────────────────────────────────
+    // Each canonical event starts at schema_version "1.0" and increments on
+    // breaking payload changes. Kept centralised so publishers and consumers
+    // cite the same constant.
+    public const string SchemaVersionV1 = "1.0";
 }

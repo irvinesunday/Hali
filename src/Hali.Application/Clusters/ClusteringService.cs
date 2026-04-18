@@ -97,12 +97,18 @@ public class ClusteringService : IClusteringService
                 bestCluster.LocationLabelText = signal.LocationLabelText;
             }
             await _repo.UpdateClusterAsync(bestCluster, ct);
+            // `cluster.updated` is a soft-update event (raw_confirmation_count bump on
+            // join) — distinct from the lifecycle transitions in the canonical outbox
+            // table (see docs/arch/02_api_contracts.md §Outbox event envelope). The
+            // AggregateType + SchemaVersion fields follow the same envelope shape as
+            // the lifecycle events so consumers can parse uniformly.
             await _repo.WriteOutboxEventAsync(new OutboxEvent
             {
                 Id = Guid.NewGuid(),
-                AggregateType = "cluster",
+                AggregateType = "signal_cluster",
                 AggregateId = bestCluster.Id,
                 EventType = "cluster.updated",
+                SchemaVersion = ObservabilityEvents.SchemaVersionV1,
                 Payload = JsonSerializer.Serialize(new
                 {
                     cluster_id = bestCluster.Id,
@@ -161,9 +167,10 @@ public class ClusteringService : IClusteringService
             await _repo.WriteOutboxEventAsync(new OutboxEvent
             {
                 Id = Guid.NewGuid(),
-                AggregateType = "cluster",
+                AggregateType = "signal_cluster",
                 AggregateId = newCluster.Id,
-                EventType = "cluster.created",
+                EventType = ObservabilityEvents.ClusterCreated,
+                SchemaVersion = ObservabilityEvents.SchemaVersionV1,
                 Payload = JsonSerializer.Serialize(new
                 {
                     cluster_id = newCluster.Id,

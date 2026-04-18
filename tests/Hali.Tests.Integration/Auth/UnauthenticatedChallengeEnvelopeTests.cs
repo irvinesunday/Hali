@@ -32,7 +32,7 @@ public sealed class UnauthenticatedChallengeEnvelopeTests : IntegrationTestBase
     [InlineData("PUT", "/v1/localities/followed", "{\"items\":[]}")]
     [InlineData("POST", "/v1/signals/submit", "{}")]
     [InlineData("POST", "/v1/devices/push-token", "{}")]
-    [InlineData("POST", "/v1/official-posts", "{}")]
+    [InlineData("POST", "/v1/institution/official-updates", "{}")]
     [InlineData("POST", "/v1/clusters/00000000-0000-0000-0000-000000000000/participation", "{}")]
     [InlineData("POST", "/v1/clusters/00000000-0000-0000-0000-000000000000/context", "{}")]
     [InlineData("POST", "/v1/clusters/00000000-0000-0000-0000-000000000000/restoration-response", "{}")]

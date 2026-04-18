@@ -145,6 +145,11 @@ public static class ServiceCollectionExtensions
 		// join across the Advisories / Clusters / Signals tables without
 		// juggling multiple DbContexts.
 		services.AddScoped<IInstitutionReadRepository, InstitutionReadRepository>();
+		// Idempotency store for `POST /v1/institution/clusters/{id}/acknowledge`
+		// (#207 Phase 4). Redis-backed — matches the SignalIngestionService
+		// pattern so retries inside the ingestion window converge to the
+		// same acknowledgement id without a duplicate outbox event.
+		services.AddScoped<IInstitutionAcknowledgementStore, InstitutionAcknowledgementStore>();
 
 		// Home feed read-query service — creates isolated DbContext instances
 		// per query via IServiceScopeFactory to enable safe concurrent reads.

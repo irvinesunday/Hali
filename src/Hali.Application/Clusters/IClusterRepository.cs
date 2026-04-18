@@ -40,6 +40,22 @@ public interface IClusterRepository
 
 	Task WriteOutboxEventAsync(OutboxEvent outboxEvent, CancellationToken ct);
 
+	/// <summary>
+	/// Persists a cluster state change, the accompanying CIVIS decision,
+	/// and the outbox event in a single database transaction. All three
+	/// writes commit together or none of them do — the atomicity rule
+	/// from Phase 4 (see <c>docs/arch/02_api_contracts.md</c> §Outbox
+	/// event envelope). Idempotency is enforced by the caller's state
+	/// guard (only transition clusters in the expected pre-state) plus
+	/// the worker-level checkpoint keys; the transaction ensures a
+	/// retry cannot observe a partially-applied transition.
+	/// </summary>
+	Task ApplyClusterTransitionAsync(
+		SignalCluster cluster,
+		CivisDecision? decision,
+		OutboxEvent outboxEvent,
+		CancellationToken ct);
+
 	/// <summary>Returns unpublished outbox events (published_at IS NULL), up to <paramref name="limit"/>.</summary>
 	Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct);
 

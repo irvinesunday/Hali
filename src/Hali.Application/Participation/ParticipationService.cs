@@ -115,8 +115,7 @@ public class ParticipationService : IParticipationService
                 cluster.State = SignalState.PossibleRestoration;
                 cluster.PossibleRestorationAt = now;
                 cluster.UpdatedAt = now;
-                await _clusterRepo.UpdateClusterAsync(cluster, ct);
-                await _clusterRepo.WriteCivisDecisionAsync(new CivisDecision
+                CivisDecision prDecision = new CivisDecision
                 {
                     Id = Guid.NewGuid(),
                     ClusterId = clusterId,
@@ -130,21 +129,27 @@ public class ParticipationService : IParticipationService
                         threshold = _options.RestorationRatio
                     }),
                     CreatedAt = now
-                }, ct);
-                await _clusterRepo.WriteOutboxEventAsync(new OutboxEvent
+                };
+                OutboxEvent prEvent = new OutboxEvent
                 {
                     Id = Guid.NewGuid(),
-                    AggregateType = "cluster",
+                    AggregateType = "signal_cluster",
                     AggregateId = clusterId,
-                    EventType = "cluster_state_changed",
+                    EventType = ObservabilityEvents.ClusterPossibleRestoration,
+                    SchemaVersion = ObservabilityEvents.SchemaVersionV1,
                     Payload = JsonSerializer.Serialize(new
                     {
                         cluster_id = clusterId,
-                        from_state = "active",
-                        to_state = "possible_restoration"
+                        from = ClustersMetrics.StateActive,
+                        to = ClustersMetrics.StatePossibleRestoration,
+                        trigger = "citizen_vote",
+                        restoration_yes = restorationYes,
+                        total_responses = totalResponses,
+                        ratio = ratio
                     }),
                     OccurredAt = now
-                }, ct);
+                };
+                await _clusterRepo.ApplyClusterTransitionAsync(cluster, prDecision, prEvent, ct);
 
                 _logger?.LogInformation(
                     "{EventName} clusterId={ClusterId} restorationYes={RestorationYes} totalResponses={TotalResponses}",

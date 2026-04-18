@@ -102,11 +102,24 @@ public static class ErrorCodes
     // --- institution.* ---
     public const string InstitutionMissingFields = "institution.missing_fields";
     /// <summary>
-    /// The <c>state</c> filter supplied on <c>GET /v1/institution/signals</c>
+    /// The <c>state</c> filter supplied on <c>GET /v1/institution/clusters</c>
     /// was not one of the canonical values (<c>active</c>, <c>growing</c>,
     /// <c>needs_attention</c>, <c>restoration</c>).
     /// </summary>
     public const string InstitutionInvalidStateFilter = "institution.invalid_state_filter";
+    /// <summary>
+    /// <c>POST /v1/institution/clusters/{clusterId}/acknowledge</c> was issued
+    /// for a cluster outside the caller's jurisdiction. Returned as 404
+    /// (not 403) to deny the existence probe — institution A must not be
+    /// able to confirm cluster ids owned by institution B.
+    /// </summary>
+    public const string InstitutionAcknowledgeOutOfScope = "institution.acknowledge_out_of_scope";
+    /// <summary>
+    /// <c>POST /v1/institution/clusters/{clusterId}/acknowledge</c> was issued
+    /// without an <c>idempotencyKey</c> — required per the mutation-endpoint
+    /// rule in <c>docs/arch/02_api_contracts.md</c> §Idempotency.
+    /// </summary>
+    public const string InstitutionAcknowledgeMissingIdempotencyKey = "institution.acknowledge_missing_idempotency_key";
 
     // --- invite.* ---
     public const string InviteAlreadyAccepted = "invite.already_accepted";

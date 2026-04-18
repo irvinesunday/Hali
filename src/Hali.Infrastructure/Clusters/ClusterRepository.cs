@@ -124,6 +124,23 @@ public class ClusterRepository : IClusterRepository
 		await _db.SaveChangesAsync(ct);
 	}
 
+	public async Task ApplyClusterTransitionAsync(
+		SignalCluster cluster,
+		CivisDecision? decision,
+		OutboxEvent outboxEvent,
+		CancellationToken ct)
+	{
+		await using IDbContextTransaction tx = await _db.Database.BeginTransactionAsync(ct);
+		_db.SignalClusters.Update(cluster);
+		if (decision != null)
+		{
+			_db.CivisDecisions.Add(decision);
+		}
+		_db.OutboxEvents.Add(outboxEvent);
+		await _db.SaveChangesAsync(ct);
+		await tx.CommitAsync(ct);
+	}
+
 	public async Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
 	{
 		return await _db.OutboxEvents
