@@ -32,6 +32,8 @@ public interface IAuthRepository
 
     Task<Account?> FindAccountByIdAsync(Guid accountId, CancellationToken ct = default(CancellationToken));
 
+    Task<Account?> FindAccountByEmailAsync(string email, CancellationToken ct = default(CancellationToken));
+
     Task UpdateAccountAsync(Account account, CancellationToken ct = default(CancellationToken));
 
     /// <summary>Returns expo push tokens for the given account IDs (one per account, latest device).</summary>

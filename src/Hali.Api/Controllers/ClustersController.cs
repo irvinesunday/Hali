@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
@@ -8,6 +9,7 @@ using Hali.Application.Advisories;
 using Hali.Application.Auth;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Institutions;
 using Hali.Application.Observability;
 using Hali.Application.Participation;
 using Hali.Contracts.Clusters;
@@ -29,6 +31,7 @@ public class ClustersController : ControllerBase
     private readonly IClusterRepository _clusters;
     private readonly IAuthRepository _auth;
     private readonly IOfficialPostsService _officialPosts;
+    private readonly IInstitutionReadRepository _institutionRead;
     private readonly CivisOptions _civisOptions;
     private readonly ClustersMetrics? _metrics;
 
@@ -38,6 +41,7 @@ public class ClustersController : ControllerBase
         IClusterRepository clusters,
         IAuthRepository auth,
         IOfficialPostsService officialPosts,
+        IInstitutionReadRepository institutionRead,
         IOptions<CivisOptions> civisOptions,
         ClustersMetrics? metrics = null)
     {
@@ -46,6 +50,7 @@ public class ClustersController : ControllerBase
         _clusters = clusters;
         _auth = auth;
         _officialPosts = officialPosts;
+        _institutionRead = institutionRead;
         _civisOptions = civisOptions.Value;
         _metrics = metrics;
     }
@@ -102,6 +107,15 @@ public class ClustersController : ControllerBase
                 : (double?)null;
         }
 
+        // Derive response_status from the existing officialPosts list already
+        // fetched above — no extra DB round-trip needed because each
+        // OfficialPostResponseDto now carries the per-post ResponseStatus.
+        // GetByClusterIdAsync returns posts ordered newest-first, so the
+        // first live_update with a non-null status is the latest one.
+        string? responseStatus = officialPosts
+            .FirstOrDefault(p => p.Type == "live_update" && !string.IsNullOrEmpty(p.ResponseStatus))
+            ?.ResponseStatus;
+
         var dto = new ClusterResponseDto(
             cluster.Id,
             JsonNamingPolicy.SnakeCaseLower.ConvertName(cluster.State.ToString()),
@@ -123,6 +137,7 @@ public class ClustersController : ControllerBase
             RestorationRatio = restorationRatio,
             RestorationYesVotes = restorationYesVotes,
             RestorationTotalVotes = restorationTotalVotes,
+            ResponseStatus = responseStatus,
         };
         return Ok(dto);
     }

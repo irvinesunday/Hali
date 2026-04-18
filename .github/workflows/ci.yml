@@ -172,6 +172,11 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
+      # Data Protection (#243) enforces a pre-onboarding cert when
+      # ASPNETCORE_ENVIRONMENT=Production — Dredd runs the API against
+      # throw-away test data, so it runs in Testing mode (same as the
+      # integration-tests job).
+      ASPNETCORE_ENVIRONMENT: "Testing"
       ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
       ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
       ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_contract;Username=hali;Password=hali_test_password"
@@ -321,6 +326,10 @@ jobs:
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
     env:
+      # Data Protection (#243) enforces a pre-onboarding cert when
+      # ASPNETCORE_ENVIRONMENT=Production — the vertical-slice runs
+      # against throw-away test data, so it runs in Testing mode.
+      ASPNETCORE_ENVIRONMENT: "Testing"
       ConnectionStrings__Auth: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
       ConnectionStrings__Signals: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"
       ConnectionStrings__Clusters: "Host=localhost;Port=5432;Database=hali_slice;Username=hali;Password=hali_test_password"

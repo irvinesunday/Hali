@@ -1,15 +1,20 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Hali.Api.Errors;
 using Hali.Api.Middleware;
 using Hali.Api.Observability;
+using Microsoft.AspNetCore.DataProtection;
 using Hali.Application.Auth;
 using Hali.Application.Errors;
+using Hali.Application.Institutions;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
 using Hali.Application.Advisories;
+using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -29,13 +34,151 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
+
+// Data Protection key ring (#243). TOTP secrets (#197) are encrypted
+// with these keys — an unresolvable key ring breaks every institution
+// user's second factor, so the ring must survive process restarts
+// and be shared across nodes in a multi-node deployment.
+//
+// Key ring storage:   PostgreSQL (data_protection_keys) via
+//                     HaliDataProtectionDbContext — constant across all
+//                     environments.
+// At-rest protection: X.509 certificate (PFX) loaded from the path
+//                     configured in DataProtection:CertPath.
+//                     Production MUST have a cert provisioned before
+//                     institution users onboard; see
+//                     docs/arch/SECURITY_POSTURE.md.
+//
+// Startup degradation:
+//   * Cert configured + loads: keys protected — log filename only,
+//     never the full path and never the password.
+//   * Cert configured + missing/invalid + Production: throw. A
+//     misconfigured production deployment must not silently start
+//     unprotected.
+//   * Cert configured + missing/invalid + non-Production: log ERROR
+//     and continue so developers are not blocked by an ops issue.
+//   * Cert unconfigured + Production: throw. DPAPI is not canonical
+//     for Production even on Windows, and running unprotected under
+//     Production is never acceptable per SECURITY_POSTURE.md §5.
+//   * Cert unconfigured + Windows (non-Production): DPAPI
+//     (dev-machine escape hatch only). Log WARNING.
+//   * Cert unconfigured + other OS (non-Production): log WARNING,
+//     keys unprotected.
+//
+// AddInfrastructure must run BEFORE AddDataProtection so the
+// HaliDataProtectionDbContext is registered in DI when
+// PersistKeysToDbContext<T>() resolves it.
 builder.Services.AddInfrastructure(builder.Configuration);
+
+var dataProtectionBuilder = builder.Services
+    .AddDataProtection()
+    .SetApplicationName("Hali.Api")
+    .PersistKeysToDbContext<HaliDataProtectionDbContext>();
+
+string? certPath = builder.Configuration["DataProtection:CertPath"];
+string? certPassword = builder.Configuration["DataProtection:CertPassword"];
+
+if (!string.IsNullOrWhiteSpace(certPath))
+{
+    if (System.IO.File.Exists(certPath))
+    {
+        try
+        {
+            // X509CertificateLoader is the .NET 9+ replacement for the
+            // X509Certificate2 path-based constructor (which emits
+            // SYSLIB0057 on .NET 10).
+            X509Certificate2 cert = X509CertificateLoader.LoadPkcs12FromFile(
+                certPath, certPassword);
+            dataProtectionBuilder.ProtectKeysWithCertificate(cert);
+            // Log the filename only — never the full path (side-channel
+            // about deployment topology) and never the password.
+            string certFileName = System.IO.Path.GetFileName(certPath);
+            Console.Error.WriteLine(
+                $"[data-protection] INFO: keys protected with certificate [{certFileName}]");
+        }
+        catch (Exception ex)
+            when (ex is System.IO.IOException
+                  || ex is UnauthorizedAccessException
+                  || ex is System.Security.Cryptography.CryptographicException)
+        {
+            // Log the exception TYPE only — the message can leak path
+            // fragments or crypto details.
+            if (builder.Environment.IsProduction())
+            {
+                throw new InvalidOperationException(
+                    "Data Protection certificate could not be loaded. " +
+                    "Production cannot start unprotected.", ex);
+            }
+            Console.Error.WriteLine(
+                "[data-protection] ERROR: certificate load failed — starting unprotected. " +
+                $"Error type: {ex.GetType().Name}");
+        }
+    }
+    else
+    {
+        // Cert configured but file absent. Production must fail loudly;
+        // dev/staging log an ERROR and continue so a broken mount does
+        // not block local work.
+        if (builder.Environment.IsProduction())
+        {
+            throw new InvalidOperationException(
+                "Data Protection certificate not found. Production cannot start unprotected.");
+        }
+        // Deliberately do NOT include the configured path — an attacker
+        // who obtains this log should not learn where the system expects
+        // its cert.
+        Console.Error.WriteLine(
+            "[data-protection] ERROR: certificate configured but file not found — starting unprotected");
+    }
+}
+else if (builder.Environment.IsProduction())
+{
+    // Fail-fast: Production must never run unprotected. The posture
+    // doc (docs/arch/SECURITY_POSTURE.md §5) names DataProtection:CertPath
+    // a pre-onboarding requirement. DPAPI is explicitly NOT canonical for
+    // production even on Windows — it is a Windows dev-machine escape hatch.
+    throw new InvalidOperationException(
+        "Data Protection certificate is required in Production. " +
+        "Set DataProtection:CertPath to a provisioned PFX file.");
+}
+else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    dataProtectionBuilder.ProtectKeysWithDpapi(protectToLocalMachine: false);
+    Console.Error.WriteLine(
+        "[data-protection] WARNING: using DPAPI — Windows dev-machine only, NOT for staging/production");
+}
+else
+{
+    Console.Error.WriteLine(
+        "[data-protection] WARNING: keys are NOT protected at rest — " +
+        "set DataProtection:CertPath for staging/production");
+}
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInstitutionService, InstitutionService>();
 builder.Services.AddScoped<ISignalIngestionService, SignalIngestionService>();
 builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
+// Institution operational dashboard read service (#195).
+builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
+// Phase 2 institution auth + session hardening (#197).
+builder.Services.AddScoped<ITotpService, TotpService>();
+builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
+builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Phase 2 institution-admin routes (#196).
+builder.Services.AddScoped<Hali.Application.InstitutionAdmin.IInstitutionAdminService,
+    Hali.Application.InstitutionAdmin.InstitutionAdminService>();
+// Institution email sender — NoOp binding is deliberately restricted to
+// non-Production environments. A production deployment must register
+// its own IInstitutionEmailSender (real SES/SendGrid/etc) BEFORE this
+// line, or the app will fail to resolve the scoped dependency on the
+// first magic-link request.
+if (!builder.Environment.IsProduction())
+{
+    builder.Services.AddScoped<Hali.Application.Auth.IInstitutionEmailSender,
+        Hali.Infrastructure.Auth.NoOpInstitutionEmailSender>();
+}
 builder.Services.AddScoped<IFollowService, FollowService>();
 builder.Services.AddScoped<INotificationQueueService, NotificationQueueService>();
 builder.Services.AddSingleton<ExceptionToApiErrorMapper>();
@@ -247,7 +390,16 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
+// Session cookie middleware runs AFTER authentication so Bearer-JWT flows
+// short-circuit it. The institution middleware only applies to requests
+// without a JWT header that target institution routes.
+app.UseMiddleware<InstitutionSessionMiddleware>();
 app.UseAuthorization();
+// CSRF enforcement must see the AuthorizationPolicy has already passed
+// for the current request — but runs before the controller so write
+// verbs are rejected before they touch domain code. We position it
+// after UseAuthorization to keep that ordering.
+app.UseMiddleware<InstitutionCsrfMiddleware>();
 app.MapControllers();
 
 // GET /health

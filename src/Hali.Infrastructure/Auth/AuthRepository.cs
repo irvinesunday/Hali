@@ -128,6 +128,26 @@ public class AuthRepository : IAuthRepository
 		return _db.Accounts.FindAsync(new object[] { accountId }, ct).AsTask();
 	}
 
+	public Task<Account?> FindAccountByEmailAsync(string email, CancellationToken ct = default(CancellationToken))
+	{
+		if (string.IsNullOrWhiteSpace(email))
+		{
+			return Task.FromResult<Account?>(null);
+		}
+		string normalised = email.Trim().ToLowerInvariant();
+		// Case-insensitive match at the DB layer. Even though institution
+		// accounts should be written with a lowercased email (the
+		// magic-link service normalises at issuance), a stray mixed-case
+		// row from an earlier writer must still resolve — otherwise a
+		// legitimate account can silently fail to receive magic links.
+		// Switching to EF.Functions.ILike would require a functional
+		// unique index to keep the lookup indexed; until that index is
+		// added, LOWER() on both sides keeps correctness without relying
+		// on Postgres ILIKE semantics.
+		return _db.Accounts.FirstOrDefaultAsync(
+			a => a.Email != null && a.Email.ToLower() == normalised, ct);
+	}
+
 	public async Task UpdateAccountAsync(Account account, CancellationToken ct = default(CancellationToken))
 	{
 		_db.Accounts.Update(account);

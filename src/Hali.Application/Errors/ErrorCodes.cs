@@ -42,6 +42,51 @@ public static class ErrorCodes
     public const string AuthOtpInvalid = "auth.otp_invalid";
     public const string AuthOtpRateLimited = "auth.otp_rate_limited";
     public const string AuthRefreshTokenInvalid = "auth.refresh_token_invalid";
+    // Phase 2 institution auth + session hardening (#197).
+    public const string AuthInstitutionSessionInvalid = "auth.institution_session_invalid";
+    public const string AuthInstitutionSessionIdleTimeout = "auth.institution_session_idle_timeout";
+    public const string AuthInstitutionSessionAbsoluteTimeout = "auth.institution_session_absolute_timeout";
+    public const string AuthCsrfMissing = "auth.csrf_missing";
+    public const string AuthCsrfMismatch = "auth.csrf_mismatch";
+    public const string AuthMagicLinkInvalid = "auth.magic_link_invalid";
+    public const string AuthTotpAlreadyEnrolled = "auth.totp_already_enrolled";
+    public const string AuthTotpNotEnrolled = "auth.totp_not_enrolled";
+    public const string AuthTotpInvalidCode = "auth.totp_invalid_code";
+    public const string AuthTotpNotConfirmed = "auth.totp_not_confirmed";
+    public const string AuthStepUpRequired = "auth.step_up_required";
+
+    // --- institution_admin.* --- Phase 2 institution-admin routes (#196).
+    /// <summary>
+    /// An institution_admin attempted to elevate another account to the
+    /// institution_admin role. Self-service elevation is blocked until
+    /// the approval flow lands (deferred by design — see #196 scope).
+    /// </summary>
+    public const string InstitutionAdminElevationRequiresApproval = "institution_admin.elevation_requires_approval";
+    /// <summary>
+    /// An institution_admin attempted to demote themselves while they
+    /// are the last institution_admin for their institution — guards
+    /// against a lockout where nobody can manage the institution.
+    /// </summary>
+    public const string InstitutionAdminLastAdminCannotDemote = "institution_admin.last_admin_cannot_demote";
+    /// <summary>
+    /// A user-management request targeted a userId outside the acting
+    /// admin's institution. Returned as 404 to prevent cross-institution
+    /// user-existence probing.
+    /// </summary>
+    public const string InstitutionAdminUserNotFound = "institution_admin.user_not_found";
+    /// <summary>
+    /// An invite destination email is already bound to an existing
+    /// account (either in this institution or another).
+    /// </summary>
+    public const string InstitutionAdminEmailAlreadyInUse = "institution_admin.email_already_in_use";
+    /// <summary>
+    /// The institution referenced by the acting admin's JWT/session
+    /// claim no longer exists (orphan claim). Invariant violation — if
+    /// this fires the deployment has drifted (institution deleted but
+    /// sessions still live). Returned as 404 with a distinct code so
+    /// operators can tell it apart from a user-not-found event.
+    /// </summary>
+    public const string InstitutionAdminInstitutionNotFound = "institution_admin.institution_not_found";
 
     // --- cluster.* ---
     public const string ClusterNotFound = "cluster.not_found";
@@ -56,6 +101,12 @@ public static class ErrorCodes
 
     // --- institution.* ---
     public const string InstitutionMissingFields = "institution.missing_fields";
+    /// <summary>
+    /// The <c>state</c> filter supplied on <c>GET /v1/institution/signals</c>
+    /// was not one of the canonical values (<c>active</c>, <c>growing</c>,
+    /// <c>needs_attention</c>, <c>restoration</c>).
+    /// </summary>
+    public const string InstitutionInvalidStateFilter = "institution.invalid_state_filter";
 
     // --- invite.* ---
     public const string InviteAlreadyAccepted = "invite.already_accepted";
@@ -73,6 +124,16 @@ public static class ErrorCodes
     public const string OfficialPostInvalidType = "official_post.invalid_type";
     public const string OfficialPostMissingFields = "official_post.missing_fields";
     public const string OfficialPostOutsideJurisdiction = "official_post.outside_jurisdiction";
+    /// <summary>
+    /// <c>response_status</c> on a <c>live_update</c> post was outside the
+    /// canonical set or was supplied on a non-live_update post.
+    /// </summary>
+    public const string OfficialPostInvalidResponseStatus = "official_post.invalid_response_status";
+    /// <summary>
+    /// <c>severity</c> on a <c>scheduled_disruption</c> post was outside the
+    /// canonical set or was supplied on a non-scheduled_disruption post.
+    /// </summary>
+    public const string OfficialPostInvalidSeverity = "official_post.invalid_severity";
 
     // --- participation.* ---
     public const string ParticipationContextRequiresAffected = "participation.context_requires_affected";

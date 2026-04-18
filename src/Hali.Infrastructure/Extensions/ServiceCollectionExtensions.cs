@@ -4,6 +4,8 @@ using Hali.Application.Auth;
 using Hali.Application.Clusters;
 using Hali.Application.Feedback;
 using Hali.Application.Home;
+using Hali.Application.InstitutionAdmin;
+using Hali.Application.Institutions;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -12,10 +14,13 @@ using Hali.Infrastructure.Advisories;
 using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Clusters;
 using Hali.Infrastructure.Home;
+using Hali.Infrastructure.InstitutionAdmin;
+using Hali.Infrastructure.Institutions;
 using Hali.Infrastructure.Data;
 using Hali.Infrastructure.Data.Advisories;
 using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
+using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Data.Feedback;
 using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
@@ -65,6 +70,14 @@ public static class ServiceCollectionExtensions
 				npgsql.MapEnum<AuthMethod>("auth_method", null, Snake);
 			}));
 
+		// Data Protection key ring (#243). Shares the Auth data source — the
+		// keys protect auth-owned material (TOTP secrets, see #197) and the
+		// table is small enough that a separate pool is not justified. The
+		// DbContext is registered here; the actual AddDataProtection wiring
+		// lives in Program.cs so it can react to IHostEnvironment.
+		services.AddDbContext<HaliDataProtectionDbContext>((sp, opts) =>
+			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth));
+
 		services.AddDbContext<SignalsDbContext>((sp, opts) =>
 			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Signals, npgsql =>
 			{
@@ -94,6 +107,14 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
 		services.AddScoped<IAuthRepository, AuthRepository>();
 		services.AddScoped<IInstitutionRepository, InstitutionRepository>();
+		// Phase 2 institution auth + session hardening (#197). The email
+		// sender is NOT registered here — Program.cs wires the NoOp
+		// implementation only in Development/Testing and expects a
+		// production-grade binding to be registered explicitly in
+		// Production (failing-fast on missing binding).
+		services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
+		// Phase 2 institution-admin routes (#196).
+		services.AddScoped<IInstitutionAdminRepository, InstitutionAdminRepository>();
 		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
 		services.AddScoped<ISignalRepository, SignalRepository>();
@@ -118,6 +139,12 @@ public static class ServiceCollectionExtensions
 				npgsql.MapEnum<OfficialPostType>("official_post_type", null, Snake);
 			}));
 		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
+
+		// Institution operational dashboard read repository (#195) — uses the
+		// shared HaliDataSources pool directly via Npgsql so read queries can
+		// join across the Advisories / Clusters / Signals tables without
+		// juggling multiple DbContexts.
+		services.AddScoped<IInstitutionReadRepository, InstitutionReadRepository>();
 
 		// Home feed read-query service — creates isolated DbContext instances
 		// per query via IServiceScopeFactory to enable safe concurrent reads.

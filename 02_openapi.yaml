@@ -19,6 +19,7 @@ tags:
   - name: Clusters
   - name: Participation
   - name: OfficialPosts
+  - name: Institution
   - name: Home
   - name: Users
   - name: Devices
@@ -160,6 +161,229 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '429':
           description: OTP rate limited (auth.otp_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Institution Auth + Session (Phase 2) ────────────────────────────
+  #
+  # All /v1/auth/institution/* endpoints issue or consume the
+  # `hali_institution_session` (httpOnly + Secure + SameSite=Strict)
+  # cookie and its paired `hali_institution_csrf` cookie. Writes on
+  # authenticated endpoints require an `X-CSRF-Token` header that
+  # matches the CSRF cookie (double-submit pattern). Server enforces
+  # idle + absolute session timeouts (30 min idle, 12 h absolute) and
+  # step-up auth for privileged actions.
+
+  /v1/auth/institution/magic-link/request:
+    post:
+      tags: [Auth]
+      summary: Request a magic-link email for institution login
+      description: |
+        Responds identically for registered and unknown emails to avoid
+        account enumeration. The link is single-use and expires after
+        15 minutes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MagicLinkRequest' }
+      responses:
+        '200':
+          description: Response is identical regardless of email registration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkRequestResponse' }
+        '400':
+          description: Validation failed (validation.failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/magic-link/verify:
+    post:
+      tags: [Auth]
+      summary: Consume magic-link token → establish institution session
+      description: |
+        Atomically consumes the token and — when the token resolves to an
+        institution account — issues the session + CSRF cookies. The
+        response body tells the client whether TOTP enrollment or
+        verification is still required before the session is treated
+        as fully authenticated.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MagicLinkVerifyRequest' }
+      responses:
+        '200':
+          description: Session established. Cookies are set on the response.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MagicLinkVerifyResponse' }
+        '401':
+          description: Invalid / expired / already-consumed token (auth.magic_link_invalid)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/enroll:
+    post:
+      tags: [Auth]
+      summary: Begin TOTP enrollment for the current institution session
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '200':
+          description: Returns the otpauth URI + 10 recovery codes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TotpEnrollResponse' }
+        '401':
+          description: Institution session invalid / idle-timed-out / absolute-timed-out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF header missing or mismatched (auth.csrf_missing, auth.csrf_mismatch)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Account already has a confirmed TOTP enrollment (auth.totp_already_enrolled)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirm the pending TOTP enrollment (first successful code)
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: TOTP confirmed; step-up verified-at is stamped.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: No pending TOTP enrollment on the account (auth.totp_not_enrolled)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/totp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify TOTP code (promotes a magic-link session to fully-authenticated)
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: TOTP verified; session step-up stamped.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: TOTP not yet enrolled or not confirmed (auth.totp_not_confirmed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/refresh:
+    post:
+      tags: [Auth]
+      summary: Keep-alive the current institution session
+      description: |
+        Resets the idle timer server-side. The response echoes the fresh
+        last-activity timestamp + the idle / soft-warning thresholds in
+        seconds so the client's "session about to end" banner can reset
+        without a second round-trip.
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '200':
+          description: Session kept alive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionRefreshedResponse' }
+        '401':
+          description: Session idle-timed-out or absolute-timed-out.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF header missing or mismatched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/step-up:
+    post:
+      tags: [Auth]
+      summary: Fresh TOTP verification for a privileged action
+      description: |
+        Consumers (e.g. institution-admin writes) require the session's
+        `step_up_verified_at` to be within the configured 5-minute
+        window. This endpoint re-stamps it after a successful TOTP code.
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TotpCodeRequest' }
+      responses:
+        '200':
+          description: Step-up verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StepUpResponse' }
+        '400':
+          description: Invalid TOTP code (auth.totp_invalid_code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: TOTP not enrolled / not confirmed (auth.totp_not_confirmed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/institution/session/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current institution session and clear cookies
+      security:
+        - institutionSessionAuth: []
+      responses:
+        '204':
+          description: Session revoked; cookies cleared.
+        '401':
+          description: No session to revoke.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -703,8 +927,10 @@ paths:
         '400':
           description: |
             Missing fields (official_post.missing_fields),
-            invalid post type (official_post.invalid_type), or
-            invalid category (official_post.invalid_category).
+            invalid post type (official_post.invalid_type),
+            invalid category (official_post.invalid_category),
+            invalid response_status (official_post.invalid_response_status),
+            or invalid severity (official_post.invalid_severity).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -720,6 +946,441 @@ paths:
             jurisdiction (official_post.outside_jurisdiction), or is
             missing/has a malformed institution_id claim on the JWT
             (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Institution Operational (Phase 2) ──────────────────────────────
+  #
+  # All `/v1/institution/*` routes require a JWT with `role=institution`
+  # and an `institution_id` claim. The institution id is resolved from
+  # the JWT claim server-side — never from a query parameter or route
+  # segment. Area filtering, when supplied, is validated against the
+  # caller's jurisdiction server-side. List endpoints use the cursor
+  # pagination contract documented in
+  # `docs/arch/hali_institution_backend_contract_implications.md §5`.
+
+  /v1/institution/overview:
+    get:
+      tags: [Institution]
+      summary: Institution dashboard summary + area roll-up
+      description: |
+        Returns scoped summary counts (active, growing, updates-posted-
+        today, stabilised-today) and the top-ranked areas in the
+        caller's institution scope. Area list is capped at 6 rows for
+        the Overview page; the full list is served by
+        `GET /v1/institution/areas`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          description: |
+            Optional jurisdiction id to narrow the summary to one area.
+            Out-of-scope or unknown ids return a zero-scoped summary
+            (not a 403) to avoid revealing scope shape.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionOverviewResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/signals:
+    get:
+      tags: [Institution]
+      summary: Paginated signal list in institution scope
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, growing, needs_attention, restoration]
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Signals page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionSignalsResponse'
+        '400':
+          description: |
+            Invalid `state` filter value
+            (institution.invalid_state_filter).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/signals/{clusterId}:
+    get:
+      tags: [Institution]
+      summary: Signal detail (institution-scoped)
+      description: |
+        Returns the cluster detail shape as `/v1/clusters/{id}`, gated
+        by the caller's institution role AND bounded to clusters in
+        the caller's jurisdiction. Out-of-scope clusters return 404
+        (not 403) so an attacker cannot probe for cluster ids owned
+        by another institution.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: clusterId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Cluster detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClusterResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            Cluster not found OR cluster exists but is outside the
+            caller's jurisdiction (cluster.not_found).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/areas:
+    get:
+      tags: [Institution]
+      summary: Full institution area list
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Areas list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAreasResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/activity:
+    get:
+      tags: [Institution]
+      summary: Activity feed for institution scope
+      description: |
+        Returns recent cluster lifecycle events and institution-posted
+        official updates in reverse-chronological order. Default page
+        size is 15; max 100. Supply `cursor` to fetch the next page.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+      responses:
+        '200':
+          description: Activity page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionActivityResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ── Institution Admin (Phase 2) ────────────────────────────────────
+  #
+  # All /v1/institution-admin/* routes require a JWT or institution
+  # session that carries role=institution_admin. Write endpoints
+  # (invite, role-change) additionally enforce step-up auth — the
+  # session's step_up_verified_at must be within the configured window
+  # (default 5 minutes). Bearer-JWT callers cannot satisfy step-up
+  # (it lives under the cookie / TOTP surface) and receive
+  # auth.step_up_required on writes.
+
+  /v1/institution-admin/users:
+    get:
+      tags: [Admin]
+      summary: List users in the acting admin's institution
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminUserListResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution_admin role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/{userId}:
+    get:
+      tags: [Admin]
+      summary: Get a user's detail (scoped to the acting admin's institution)
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminUserDetailResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Caller lacks institution_admin role.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            User not found or belongs to a different institution
+            (institution_admin.user_not_found — 404 is deliberate to
+            prevent cross-institution existence probes).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/invite:
+    post:
+      tags: [Admin]
+      summary: Invite a new institution user
+      description: |
+        Write endpoint — requires step-up auth within the configured
+        window. Invite-time elevation to institution_admin is blocked
+        (institution_admin.elevation_requires_approval); supply
+        role=institution_user and promote later via PUT /role once
+        the approval flow lands.
+      security:
+        - institutionSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteInstitutionUserRequest' }
+      responses:
+        '200':
+          description: Invite issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteInstitutionUserResponse' }
+        '400':
+          description: |
+            Request validation failed (validation.failed) — missing or
+            malformed `email` / `role`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Missing institution_admin role (auth.role_insufficient),
+            step-up required (auth.step_up_required), CSRF missing /
+            mismatch (auth.csrf_missing / auth.csrf_mismatch), or
+            elevation requested without approval
+            (institution_admin.elevation_requires_approval).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: |
+            Email already bound to an existing account
+            (institution_admin.email_already_in_use).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/users/{userId}/role:
+    put:
+      tags: [Admin]
+      summary: Change a user's role (demote admin → user only)
+      description: |
+        Write endpoint — requires step-up auth. Elevation to
+        institution_admin is blocked; demotion to institution_user is
+        allowed except when the target is the last remaining admin
+        (institution_admin.last_admin_cannot_demote).
+      security:
+        - institutionSessionAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeUserRoleRequest' }
+      responses:
+        '204':
+          description: Role changed
+        '400':
+          description: Validation failure (validation.failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Missing institution_admin role, step-up required, CSRF
+            missing / mismatch, or elevation requested
+            (institution_admin.elevation_requires_approval).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            User not found or belongs to a different institution
+            (institution_admin.user_not_found).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: |
+            Target is the last institution_admin in the institution
+            (institution_admin.last_admin_cannot_demote).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution-admin/scope:
+    get:
+      tags: [Admin]
+      summary: Get the acting admin's institution + jurisdiction scope
+      security:
+        - institutionSessionAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Scope payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstitutionAdminScopeResponse' }
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Missing institution_admin role.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -995,6 +1656,17 @@ components:
           - role (citizen | institution | admin)
           - institution_id (UUID, present only for institution accounts)
           - jti, iat (standard)
+    institutionSessionAuth:
+      type: apiKey
+      in: cookie
+      name: hali_institution_session
+      description: |
+        Server-side web session for institution + institution-admin users.
+        Set by POST /v1/auth/institution/magic-link/verify and cleared by
+        POST /v1/auth/institution/session/logout. Cookie is httpOnly +
+        Secure + SameSite=Strict. A paired `hali_institution_csrf` cookie
+        is set alongside for the double-submit CSRF check — write verbs
+        require its value to be mirrored in the `X-CSRF-Token` header.
   schemas:
     CivicCategory:
       type: string
@@ -1060,12 +1732,23 @@ components:
         a unit test (`ErrorCodeCatalogTests`).
       enum:
         - account.not_found
+        - auth.csrf_missing
+        - auth.csrf_mismatch
         - auth.forbidden
         - auth.institution_id_missing
+        - auth.institution_session_absolute_timeout
+        - auth.institution_session_idle_timeout
+        - auth.institution_session_invalid
+        - auth.magic_link_invalid
         - auth.otp_invalid
         - auth.otp_rate_limited
         - auth.refresh_token_invalid
         - auth.role_insufficient
+        - auth.step_up_required
+        - auth.totp_already_enrolled
+        - auth.totp_invalid_code
+        - auth.totp_not_confirmed
+        - auth.totp_not_enrolled
         - auth.unauthenticated
         - auth.unauthorized
         - cluster.not_found
@@ -1073,7 +1756,13 @@ components:
         - dependency.spatial_derivation_failed
         - device.missing_fields
         - device.not_found
+        - institution.invalid_state_filter
         - institution.missing_fields
+        - institution_admin.elevation_requires_approval
+        - institution_admin.email_already_in_use
+        - institution_admin.institution_not_found
+        - institution_admin.last_admin_cannot_demote
+        - institution_admin.user_not_found
         - invite.already_accepted
         - invite.expired
         - invite.invalid
@@ -1082,6 +1771,8 @@ components:
         - locality.query_too_short
         - locality.search_rate_limited
         - official_post.invalid_category
+        - official_post.invalid_response_status
+        - official_post.invalid_severity
         - official_post.invalid_type
         - official_post.missing_fields
         - official_post.outside_jurisdiction
@@ -1395,6 +2086,21 @@ components:
             types restoration_yes + restoration_no + restoration_unsure).
             Populated only when state == possible_restoration. Aggregate count
             only.
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Additive nullable field. Derived server-side from the most recent
+            `live_update` official post on the cluster. Null when no
+            live_update has declared a status yet. Powers the institution
+            Signal Detail header and the citizen-visible response indicator.
     MyParticipation:
       type: object
       description: |
@@ -1471,6 +2177,29 @@ components:
         isRestorationClaim: { type: boolean, default: false }
         localityId: { type: string, format: uuid, nullable: true }
         corridorName: { type: string, nullable: true }
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Optional response status for `live_update` posts. Rejected with
+            `official_post.invalid_response_status` when supplied on any
+            non-live_update post, or when the value is outside the canonical
+            set. Null for other post types.
+        severity:
+          type: string
+          nullable: true
+          enum: [minor, moderate, major]
+          description: |
+            Optional severity for `scheduled_disruption` posts. Rejected with
+            `official_post.invalid_severity` when supplied on any non-scheduled
+            post, or when the value is outside the canonical set.
     OfficialPostResponse:
       type: object
       required:
@@ -1489,6 +2218,156 @@ components:
         relatedClusterId: { type: string, format: uuid, nullable: true }
         isRestorationClaim: { type: boolean }
         createdAt: { type: string, format: date-time }
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+          description: |
+            Response status for `live_update` posts. Null for other post types.
+        severity:
+          type: string
+          nullable: true
+          enum: [minor, moderate, major]
+          description: |
+            Severity for `scheduled_disruption` posts. Null for other post types.
+
+    # ── Institution (Phase 2) ────────────────────────────────────────
+    InstitutionArea:
+      type: object
+      description: |
+        Summary of one area (institution jurisdiction row) — display name,
+        active-signal count, top-category, last updated timestamp.
+      required: [id, name, condition, activeSignals, topCategory, lastUpdatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        condition:
+          type: string
+          enum: [active, elevated, calm]
+        activeSignals: { type: integer }
+        topCategory:
+          type: string
+          nullable: true
+          description: |
+            Snake-case category slug of the modal civic category in this area
+            across active clusters. Null when the area has no active clusters.
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Newest `last_seen_at` across active clusters in this area.
+    InstitutionAreaRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    InstitutionOverviewSummary:
+      type: object
+      required:
+        [activeSignals, growingSignals, updatesPostedToday, stabilisedToday]
+      properties:
+        activeSignals: { type: integer }
+        growingSignals: { type: integer }
+        updatesPostedToday: { type: integer }
+        stabilisedToday: { type: integer }
+    InstitutionOverviewResponse:
+      type: object
+      description: |
+        Overview page payload. Activity is served separately from
+        `GET /v1/institution/activity` so the two caches can rotate
+        independently.
+      required: [summary, areas]
+      properties:
+        summary: { $ref: '#/components/schemas/InstitutionOverviewSummary' }
+        areas:
+          type: array
+          maxItems: 6
+          items: { $ref: '#/components/schemas/InstitutionArea' }
+    InstitutionSignalListItem:
+      type: object
+      required:
+        [id, title, area, category, condition, trend, responseStatus,
+         affectedCount, recentReports24h, timeActiveSeconds]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        area:
+          oneOf:
+            - $ref: '#/components/schemas/InstitutionAreaRef'
+            - type: 'null'
+        category: { $ref: '#/components/schemas/CivicCategory' }
+        condition:
+          type: string
+          enum: [active, elevated, calm]
+        trend:
+          type: string
+          enum: [growing, stable, slowing, possible_restoration]
+        responseStatus:
+          type: string
+          nullable: true
+          enum:
+            - acknowledged
+            - teams_dispatched
+            - teams_on_site
+            - work_ongoing
+            - restoration_in_progress
+            - service_restored
+        affectedCount: { type: integer }
+        recentReports24h: { type: integer }
+        timeActiveSeconds: { type: integer, format: int64 }
+    InstitutionSignalsResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionSignalListItem' }
+        nextCursor:
+          type: string
+          nullable: true
+          description: |
+            Opaque cursor. Null when the current page is the final page.
+            Callers pass the value back as the `cursor` query parameter to
+            fetch the next page.
+    InstitutionAreasResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionArea' }
+    InstitutionActivityItem:
+      type: object
+      required: [id, type, message, timestamp, signalId]
+      properties:
+        id: { type: string, format: uuid }
+        type:
+          type: string
+          enum:
+            - new_signal
+            - growing
+            - stabilising
+            - update_posted
+            - restoration
+            - restored
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        signalId: { type: string, format: uuid, nullable: true }
+    InstitutionActivityResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionActivityItem' }
+        nextCursor: { type: string, nullable: true }
 
     # ── Users ────────────────────────────────────────────────────────
     NotificationSettings:
@@ -1561,3 +2440,169 @@ components:
           allOf:
             - $ref: '#/components/schemas/ClusterPagedSection'
           description: Active clusters outside followed localities (max 10)
+
+    # ── Institution Auth (Phase 2) ────────────────────────────────────
+    MagicLinkRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    MagicLinkRequestResponse:
+      type: object
+      required: [message, expiresAt]
+      properties:
+        message: { type: string }
+        expiresAt: { type: string, format: date-time }
+    MagicLinkVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 256 }
+    MagicLinkVerifyResponse:
+      type: object
+      required: [requiresTotpEnrollment, requiresTotpVerification, session]
+      properties:
+        requiresTotpEnrollment:
+          type: boolean
+          description: |
+            True when the account has no confirmed TOTP enrollment. The
+            client must complete enroll + confirm before the session is
+            treated as fully authenticated.
+        requiresTotpVerification:
+          type: boolean
+          description: |
+            True when the account has a confirmed TOTP enrollment but the
+            current session has not yet stamped step_up_verified_at. The
+            client must call /totp/verify before privileged actions.
+        session: { $ref: '#/components/schemas/SessionEstablishedResponse' }
+    SessionEstablishedResponse:
+      type: object
+      required: [createdAt, absoluteExpiresAt, softWarningSeconds, idleTimeoutSeconds]
+      properties:
+        createdAt: { type: string, format: date-time }
+        absoluteExpiresAt: { type: string, format: date-time }
+        softWarningSeconds: { type: integer }
+        idleTimeoutSeconds: { type: integer }
+    SessionRefreshedResponse:
+      type: object
+      required: [lastActivityAt, softWarningSeconds, idleTimeoutSeconds]
+      properties:
+        lastActivityAt: { type: string, format: date-time }
+        softWarningSeconds: { type: integer }
+        idleTimeoutSeconds: { type: integer }
+    TotpCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          pattern: '^\d{6}$'
+    TotpEnrollResponse:
+      type: object
+      required: [otpAuthUri, recoveryCodes]
+      properties:
+        otpAuthUri:
+          type: string
+          description: |
+            otpauth:// URI an authenticator app consumes to seed the
+            TOTP secret. Clients typically render this as a QR code.
+        recoveryCodes:
+          type: array
+          items: { type: string }
+          description: |
+            Single-use recovery codes. Shown to the user exactly once at
+            enrollment time — the server stores only SHA-256 hashes.
+    StepUpResponse:
+      type: object
+      required: [verifiedAt, windowSeconds]
+      properties:
+        verifiedAt: { type: string, format: date-time }
+        windowSeconds:
+          type: integer
+          description: |
+            Seconds during which the step-up verification remains fresh.
+            Privileged endpoints reject requests whose verifiedAt is
+            older than this window.
+
+    # ── Institution Admin (Phase 2) ───────────────────────────────────
+    InviteInstitutionUserRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+          description: |
+            `institution_admin` is rejected today with
+            `institution_admin.elevation_requires_approval`; supply
+            `institution_user` and promote later once the approval flow
+            lands.
+    InviteInstitutionUserResponse:
+      type: object
+      required: [inviteId, expiresAt]
+      properties:
+        inviteId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+    ChangeUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+          description: |
+            Only `institution_user` (demotion) is allowed today.
+            `institution_admin` returns
+            `institution_admin.elevation_requires_approval`.
+    InstitutionAdminUserListItem:
+      type: object
+      required: [id, email, displayName, role, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+        createdAt: { type: string, format: date-time }
+    InstitutionAdminUserListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionAdminUserListItem' }
+    InstitutionAdminUserDetailResponse:
+      type: object
+      required: [id, email, displayName, role, status, isBlocked, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        role:
+          type: string
+          enum: [institution_user, institution_admin]
+        status: { type: string }
+        isBlocked: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InstitutionAdminScopeJurisdiction:
+      type: object
+      required: [id, localityId, corridorName, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        localityId: { type: string, format: uuid, nullable: true }
+        corridorName: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+    InstitutionAdminScopeResponse:
+      type: object
+      required: [institutionId, institutionName, jurisdictions]
+      properties:
+        institutionId: { type: string, format: uuid }
+        institutionName: { type: string }
+        jurisdictions:
+          type: array
+          items: { $ref: '#/components/schemas/InstitutionAdminScopeJurisdiction' }

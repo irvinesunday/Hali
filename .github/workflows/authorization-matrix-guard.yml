@@ -1,0 +1,85 @@
+name: Authorization Matrix Guard
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  auth-matrix-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed files
+        id: changed
+        uses: tj-actions/changed-files@2d756ea4c53f7f6b397767d8723b3a10a9f35bf2 # v44
+        with:
+          files: |
+            src/**
+            apps/**
+            docs/arch/AUTHORIZATION_COVERAGE_MATRIX.md
+            02_openapi.yaml
+
+      - name: Enforce matrix update for sensitive changes
+        shell: bash
+        run: |
+          CHANGED="${{ steps.changed.outputs.all_changed_files }}"
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          MATRIX_UPDATED=false
+          SENSITIVE=false
+
+          # Check matrix was updated
+          if echo "$CHANGED" | grep -q "AUTHORIZATION_COVERAGE_MATRIX.md"; then
+            MATRIX_UPDATED=true
+          fi
+
+          # Sensitive path regex — matches on path prefixes that exist today.
+          # Substring matching (e.g. "auth") is intentionally avoided to prevent
+          # false positives on documentation files, OAuth references, etc.
+          # Paths reflect the actual repo layout:
+          #   - src/Hali.Application/Auth/   (auth use cases)
+          #   - src/Hali.Infrastructure/Auth/ (token storage, hashing, etc.)
+          #   - src/Hali.Api/Middleware/       (auth middleware)
+          #   - src/Hali.Application/Institution (Phase 2 — forward-looking)
+          #   - src/Hali.Infrastructure/Institution (Phase 2 — forward-looking)
+          #   - 02_openapi.yaml               (API surface)
+          SENSITIVE_PATTERN="(src/Hali\.Application/Auth/|src/Hali\.Infrastructure/Auth/|src/Hali\.Api/Middleware/|src/Hali\.Application/Institution|src/Hali\.Infrastructure/Institution|02_openapi\.yaml)"
+
+          if echo "$CHANGED" | grep -E -q "$SENSITIVE_PATTERN"; then
+            SENSITIVE=true
+          fi
+
+          echo "Sensitive change detected? $SENSITIVE"
+          echo "Matrix updated? $MATRIX_UPDATED"
+
+          # Verify matrix file exists
+          if [ ! -f "docs/arch/AUTHORIZATION_COVERAGE_MATRIX.md" ]; then
+            echo "ERROR: docs/arch/AUTHORIZATION_COVERAGE_MATRIX.md does not exist."
+            echo "Create this file before the authorization matrix guard can function."
+            echo "See docs/arch/ for the seed template."
+            exit 1
+          fi
+
+          if [ "$SENSITIVE" = true ] && [ "$MATRIX_UPDATED" != true ]; then
+            echo ""
+            echo "ERROR: Sensitive auth/institution/API changes detected without updating"
+            echo "docs/arch/AUTHORIZATION_COVERAGE_MATRIX.md"
+            echo ""
+            echo "Files that triggered this check:"
+            echo "$CHANGED" | tr ' ' '\n' | grep -E "$SENSITIVE_PATTERN"
+            echo ""
+            echo "Update the matrix and include it in this PR."
+            exit 1
+          fi
+
+          echo "Authorization matrix guard passed."

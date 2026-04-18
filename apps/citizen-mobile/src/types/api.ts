@@ -21,12 +21,25 @@ export const ERROR_CODES = {
   ACCOUNT_NOT_FOUND: 'account.not_found',
 
   // auth.*
+  AUTH_CSRF_MISMATCH: 'auth.csrf_mismatch',
+  AUTH_CSRF_MISSING: 'auth.csrf_missing',
   AUTH_FORBIDDEN: 'auth.forbidden',
   AUTH_INSTITUTION_ID_MISSING: 'auth.institution_id_missing',
+  AUTH_INSTITUTION_SESSION_ABSOLUTE_TIMEOUT:
+    'auth.institution_session_absolute_timeout',
+  AUTH_INSTITUTION_SESSION_IDLE_TIMEOUT:
+    'auth.institution_session_idle_timeout',
+  AUTH_INSTITUTION_SESSION_INVALID: 'auth.institution_session_invalid',
+  AUTH_MAGIC_LINK_INVALID: 'auth.magic_link_invalid',
   AUTH_OTP_INVALID: 'auth.otp_invalid',
   AUTH_OTP_RATE_LIMITED: 'auth.otp_rate_limited',
   AUTH_REFRESH_TOKEN_INVALID: 'auth.refresh_token_invalid',
   AUTH_ROLE_INSUFFICIENT: 'auth.role_insufficient',
+  AUTH_STEP_UP_REQUIRED: 'auth.step_up_required',
+  AUTH_TOTP_ALREADY_ENROLLED: 'auth.totp_already_enrolled',
+  AUTH_TOTP_INVALID_CODE: 'auth.totp_invalid_code',
+  AUTH_TOTP_NOT_CONFIRMED: 'auth.totp_not_confirmed',
+  AUTH_TOTP_NOT_ENROLLED: 'auth.totp_not_enrolled',
   AUTH_UNAUTHENTICATED: 'auth.unauthenticated',
   AUTH_UNAUTHORIZED: 'auth.unauthorized',
 
@@ -42,7 +55,19 @@ export const ERROR_CODES = {
   DEVICE_NOT_FOUND: 'device.not_found',
 
   // institution.*
+  INSTITUTION_INVALID_STATE_FILTER: 'institution.invalid_state_filter',
   INSTITUTION_MISSING_FIELDS: 'institution.missing_fields',
+
+  // institution_admin.*
+  INSTITUTION_ADMIN_ELEVATION_REQUIRES_APPROVAL:
+    'institution_admin.elevation_requires_approval',
+  INSTITUTION_ADMIN_EMAIL_ALREADY_IN_USE:
+    'institution_admin.email_already_in_use',
+  INSTITUTION_ADMIN_INSTITUTION_NOT_FOUND:
+    'institution_admin.institution_not_found',
+  INSTITUTION_ADMIN_LAST_ADMIN_CANNOT_DEMOTE:
+    'institution_admin.last_admin_cannot_demote',
+  INSTITUTION_ADMIN_USER_NOT_FOUND: 'institution_admin.user_not_found',
 
   // invite.*
   INVITE_ALREADY_ACCEPTED: 'invite.already_accepted',
@@ -57,6 +82,9 @@ export const ERROR_CODES = {
 
   // official_post.*
   OFFICIAL_POST_INVALID_CATEGORY: 'official_post.invalid_category',
+  OFFICIAL_POST_INVALID_RESPONSE_STATUS:
+    'official_post.invalid_response_status',
+  OFFICIAL_POST_INVALID_SEVERITY: 'official_post.invalid_severity',
   OFFICIAL_POST_INVALID_TYPE: 'official_post.invalid_type',
   OFFICIAL_POST_MISSING_FIELDS: 'official_post.missing_fields',
   OFFICIAL_POST_OUTSIDE_JURISDICTION: 'official_post.outside_jurisdiction',

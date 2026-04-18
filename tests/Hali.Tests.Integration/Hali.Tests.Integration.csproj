@@ -20,6 +20,9 @@
     <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.17.0" />
     <!-- JSON deserialization -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
+    <!-- Data Protection key ring + string Unprotect extension method -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.5" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hali.Api\Hali.Api.csproj" />

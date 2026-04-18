@@ -12,6 +12,10 @@
 *.pfx
 secrets/
 **/secrets/**
+# Legacy Data Protection file-system key ring (#243 moved this to DB-backed
+# storage). Ignore the directory in case any checkout still has one locally.
+data-protection-keys/
+**/data-protection-keys/
 
 # ── .NET build artifacts ──────────────────────────────────────────────────────
 bin/
@@ -133,3 +137,7 @@ agent_outputs/master_orchestrator.log
 
 # ── Expo generated type declarations ────────────────────────────────────────
 expo-env.d.ts
+
+# Data Protection key ring (see src/Hali.Api/Program.cs — do not commit)
+data-protection-keys/
+**/data-protection-keys/

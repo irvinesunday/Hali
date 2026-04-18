@@ -64,6 +64,10 @@ namespace Hali.Infrastructure.Data.Auth.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_email_verified");
 
+                    b.Property<bool>("IsInstitutionAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_institution_admin");
+
                     b.Property<bool>("IsPhoneVerified")
                         .HasColumnType("boolean")
                         .HasColumnName("is_phone_verified");
@@ -200,6 +204,56 @@ namespace Hali.Infrastructure.Data.Auth.Migrations
                     b.ToTable("institution_invites", (string)null);
                 });
 
+            modelBuilder.Entity("Hali.Domain.Entities.Auth.MagicLinkToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DestinationEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("destination_email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationEmail")
+                        .HasDatabaseName("ix_magic_link_tokens_email");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_magic_link_tokens_expires");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("uq_magic_link_tokens_hash");
+
+                    b.ToTable("magic_link_tokens", (string)null);
+                });
+
             modelBuilder.Entity("Hali.Domain.Entities.Auth.OtpChallenge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -293,6 +347,145 @@ namespace Hali.Infrastructure.Data.Auth.Migrations
                         .HasDatabaseName("uq_refresh_tokens_hash");
 
                     b.ToTable("refresh_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("Hali.Domain.Entities.Auth.TotpRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("uq_totp_recovery_codes");
+
+                    b.ToTable("totp_recovery_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Hali.Domain.Entities.Auth.TotpSecret", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTime>("EnrolledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enrolled_at");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("SecretEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("secret_encrypted");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_totp_secrets_account");
+
+                    b.ToTable("totp_secrets", (string)null);
+                });
+
+            modelBuilder.Entity("Hali.Domain.Entities.Auth.WebSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AbsoluteExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("absolute_expires_at");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CsrfTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("csrf_token_hash");
+
+                    b.Property<Guid?>("InstitutionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("institution_id");
+
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_activity_at");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("SessionTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("session_token_hash");
+
+                    b.Property<DateTime?>("StepUpVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("step_up_verified_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AbsoluteExpiresAt")
+                        .HasDatabaseName("ix_web_sessions_absolute_expires");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_web_sessions_account");
+
+                    b.HasIndex("SessionTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("uq_web_sessions_token");
+
+                    b.ToTable("web_sessions", (string)null);
                 });
 #pragma warning restore 612, 618
         }

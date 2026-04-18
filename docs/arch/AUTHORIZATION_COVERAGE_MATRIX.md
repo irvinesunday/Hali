@@ -42,6 +42,14 @@ Columns:
 | `POST /v1/auth/refresh` | AuthController | `[AllowAnonymous]` | Server-side hashed-refresh-token rotation + theft detection | ✓ |
 | `POST /v1/auth/logout` | AuthController | `[Authorize]` | Revokes caller's current refresh token | ✓ |
 | `POST /v1/auth/institution/setup` | AuthController | `[AllowAnonymous]` | Invite token validated server-side | ~ (happy path only) |
+| `POST /v1/auth/institution/magic-link/request` | InstitutionAuthController | `[AllowAnonymous]` | Response shape identical for registered/unknown emails (no account enumeration) | ✓ |
+| `POST /v1/auth/institution/magic-link/verify` | InstitutionAuthController | `[AllowAnonymous]` | Atomic consume; citizen-account mis-issued links rejected as auth.magic_link_invalid | ✓ |
+| `POST /v1/auth/institution/totp/enroll` | InstitutionAuthController | `[Authorize]` | Requires active institution session (cookie); CSRF enforced; conflicts with confirmed enrollment | ✓ |
+| `POST /v1/auth/institution/totp/confirm` | InstitutionAuthController | `[Authorize]` | Session-authed; verifies code against encrypted secret; stamps step_up_verified_at | ✓ |
+| `POST /v1/auth/institution/totp/verify` | InstitutionAuthController | `[Authorize]` | Session-authed; stamps step_up_verified_at so the session satisfies the step-up window | ✓ |
+| `POST /v1/auth/institution/session/refresh` | InstitutionAuthController | `[Authorize]` | Session-authed; middleware touch occurs server-side; returns idle + soft-warning thresholds | ✓ |
+| `POST /v1/auth/institution/session/step-up` | InstitutionAuthController | `[Authorize]` | Session-authed; fresh TOTP gates the window; consumed by #196 | ~ (covered by totp/verify happy path; dedicated test deferred to #196) |
+| `POST /v1/auth/institution/session/logout` | InstitutionAuthController | `[Authorize]` | Session-authed; server revokes the session row and clears both cookies | ✓ |
 
 ### Clusters routes
 
@@ -85,14 +93,34 @@ Columns:
 
 | Route | Controller | Decorator | Policy / scope | Tested? |
 |---|---|---|---|---|
-| `POST /v1/official-posts` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId` | ✓ |
+| `POST /v1/official-posts` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId`; validates optional `responseStatus` (live_update only) + `severity` (scheduled_disruption only) | ✓ |
 
-### Admin
+### Institution operational
+
+| Route | Controller | Decorator | Policy / scope | Tested? |
+|---|---|---|---|---|
+| `GET /v1/institution/overview` | InstitutionController | `[Authorize(Roles = "institution")]` (class-level) | `institution_id` from JWT (ForbiddenException when absent); optional `areaId` validated against caller's jurisdictions server-side | ✓ |
+| `GET /v1/institution/signals` | InstitutionController | class-level | `institution_id` from JWT; `state` filter validated against canonical enum; locality scope applied server-side before any rows leave the repository | ✓ |
+| `GET /v1/institution/signals/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe | ✓ |
+| `GET /v1/institution/areas` | InstitutionController | class-level | `institution_id` from JWT; rows bounded to `institution_jurisdictions` owned by the caller | ✓ |
+| `GET /v1/institution/activity` | InstitutionController | class-level | `institution_id` from JWT; activity feed bounded to caller's localities | ✓ |
+
+### Admin (Hali-ops)
 
 | Route | Controller | Decorator | Policy / scope | Tested? |
 |---|---|---|---|---|
 | `POST /v1/admin/institutions` | AdminController | `[Authorize(Roles = "admin")]` (class-level) | Admin-only; creates institution + invite | ~ (forbidden path for citizen + institution roles tested in `ForbiddenRoleEnvelopeTests`; happy path not integration-tested due to DB setup cost) |
 | `DELETE /v1/admin/institutions/{id}/access` | AdminController | inherited | Admin-only; blocks accounts + revokes refresh tokens | ~ (forbidden path tested for citizen role; happy path not integration-tested) |
+
+### Institution admin (Phase 2 — #196)
+
+| Route | Controller | Decorator | Policy / scope | Tested? |
+|---|---|---|---|---|
+| `GET /v1/institution-admin/users` | InstitutionAdminController | `[Authorize(Roles = "institution_admin")]` (class-level) | Institution-admin-only; list scoped to acting admin's institution_id (JWT claim or session); citizens + plain institution members rejected with `auth.role_insufficient` | ✓ |
+| `GET /v1/institution-admin/users/{userId}` | InstitutionAdminController | class-level | Cross-institution target returns 404 (`institution_admin.user_not_found`) — 404 deliberate to prevent existence probe | ✓ |
+| `POST /v1/institution-admin/users/invite` | InstitutionAdminController | class-level + step-up gate | Writes require session with fresh step-up (bearer-JWT rejected with `auth.step_up_required`); elevation to `institution_admin` at invite time rejected (`institution_admin.elevation_requires_approval`); duplicate email rejected (`institution_admin.email_already_in_use`) | ✓ |
+| `PUT /v1/institution-admin/users/{userId}/role` | InstitutionAdminController | class-level + step-up gate | Elevation blocked (`institution_admin.elevation_requires_approval`); demotion of the last admin blocked (`institution_admin.last_admin_cannot_demote`); cross-institution target → 404 | ✓ |
+| `GET /v1/institution-admin/scope` | InstitutionAdminController | class-level | Returns the acting admin's institution + jurisdictions (scoped server-side) | ✓ |
 
 ### Feature flags (new — #194)
 
@@ -108,17 +136,12 @@ Every planned endpoint must land in this matrix with both happy-path
 and forbidden-path integration tests at merge time. The contracts are
 already defined in `docs/arch/hali_institution_backend_contract_implications.md`:
 
-| Route | Planned decorator | Planned policy |
-|---|---|---|
-| `GET /v1/institution/overview` | `[Authorize(Roles = "institution")]` | institution_id from JWT; area filter from query validated against scope |
-| `GET /v1/institution/signals` | `[Authorize(Roles = "institution")]` | same |
-| `GET /v1/institution/areas` | `[Authorize(Roles = "institution")]` | same |
-| `GET /v1/institution/notifications` | `[Authorize(Roles = "institution")]` | same |
-| `POST /v1/institution/notifications/read` | `[Authorize(Roles = "institution")]` | same |
-| `/v1/institution-admin/*` | `[Authorize(Roles = "admin")]` (or a new `institution_admin` role — decided in #196) | Institution-admin scope, single institution |
-
-Adding these is the work of #195 + #196 and must include their
-matrix entries in the same PR.
+All Phase 2 planned rows have landed. #195 added the five
+`/v1/institution/*` operational routes plus the field additions on
+`/v1/clusters/{id}` + `/v1/official-posts`. #197 added the
+institution-auth surface under `/v1/auth/institution/*`. #196 added
+the five `/v1/institution-admin/*` routes with step-up gating on
+writes. All are recorded above.
 
 ---
 

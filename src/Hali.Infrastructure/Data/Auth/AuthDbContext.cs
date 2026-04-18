@@ -17,6 +17,14 @@ public class AuthDbContext : DbContext
 
 	public DbSet<InstitutionInvite> InstitutionInvites => Set<InstitutionInvite>();
 
+	public DbSet<WebSession> WebSessions => Set<WebSession>();
+
+	public DbSet<TotpSecret> TotpSecrets => Set<TotpSecret>();
+
+	public DbSet<TotpRecoveryCode> TotpRecoveryCodes => Set<TotpRecoveryCode>();
+
+	public DbSet<MagicLinkToken> MagicLinkTokens => Set<MagicLinkToken>();
+
 	public AuthDbContext(DbContextOptions<AuthDbContext> options)
 		: base(options)
 	{
@@ -43,6 +51,7 @@ public class AuthDbContext : DbContext
 			e.Property((Account x) => x.NotificationSettings).HasColumnName("notification_settings").HasColumnType("jsonb");
 			e.Property((Account x) => x.InstitutionId).HasColumnName("institution_id");
 			e.Property((Account x) => x.IsBlocked).HasColumnName("is_blocked");
+			e.Property((Account x) => x.IsInstitutionAdmin).HasColumnName("is_institution_admin");
 			e.HasIndex((Account x) => x.Email).IsUnique().HasDatabaseName("uq_accounts_email");
 			e.HasIndex((Account x) => x.PhoneE164).IsUnique().HasDatabaseName("uq_accounts_phone");
 		});
@@ -103,6 +112,63 @@ public class AuthDbContext : DbContext
 			e.HasIndex((RefreshToken x) => x.AccountId).HasDatabaseName("ix_refresh_tokens_account");
 			e.HasIndex((RefreshToken x) => x.DeviceId).HasDatabaseName("ix_refresh_tokens_device");
 			e.HasIndex((RefreshToken x) => x.ExpiresAt).HasDatabaseName("ix_refresh_tokens_expires");
+		});
+		modelBuilder.Entity(delegate(EntityTypeBuilder<WebSession> e)
+		{
+			e.ToTable("web_sessions");
+			e.HasKey((WebSession x) => x.Id);
+			e.Property((WebSession x) => x.Id).HasColumnName("id");
+			e.Property((WebSession x) => x.AccountId).HasColumnName("account_id");
+			e.Property((WebSession x) => x.InstitutionId).HasColumnName("institution_id");
+			e.Property((WebSession x) => x.SessionTokenHash).HasColumnName("session_token_hash").HasMaxLength(128);
+			e.Property((WebSession x) => x.CsrfTokenHash).HasColumnName("csrf_token_hash").HasMaxLength(128);
+			e.Property((WebSession x) => x.CreatedAt).HasColumnName("created_at");
+			e.Property((WebSession x) => x.LastActivityAt).HasColumnName("last_activity_at");
+			e.Property((WebSession x) => x.AbsoluteExpiresAt).HasColumnName("absolute_expires_at");
+			e.Property((WebSession x) => x.StepUpVerifiedAt).HasColumnName("step_up_verified_at");
+			e.Property((WebSession x) => x.RevokedAt).HasColumnName("revoked_at");
+			e.Property((WebSession x) => x.Role).HasColumnName("role").HasMaxLength(30);
+			e.HasIndex((WebSession x) => x.SessionTokenHash).IsUnique().HasDatabaseName("uq_web_sessions_token");
+			e.HasIndex((WebSession x) => x.AccountId).HasDatabaseName("ix_web_sessions_account");
+			e.HasIndex((WebSession x) => x.AbsoluteExpiresAt).HasDatabaseName("ix_web_sessions_absolute_expires");
+		});
+		modelBuilder.Entity(delegate(EntityTypeBuilder<TotpSecret> e)
+		{
+			e.ToTable("totp_secrets");
+			e.HasKey((TotpSecret x) => x.Id);
+			e.Property((TotpSecret x) => x.Id).HasColumnName("id");
+			e.Property((TotpSecret x) => x.AccountId).HasColumnName("account_id");
+			e.Property((TotpSecret x) => x.SecretEncrypted).HasColumnName("secret_encrypted");
+			e.Property((TotpSecret x) => x.EnrolledAt).HasColumnName("enrolled_at");
+			e.Property((TotpSecret x) => x.ConfirmedAt).HasColumnName("confirmed_at");
+			e.Property((TotpSecret x) => x.RevokedAt).HasColumnName("revoked_at");
+			e.HasIndex((TotpSecret x) => x.AccountId).IsUnique().HasDatabaseName("uq_totp_secrets_account");
+		});
+		modelBuilder.Entity(delegate(EntityTypeBuilder<TotpRecoveryCode> e)
+		{
+			e.ToTable("totp_recovery_codes");
+			e.HasKey((TotpRecoveryCode x) => x.Id);
+			e.Property((TotpRecoveryCode x) => x.Id).HasColumnName("id");
+			e.Property((TotpRecoveryCode x) => x.AccountId).HasColumnName("account_id");
+			e.Property((TotpRecoveryCode x) => x.CodeHash).HasColumnName("code_hash").HasMaxLength(128);
+			e.Property((TotpRecoveryCode x) => x.UsedAt).HasColumnName("used_at");
+			e.Property((TotpRecoveryCode x) => x.CreatedAt).HasColumnName("created_at");
+			e.HasIndex((TotpRecoveryCode x) => new { x.AccountId, x.CodeHash }).IsUnique().HasDatabaseName("uq_totp_recovery_codes");
+		});
+		modelBuilder.Entity(delegate(EntityTypeBuilder<MagicLinkToken> e)
+		{
+			e.ToTable("magic_link_tokens");
+			e.HasKey((MagicLinkToken x) => x.Id);
+			e.Property((MagicLinkToken x) => x.Id).HasColumnName("id");
+			e.Property((MagicLinkToken x) => x.DestinationEmail).HasColumnName("destination_email").HasMaxLength(254);
+			e.Property((MagicLinkToken x) => x.TokenHash).HasColumnName("token_hash").HasMaxLength(128);
+			e.Property((MagicLinkToken x) => x.AccountId).HasColumnName("account_id");
+			e.Property((MagicLinkToken x) => x.ExpiresAt).HasColumnName("expires_at");
+			e.Property((MagicLinkToken x) => x.ConsumedAt).HasColumnName("consumed_at");
+			e.Property((MagicLinkToken x) => x.CreatedAt).HasColumnName("created_at");
+			e.HasIndex((MagicLinkToken x) => x.TokenHash).IsUnique().HasDatabaseName("uq_magic_link_tokens_hash");
+			e.HasIndex((MagicLinkToken x) => x.DestinationEmail).HasDatabaseName("ix_magic_link_tokens_email");
+			e.HasIndex((MagicLinkToken x) => x.ExpiresAt).HasDatabaseName("ix_magic_link_tokens_expires");
 		});
 	}
 }

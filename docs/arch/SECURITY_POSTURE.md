@@ -252,6 +252,55 @@ fixtures, docs, CI workflows, migrations):
   production) — implementation follows key-set rotation to avoid forcing
   all clients to re-login.
 
+### Data Protection key ring (implemented — #243)
+
+Hali uses ASP.NET Core Data Protection for at-rest encryption of
+material that must round-trip through the app (currently: TOTP secrets
+for institution + institution-admin users from #197). The key ring
+itself — the set of rotating keys that encrypt that material — must
+be persisted and protected so it survives process restarts and
+replicates across nodes.
+
+- **Key ring storage**: the key ring is persisted to PostgreSQL in the
+  `data_protection_keys` table via `HaliDataProtectionDbContext`.
+  This is the single storage location across all environments —
+  local dev, staging, production — so operators never reason about
+  where the ring lives, only how it is protected.
+- **At-rest protection**: the ring itself is encrypted with an X.509
+  certificate (PFX) loaded from the path in `DataProtection:CertPath`
+  (password in `DataProtection:CertPassword`).
+- **Production gate**: `DataProtection:CertPath` and
+  `DataProtection:CertPassword` MUST be provisioned before institution
+  users are onboarded to production. Production fails-fast at startup
+  in **both** of these cases — a misconfigured production deployment
+  must not silently run unprotected:
+  - `CertPath` is configured but the file cannot be loaded (missing
+    or invalid)
+  - `CertPath` is not configured at all (no fallback — DPAPI is not
+    canonical for Production)
+- **Non-Production degradation**: dev and staging log an ERROR and
+  continue unprotected if the cert is configured but missing, so a
+  broken shared mount does not block local work. If the cert is not
+  configured at all outside Production, startup logs a WARNING and
+  keys are unprotected.
+- **Dev-machine escape hatch**: when no cert is configured on Windows,
+  the key ring uses DPAPI (user-scoped). DPAPI is **never** acceptable
+  for staging or production — operators must provision a cert.
+- **KMS evolution**: the provider is designed for swap. A future move
+  to AWS KMS / Azure Key Vault / equivalent requires only changing the
+  protection provider; no change to the key ring storage
+  (`data_protection_keys`) is needed.
+- **Secret discipline**:
+  - The certificate **password** is never written to any log under
+    any condition.
+  - The certificate **path** is logged as the filename portion only —
+    never the full path — so log aggregation cannot disclose
+    deployment-topology signal.
+  - The startup WARNING emitted when `CertPath` is unset does NOT
+    echo the expected path — an attacker reading the log should not
+    learn where the system looks for its cert.
+  - PFX / PEM / KEY / P12 files are blocked by `.gitignore`.
+
 ---
 
 ## 6. Secure defaults for new web apps
