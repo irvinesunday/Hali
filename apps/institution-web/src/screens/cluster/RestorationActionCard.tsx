@@ -128,8 +128,16 @@ function AwaitingBanner({
   readonly yesVotes: number | null;
   readonly totalVotes: number | null;
 }) {
-  const percent = ratio !== null ? Math.round(ratio * 100) : null;
-  const countsKnown = yesVotes !== null && totalVotes !== null;
+  // Guard with `Number.isFinite` rather than `!== null`: during a
+  // partial deployment the backend may omit these fields entirely, in
+  // which case JSON.parse leaves them `undefined` at runtime even
+  // though TS models them as `number | null`. A bare `!== null` check
+  // lets `undefined` through and produces a `NaN%` render.
+  const hasRatio = typeof ratio === "number" && Number.isFinite(ratio);
+  const hasYesVotes = typeof yesVotes === "number" && Number.isFinite(yesVotes);
+  const hasTotalVotes = typeof totalVotes === "number" && Number.isFinite(totalVotes);
+  const percent = hasRatio ? Math.round(ratio * 100) : null;
+  const countsKnown = hasYesVotes && hasTotalVotes;
   return (
     <section
       aria-label="Restoration status"

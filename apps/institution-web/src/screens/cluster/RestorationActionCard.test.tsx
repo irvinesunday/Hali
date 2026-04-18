@@ -61,6 +61,20 @@ describe("RestorationActionCard", () => {
     expect(screen.getByText(/no citizen responses yet/i)).toBeInTheDocument();
   });
 
+  it("falls back to em-dashes (never NaN) when the backend omits the restoration fields entirely", () => {
+    // Simulate a partial deployment where the server response is
+    // missing the three fields — TS types say `number | null`, but
+    // runtime receives `undefined`. The UI must not render `NaN%`.
+    renderCard({
+      clusterState: "possible_restoration",
+      restorationRatio: undefined as unknown as number | null,
+      restorationYesVotes: undefined as unknown as number | null,
+      restorationTotalVotes: undefined as unknown as number | null,
+    });
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  });
+
   it("renders the resolved banner when the cluster is resolved", () => {
     renderCard({
       clusterState: "resolved",
