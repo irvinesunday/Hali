@@ -230,6 +230,42 @@ If any of the following appear in implementation, stop and flag:
 
 ---
 
+## 11.5. Review Handling Gate — Hard Merge Requirement
+
+After a PR is opened for any phase of this site, the PR may not be merged
+until **every** review comment (human, Copilot, CodeQL, or GitHub Advanced
+Security) has been handled. "Handled" means all of the following for each
+review thread:
+
+1. **Evaluated** — classified as one of:
+   - `VALID_AND_FIX_NOW` — fix in the same PR
+   - `VALID_BUT_DEFER_TO_ISSUE` — open a tracking issue, link it in the reply
+   - `NOT_VALID` — reply with the technical reason
+2. **Fixed or explicitly dispositioned** — a `VALID_AND_FIX_NOW` item must
+   have a commit in the PR that directly addresses it; a deferred item must
+   have a linked issue; a `NOT_VALID` item must have a reasoned reply.
+3. **Replied to** — every thread must have at least one author reply naming
+   the commit SHA (for fixes) or the linked issue (for deferrals) or the
+   technical reason (for `NOT_VALID`).
+4. **Resolved** — every thread must be marked resolved on GitHub.
+
+**Merge gate:**
+- CI green across all required checks
+- Zero unresolved review threads on the PR
+- No valid findings unaddressed
+
+An admin bypass of the branch protection policy (`--admin` on `gh pr merge`)
+does **not** bypass this review-handling gate. It is an orthogonal
+requirement: branch protection guards the branch; this gate guards review
+hygiene.
+
+Process discipline: if a review comment is posted after merge (Copilot
+sometimes finishes its pass late), the same four-step handling must be
+performed in a dedicated follow-up PR. Unresolved post-merge review threads
+from prior phases block opening the next phase's PR.
+
+---
+
 ## 12. Build Phases
 
 | Phase | Scope |
