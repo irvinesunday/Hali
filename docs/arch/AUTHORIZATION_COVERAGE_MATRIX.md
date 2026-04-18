@@ -89,19 +89,16 @@ Columns:
 | `PUT /v1/users/me/notification-settings` | UsersController | `[Authorize]` (inherited) | Writes caller's own notification settings | ✓ |
 | `POST /v1/devices/push-token` | DevicesController | `[Authorize]` | Registers Expo push token for caller + device | ✓ |
 
-### Official posts
-
-| Route | Controller | Decorator | Policy / scope | Tested? |
-|---|---|---|---|---|
-| `POST /v1/official-posts` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId`; validates optional `responseStatus` (live_update only) + `severity` (scheduled_disruption only) | ✓ |
-
 ### Institution operational
 
 | Route | Controller | Decorator | Policy / scope | Tested? |
 |---|---|---|---|---|
 | `GET /v1/institution/overview` | InstitutionController | `[Authorize(Roles = "institution")]` (class-level) | `institution_id` from JWT (ForbiddenException when absent); optional `areaId` validated against caller's jurisdictions server-side | ✓ |
-| `GET /v1/institution/signals` | InstitutionController | class-level | `institution_id` from JWT; `state` filter validated against canonical enum; locality scope applied server-side before any rows leave the repository | ✓ |
-| `GET /v1/institution/signals/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe | ✓ |
+| `GET /v1/institution/clusters` | InstitutionController | class-level | `institution_id` from JWT; `state` filter validated against canonical enum; locality scope applied server-side before any rows leave the repository. Renamed from `/v1/institution/signals` under the #207 Phase 4 route rename — `signal` terminology is reserved for raw `SignalEvent` rows; `cluster` is the public aggregate | ✓ |
+| `GET /v1/institution/clusters/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe. Renamed from `/v1/institution/signals/{clusterId}` (#207 Phase 4) | ✓ |
+| `GET /v1/institution/restoration` | InstitutionController | class-level | `institution_id` from JWT; returns clusters in `possible_restoration` inside the caller's scope enriched with live restoration vote counts, ordered ascending by `possible_restoration_at`. Optional `areaId` validated against caller's jurisdictions server-side (#207 Phase 4) | ✓ |
+| `POST /v1/institution/clusters/{clusterId}/acknowledge` | InstitutionController | class-level | `institution_id` from JWT; cross-institution clusters return 404 (`institution.acknowledge_out_of_scope`) to deny existence probe; requires `idempotencyKey` body field (`institution.acknowledge_missing_idempotency_key` on absence); idempotent replay returns the existing record without duplicating the outbox event; emits canonical `institution.action.recorded` event with `aggregate_type = signal_cluster` + `schema_version = 1.0` (#207 Phase 4) | ✓ |
+| `POST /v1/institution/official-updates` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId`; validates optional `responseStatus` (live_update only) + `severity` (scheduled_disruption only). Renamed from `/v1/official-posts` under the #207 Phase 4 route rename — official-writer surface now lives fully under `/v1/institution/*` | ✓ |
 | `GET /v1/institution/areas` | InstitutionController | class-level | `institution_id` from JWT; rows bounded to `institution_jurisdictions` owned by the caller | ✓ |
 | `GET /v1/institution/activity` | InstitutionController | class-level | `institution_id` from JWT; activity feed bounded to caller's localities | ✓ |
 
@@ -138,10 +135,13 @@ already defined in `docs/arch/hali_institution_backend_contract_implications.md`
 
 All Phase 2 planned rows have landed. #195 added the five
 `/v1/institution/*` operational routes plus the field additions on
-`/v1/clusters/{id}` + `/v1/official-posts`. #197 added the
-institution-auth surface under `/v1/auth/institution/*`. #196 added
-the five `/v1/institution-admin/*` routes with step-up gating on
-writes. All are recorded above.
+`/v1/clusters/{id}` + `/v1/institution/official-updates` (originally
+`/v1/official-posts` — see the #207 Phase 4 route rename). #197
+added the institution-auth surface under `/v1/auth/institution/*`.
+#196 added the five `/v1/institution-admin/*` routes with step-up
+gating on writes. #207 Phase 4 added the restoration queue and
+explicit acknowledge endpoints and renamed the operational cluster
+routes off `/signals/*`. All are recorded above.
 
 ---
 
@@ -155,9 +155,10 @@ State of the current authorization posture as of this audit:
   `[Authorize(Roles = …)]`) decorator.
 - `[AllowAnonymous]` is **explicit** on every public endpoint —
   anonymous access is never implied by absence of `[Authorize]`.
-- The `POST /v1/official-posts` controller does NOT read the
-  `institution_id` from a client-supplied header — it reads it from
-  the JWT claim (this was a past bypass that was closed).
+- The `POST /v1/institution/official-updates` controller (formerly
+  `POST /v1/official-posts`) does NOT read the `institution_id` from
+  a client-supplied header — it reads it from the JWT claim (this
+  was a past bypass that was closed).
 - Refresh-token rotation + theft detection is implemented and tested
   (family revocation on re-use of a rotated token).
 - Feature-flag endpoint (`/v1/feature-flags`) returns only
