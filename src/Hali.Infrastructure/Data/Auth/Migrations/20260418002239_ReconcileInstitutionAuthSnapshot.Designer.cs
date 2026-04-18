@@ -10,11 +10,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Hali.Infrastructure.Persistence.Migrations.Auth
+namespace Hali.Infrastructure.Data.Auth.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20260417235612_AddPendingAuthModelChanges")]
-    partial class AddPendingAuthModelChanges
+    [Migration("20260418002239_ReconcileInstitutionAuthSnapshot")]
+    partial class ReconcileInstitutionAuthSnapshot
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
