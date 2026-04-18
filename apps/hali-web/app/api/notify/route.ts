@@ -15,10 +15,19 @@ async function persistSignup(email: string) {
   let existing: Array<{ email: string; at: string }> = []
   try {
     const raw = await fs.readFile(file, 'utf8')
-    existing = JSON.parse(raw)
-    if (!Array.isArray(existing)) existing = []
-  } catch {
-    existing = []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      // File exists but has an unexpected shape. Refuse to overwrite — this
+      // likely means something else wrote to the file; surfacing the error
+      // is safer than silently replacing prior data.
+      throw new Error('signups.json is not an array')
+    }
+    existing = parsed
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | null)?.code
+    // Only treat "file does not exist yet" as empty state. Any other failure
+    // (corruption, permission, I/O) re-throws so we don't clobber prior data.
+    if (code !== 'ENOENT') throw err
   }
   existing.push({ email, at: new Date().toISOString() })
   await fs.writeFile(file, JSON.stringify(existing, null, 2), 'utf8')
