@@ -6,6 +6,8 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { institutionKeys } from "../query/keys";
+import { TelemetryEvents } from "../telemetry/events";
+import { useQueryTelemetry } from "../telemetry/useQueryTelemetry";
 import { formatDurationSeconds } from "./signalFormatting";
 
 // Live signals list for an institution. Pulls from
@@ -26,6 +28,16 @@ export function SignalsScreen() {
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => getInstitutionSignals({ cursor: pageParam as string | undefined }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+
+  useQueryTelemetry({
+    startedEvent: TelemetryEvents.SignalsBoardLoadStarted,
+    completedEvent: TelemetryEvents.SignalsBoardLoadCompleted,
+    failedEvent: TelemetryEvents.SignalsBoardLoadFailed,
+    isPending: signals.isPending,
+    isSuccess: signals.isSuccess,
+    isError: signals.isError,
+    error: signals.error,
   });
 
   if (signals.isLoading) {

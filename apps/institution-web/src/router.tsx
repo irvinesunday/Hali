@@ -7,6 +7,7 @@ import { ClusterDetailScreen } from "./screens/ClusterDetailScreen";
 import { AreasScreen } from "./screens/AreasScreen";
 import { MetricsScreen } from "./screens/MetricsScreen";
 import { NotFoundScreen } from "./screens/NotFoundScreen";
+import { TelemetryRouteNames } from "./telemetry/events";
 
 // Institution dashboard route tree. Every authenticated surface
 // renders inside InstitutionShell; unauthenticated routes (login,
@@ -24,16 +25,39 @@ export const institutionRoutes: RouteObject[] = [
     path: "/",
     element: <InstitutionShell />,
     children: [
-      { index: true, element: <OverviewScreen />, handle: { title: "Overview" } },
-      { path: "signals", element: <SignalsScreen />, handle: { title: "Live Signals" } },
+      {
+        index: true,
+        element: <OverviewScreen />,
+        handle: { title: "Overview", telemetryName: TelemetryRouteNames.Overview },
+      },
+      {
+        path: "signals",
+        element: <SignalsScreen />,
+        handle: { title: "Live Signals", telemetryName: TelemetryRouteNames.Signals },
+      },
       {
         path: "signals/:clusterId",
         element: <ClusterDetailScreen />,
-        handle: { title: "Signal detail" },
+        handle: {
+          title: "Signal detail",
+          telemetryName: TelemetryRouteNames.ClusterDetail,
+        },
       },
-      { path: "areas", element: <AreasScreen />, handle: { title: "Areas" } },
-      { path: "metrics", element: <MetricsScreen />, handle: { title: "Metrics" } },
-      { path: "*", element: <NotFoundScreen />, handle: { title: "Page not found" } },
+      {
+        path: "areas",
+        element: <AreasScreen />,
+        handle: { title: "Areas", telemetryName: TelemetryRouteNames.Areas },
+      },
+      {
+        path: "metrics",
+        element: <MetricsScreen />,
+        handle: { title: "Metrics", telemetryName: TelemetryRouteNames.Metrics },
+      },
+      {
+        path: "*",
+        element: <NotFoundScreen />,
+        handle: { title: "Page not found", telemetryName: TelemetryRouteNames.NotFound },
+      },
     ],
   },
 ];

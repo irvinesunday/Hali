@@ -12,6 +12,8 @@ import type {
   OfficialPostType,
 } from "../../api/types";
 import { institutionKeys } from "../../query/keys";
+import { emitEvent } from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 
 // Modal-driven composer for the three official-update kinds defined by
 // `POST /v1/official-posts`:
@@ -107,30 +109,68 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
 
   const mutation = useMutation<OfficialPostResponse, Error, OfficialPostCreateRequest>({
     mutationFn: (request) => createOfficialPost(request),
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
+      emitEvent(TelemetryEvents.OfficialPostCreateCompleted, { post_type: request.type });
       void queryClient.invalidateQueries({ queryKey: institutionKeys.signalDetail(clusterId) });
       onClose();
     },
+    onError: (error, request) => {
+      emitEvent(TelemetryEvents.OfficialPostCreateFailed, {
+        post_type: request.type,
+        status: error instanceof ApiError ? error.status : null,
+      });
+    },
   });
 
+  // `draft.cancelled` means "closed without submitting" in the funnel.
+  // Gate on `isIdle` so a close after a failed submit stays categorised
+  // as `create.failed` rather than double-counting as a cancel — and so
+  // the post-success unmount the success handler triggers above never
+  // fires it either.
+  const handleClose = () => {
+    if (mutation.isIdle) {
+      emitEvent(TelemetryEvents.OfficialPostDraftCancelled);
+    }
+    onClose();
+  };
+
+  // Reset the form + mutation status when the modal closes so a
+  // reopened composer is blank and any stale server error is gone —
+  // and so `isIdle` correctly flips back to `true` for the
+  // `draft.cancelled` gate in `handleClose`. `mutation.reset` is
+  // stable per TanStack Query v5 but isn't known-stable to React's
+  // dep checker, hence the ref wrapper (listing `mutation` would
+  // cause an infinite update loop).
+  const resetMutationRef = useRef(mutation.reset);
+  resetMutationRef.current = mutation.reset;
   useEffect(() => {
     if (open) {
+      emitEvent(TelemetryEvents.OfficialPostDraftStarted, { cluster_category: clusterCategory });
       firstFieldRef.current?.focus();
     } else {
       resetForm();
+      resetMutationRef.current();
     }
-  }, [open]);
+  }, [open, clusterCategory]);
 
+  // handleClose is a fresh closure each render; route the keydown
+  // handler through a ref so the listener sees the latest closure
+  // without the effect body having to re-capture it. The effect does
+  // still re-run when `open` or `mutation.isPending` flip — that's
+  // acceptable (the listener is cheap to add/remove) and keeps the
+  // Escape key gated on the pending state without a second ref.
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !mutation.isPending) {
-        onClose();
+        handleCloseRef.current();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, mutation.isPending, onClose]);
+  }, [open, mutation.isPending]);
 
   if (!open) return null;
 
@@ -171,6 +211,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
         : {}),
     };
 
+    emitEvent(TelemetryEvents.OfficialPostCreateSubmitted, { post_type: request.type });
     mutation.mutate(request);
   };
 
@@ -205,7 +246,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={mutation.isPending}
             className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
             aria-label="Close"
@@ -369,7 +410,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={mutation.isPending}
               className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-60"
             >

@@ -14,6 +14,8 @@ import {
   useFeatureFlag,
 } from "../../featureFlags/FeatureFlagsProvider";
 import { institutionKeys } from "../../query/keys";
+import { emitEvent } from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 
 // Institution restoration action per Hali doctrine:
 //
@@ -105,7 +107,12 @@ export function RestorationActionCard({
       </p>
       <button
         type="button"
-        onClick={() => setComposerOpen(true)}
+        onClick={() => {
+          emitEvent(TelemetryEvents.RestorationClaimStarted, {
+            cluster_category: clusterCategory,
+          });
+          setComposerOpen(true);
+        }}
         className="mt-3 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
       >
         Mark as restored
@@ -239,11 +246,34 @@ function RestorationClaimModal({
 
   const mutation = useMutation<OfficialPostResponse, Error, OfficialPostCreateRequest>({
     mutationFn: (request) => createOfficialPost(request),
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
+      emitEvent(TelemetryEvents.RestorationClaimCompleted, {
+        cluster_category: request.category,
+      });
       void queryClient.invalidateQueries({ queryKey: institutionKeys.signalDetail(clusterId) });
       onClose();
     },
+    onError: (error, request) => {
+      emitEvent(TelemetryEvents.RestorationClaimFailed, {
+        cluster_category: request.category,
+        status: error instanceof ApiError ? error.status : null,
+      });
+    },
   });
+
+  // `claim.cancelled` means "closed without submitting" in the funnel.
+  // Gate on `isIdle` so a close after a failed submit stays categorised
+  // as `claim.failed` rather than double-counting as a cancel. Tag with
+  // the same bounded `cluster_category` the rest of the restoration
+  // events carry so breakdowns stay consistent.
+  const handleClose = () => {
+    if (mutation.isIdle) {
+      emitEvent(TelemetryEvents.RestorationClaimCancelled, {
+        cluster_category: clusterCategory,
+      });
+    }
+    onClose();
+  };
 
   // Reset the form + mutation status when the modal closes so a
   // reopened composer is blank and any stale server error is gone.
@@ -264,16 +294,23 @@ function RestorationClaimModal({
     }
   }, [open]);
 
+  // `handleClose` is a fresh closure each render; route through a ref
+  // so the listener always sees the latest closure. The effect still
+  // re-runs when `open` or `mutation.isPending` flip — that's
+  // acceptable (add/remove listener is cheap) and keeps the Escape
+  // gate bound to the pending state without a second ref.
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !mutation.isPending) {
-        onClose();
+        handleCloseRef.current();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, mutation.isPending, onClose]);
+  }, [open, mutation.isPending]);
 
   if (!open) return null;
 
@@ -288,6 +325,9 @@ function RestorationClaimModal({
       return;
     }
 
+    emitEvent(TelemetryEvents.RestorationClaimSubmitted, {
+      cluster_category: clusterCategory,
+    });
     mutation.mutate({
       type: "live_update",
       category: clusterCategory,
@@ -325,7 +365,7 @@ function RestorationClaimModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={mutation.isPending}
             className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
             aria-label="Close"
@@ -387,7 +427,7 @@ function RestorationClaimModal({
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={mutation.isPending}
               className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-60"
             >
