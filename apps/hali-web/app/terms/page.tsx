@@ -1,10 +1,15 @@
 export const metadata = {
   title: 'Terms of Use',
+  openGraph: {
+    title: 'Terms of Use | Hali',
+    url: 'https://gethali.app/terms',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+  },
 }
 
 export default function TermsPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-20">
+    <main id="main" className="max-w-3xl mx-auto px-6 py-20">
       <h1 className="font-display text-3xl font-bold text-hali-foreground mb-4">
         Terms of Use
       </h1>

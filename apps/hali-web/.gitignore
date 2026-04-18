@@ -6,4 +6,5 @@ node_modules
 .env*.local
 dist
 data/*.json
+data/*.ndjson
 !data/.gitkeep

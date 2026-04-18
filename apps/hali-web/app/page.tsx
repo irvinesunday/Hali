@@ -18,7 +18,7 @@ export const metadata = {
 
 export default function HomePage() {
   return (
-    <main>
+    <main id="main">
       <HeroSection />
       <ValuePropositionSection />
       <CivicLoopSection />

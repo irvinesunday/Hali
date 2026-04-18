@@ -36,6 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${displayFont.variable} ${bodyFont.variable}`}>
       <body>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded focus:bg-hali-primary focus:px-4 focus:py-2 focus:text-hali-primary-foreground focus:outline-none focus:ring-2 focus:ring-hali-ring focus:ring-offset-2"
+        >
+          Skip to main content
+        </a>
         <Nav />
         {children}
         <Footer />
