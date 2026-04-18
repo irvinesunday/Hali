@@ -230,6 +230,68 @@ If any of the following appear in implementation, stop and flag:
 
 ---
 
+## 11.5. Review Handling Gate — Hard Merge Requirement
+
+After a PR is opened for any phase of this site, the PR may not be merged
+until **every** finding has been handled. Findings fall into two disjoint
+buckets, each with its own handling rules.
+
+### (a) PR review threads (human or Copilot review comments)
+
+Each thread must be:
+
+1. **Evaluated** — classified as one of:
+   - `VALID_AND_FIX_NOW` — fix in the same PR
+   - `VALID_BUT_DEFER_TO_ISSUE` — open a tracking issue, link it in the reply
+   - `NOT_VALID` — reply with the technical reason
+2. **Fixed or explicitly dispositioned** — a `VALID_AND_FIX_NOW` item must
+   have a commit in the PR that directly addresses it; a deferred item must
+   have a linked issue; a `NOT_VALID` item must have a reasoned reply.
+3. **Replied to** — at least one author reply naming the commit SHA (for
+   fixes) or the linked issue (for deferrals) or the technical reason (for
+   `NOT_VALID`).
+4. **Resolved** — the thread must be marked resolved on GitHub.
+
+### (b) Automated findings (CodeQL, GitHub Advanced Security, gitleaks, etc.)
+
+These surface as check-run annotations and code-scanning alerts rather than
+GitHub-resolvable PR threads, so the handling rules are different. Each
+finding must be:
+
+1. **Triaged** — same three classifications as above (`VALID_AND_FIX_NOW`,
+   `VALID_BUT_DEFER_TO_ISSUE`, `NOT_VALID`).
+2. **Closed out** — a `VALID_AND_FIX_NOW` finding must have a fix commit
+   that makes the check pass; a deferred finding must have a tracking issue
+   and, where the platform supports it, be dismissed with justification on
+   the Security / Code-scanning tab referencing the issue; a `NOT_VALID`
+   finding must be dismissed with a "false positive" reason.
+3. **Acknowledged in the PR body** — call out the finding, its
+   classification, and where it was addressed (commit SHA / issue link /
+   dismissal reason).
+
+If an automated finding *is* also posted as a resolvable PR thread (some
+CodeQL alerts do), treat the thread itself under (a).
+
+### Merge gate
+
+- CI green across all required checks
+- Zero unresolved (a)-type PR review threads
+- Zero unaddressed (b)-type automated findings
+- No valid findings unresolved
+
+An admin bypass of the branch protection policy (`--admin` on
+`gh pr merge`) does **not** bypass this review-handling gate. Branch
+protection guards the branch; this gate guards review hygiene.
+
+### Late comments
+
+If a review comment is posted after merge (Copilot sometimes finishes its
+pass late), the same handling must be performed in a dedicated follow-up
+PR. Unresolved post-merge findings from prior phases block opening the
+next phase's PR.
+
+---
+
 ## 12. Build Phases
 
 | Phase | Scope |
