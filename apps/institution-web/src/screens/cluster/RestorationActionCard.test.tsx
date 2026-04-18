@@ -3,24 +3,32 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { InstitutionWebFlagKeys } from "../../featureFlags/FeatureFlagsProvider";
+import { FeatureFlagsTestProvider } from "../../test/featureFlagsTestProvider";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../../test/mockFetch";
 import { RestorationActionCard } from "./RestorationActionCard";
 
-function renderCard(overrides?: Partial<ComponentProps<typeof RestorationActionCard>>) {
+interface RenderCardOptions extends Partial<ComponentProps<typeof RestorationActionCard>> {
+  readonly flagOverride?: Readonly<Record<string, boolean>>;
+}
+
+function renderCard(overrides?: RenderCardOptions) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <RestorationActionCard
-        clusterId={overrides?.clusterId ?? "cluster-1"}
-        clusterState={overrides?.clusterState ?? "active"}
-        clusterCategory={overrides?.clusterCategory ?? "electricity"}
-        restorationRatio={overrides?.restorationRatio ?? null}
-        restorationYesVotes={overrides?.restorationYesVotes ?? null}
-        restorationTotalVotes={overrides?.restorationTotalVotes ?? null}
-        resolvedAt={overrides?.resolvedAt ?? null}
-      />
+      <FeatureFlagsTestProvider override={overrides?.flagOverride}>
+        <RestorationActionCard
+          clusterId={overrides?.clusterId ?? "cluster-1"}
+          clusterState={overrides?.clusterState ?? "active"}
+          clusterCategory={overrides?.clusterCategory ?? "electricity"}
+          restorationRatio={overrides?.restorationRatio ?? null}
+          restorationYesVotes={overrides?.restorationYesVotes ?? null}
+          restorationTotalVotes={overrides?.restorationTotalVotes ?? null}
+          resolvedAt={overrides?.resolvedAt ?? null}
+        />
+      </FeatureFlagsTestProvider>
     </QueryClientProvider>,
   );
   return { ...result, queryClient };
@@ -153,5 +161,24 @@ describe("RestorationActionCard", () => {
     // before handleSubmit runs — the dialog staying open is the
     // affordance the user sees.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("hides the active-state CTA when the restoration kill switch is off", () => {
+    const { container } = renderCard({
+      clusterState: "active",
+      flagOverride: { [InstitutionWebFlagKeys.restorationClaimEnabled]: false },
+    });
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("still renders the awaiting banner when the kill switch is off", () => {
+    renderCard({
+      clusterState: "possible_restoration",
+      restorationRatio: 0.5,
+      restorationYesVotes: 3,
+      restorationTotalVotes: 6,
+      flagOverride: { [InstitutionWebFlagKeys.restorationClaimEnabled]: false },
+    });
+    expect(screen.getByText(/awaiting citizen confirmation/i)).toBeInTheDocument();
   });
 });
