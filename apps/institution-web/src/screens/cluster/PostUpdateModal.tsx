@@ -12,6 +12,8 @@ import type {
   OfficialPostType,
 } from "../../api/types";
 import { institutionKeys } from "../../query/keys";
+import { emitEvent } from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 
 // Modal-driven composer for the three official-update kinds defined by
 // `POST /v1/official-posts`:
@@ -107,30 +109,53 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
 
   const mutation = useMutation<OfficialPostResponse, Error, OfficialPostCreateRequest>({
     mutationFn: (request) => createOfficialPost(request),
-    onSuccess: () => {
+    onSuccess: (_response, request) => {
+      emitEvent(TelemetryEvents.OfficialPostCreateCompleted, { post_type: request.type });
       void queryClient.invalidateQueries({ queryKey: institutionKeys.signalDetail(clusterId) });
       onClose();
     },
+    onError: (error, request) => {
+      emitEvent(TelemetryEvents.OfficialPostCreateFailed, {
+        post_type: request.type,
+        status: error instanceof ApiError ? error.status : null,
+      });
+    },
   });
+
+  // Distinguishes a deliberate close (Cancel / ✕ / Escape) from the
+  // post-success unmount the success handler triggers above. Without
+  // this we would emit `draft.cancelled` on every successful submit.
+  const handleClose = () => {
+    if (!mutation.isSuccess && !mutation.isPending) {
+      emitEvent(TelemetryEvents.OfficialPostDraftCancelled);
+    }
+    onClose();
+  };
 
   useEffect(() => {
     if (open) {
+      emitEvent(TelemetryEvents.OfficialPostDraftStarted, { cluster_category: clusterCategory });
       firstFieldRef.current?.focus();
     } else {
       resetForm();
     }
-  }, [open]);
+  }, [open, clusterCategory]);
 
+  // handleClose is a fresh closure each render; route the keydown
+  // handler through a ref so the listener attaches once per open and
+  // doesn't churn on every pending-state flip.
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !mutation.isPending) {
-        onClose();
+        handleCloseRef.current();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [open, mutation.isPending, onClose]);
+  }, [open, mutation.isPending]);
 
   if (!open) return null;
 
@@ -171,6 +196,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
         : {}),
     };
 
+    emitEvent(TelemetryEvents.OfficialPostCreateSubmitted, { post_type: request.type });
     mutation.mutate(request);
   };
 
@@ -205,7 +231,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={mutation.isPending}
             className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
             aria-label="Close"
@@ -369,7 +395,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={mutation.isPending}
               className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-60"
             >

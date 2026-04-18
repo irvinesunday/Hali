@@ -2,7 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetTelemetryTransport,
+  setTelemetryTransport,
+  type TelemetryEventRecord,
+} from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 import { FeatureFlagsTestProvider } from "../../test/featureFlagsTestProvider";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../../test/mockFetch";
 import { PostUpdateModal } from "./PostUpdateModal";
@@ -215,6 +221,146 @@ describe("PostUpdateModal", () => {
     await userEvent.click(screen.getByRole("button", { name: /post update/i }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  describe("telemetry", () => {
+    let transport: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      transport = vi.fn();
+      setTelemetryTransport(transport);
+    });
+
+    afterEach(() => {
+      resetTelemetryTransport();
+    });
+
+    function names(): string[] {
+      return transport.mock.calls.map((c) => (c[0] as TelemetryEventRecord).name);
+    }
+
+    function recordOf(name: string): TelemetryEventRecord | undefined {
+      return transport.mock.calls
+        .map((c) => c[0] as TelemetryEventRecord)
+        .find((r) => r.name === name);
+    }
+
+    it("emits draft.started on open with the cluster category tag", () => {
+      renderModal({ clusterCategory: "water" });
+      const started = recordOf(TelemetryEvents.OfficialPostDraftStarted);
+      expect(started).toBeDefined();
+      expect(started?.tags).toMatchObject({ cluster_category: "water" });
+    });
+
+    it("emits create.submitted then create.completed on a successful post", async () => {
+      mockFetch({
+        "/v1/official-posts": () =>
+          jsonResponse(
+            {
+              id: "post-1",
+              institutionId: "inst-1",
+              type: "live_update",
+              category: "electricity",
+              title: "Teams dispatched",
+              body: "Crews are en route.",
+              startsAt: null,
+              endsAt: null,
+              status: "published",
+              relatedClusterId: "cluster-1",
+              isRestorationClaim: false,
+              createdAt: "2026-04-18T04:00:00Z",
+              responseStatus: null,
+              severity: null,
+            },
+            201,
+          ),
+      });
+
+      renderModal();
+
+      await userEvent.type(screen.getByLabelText(/^title$/i), "Teams dispatched");
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Crews are en route.");
+      await userEvent.click(screen.getByRole("button", { name: /post update/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.OfficialPostCreateCompleted);
+      });
+
+      const sequence = names().filter((n) => n.startsWith("official_post."));
+      expect(sequence).toEqual([
+        TelemetryEvents.OfficialPostDraftStarted,
+        TelemetryEvents.OfficialPostCreateSubmitted,
+        TelemetryEvents.OfficialPostCreateCompleted,
+      ]);
+      expect(recordOf(TelemetryEvents.OfficialPostCreateSubmitted)?.tags).toMatchObject({
+        post_type: "live_update",
+      });
+    });
+
+    it("emits create.failed with the API status on a 4xx response", async () => {
+      mockFetch({
+        "/v1/official-posts": () => errorResponse(400, "invalid_category"),
+      });
+
+      renderModal();
+
+      await userEvent.type(screen.getByLabelText(/^title$/i), "Teams dispatched");
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Crews are en route.");
+      await userEvent.click(screen.getByRole("button", { name: /post update/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.OfficialPostCreateFailed);
+      });
+      expect(recordOf(TelemetryEvents.OfficialPostCreateFailed)?.tags).toMatchObject({
+        post_type: "live_update",
+        status: 400,
+      });
+    });
+
+    it("emits draft.cancelled when the user closes without submitting", async () => {
+      const onClose = vi.fn();
+      renderModal({ onClose });
+
+      await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+      expect(names()).toContain(TelemetryEvents.OfficialPostDraftCancelled);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not emit draft.cancelled after a successful post", async () => {
+      mockFetch({
+        "/v1/official-posts": () =>
+          jsonResponse(
+            {
+              id: "post-1",
+              institutionId: "inst-1",
+              type: "live_update",
+              category: "electricity",
+              title: "Teams dispatched",
+              body: "Crews are en route.",
+              startsAt: null,
+              endsAt: null,
+              status: "published",
+              relatedClusterId: "cluster-1",
+              isRestorationClaim: false,
+              createdAt: "2026-04-18T04:00:00Z",
+              responseStatus: null,
+              severity: null,
+            },
+            201,
+          ),
+      });
+
+      renderModal();
+      await userEvent.type(screen.getByLabelText(/^title$/i), "Teams dispatched");
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Crews are en route.");
+      await userEvent.click(screen.getByRole("button", { name: /post update/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.OfficialPostCreateCompleted);
+      });
+      expect(names()).not.toContain(TelemetryEvents.OfficialPostDraftCancelled);
+    });
   });
 });
 

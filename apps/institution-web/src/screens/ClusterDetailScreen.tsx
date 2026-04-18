@@ -10,6 +10,8 @@ import {
   InstitutionWebFlagKeys,
   useFeatureFlag,
 } from "../featureFlags/FeatureFlagsProvider";
+import { TelemetryEvents } from "../telemetry/events";
+import { useQueryTelemetry } from "../telemetry/useQueryTelemetry";
 import { PostUpdateModal } from "./cluster/PostUpdateModal";
 import { RestorationActionCard } from "./cluster/RestorationActionCard";
 import { formatDurationSeconds } from "./signalFormatting";
@@ -36,6 +38,16 @@ export function ClusterDetailScreen() {
     queryKey: institutionKeys.signalDetail(clusterId ?? ""),
     queryFn: () => getInstitutionSignal(clusterId ?? ""),
     enabled: Boolean(clusterId),
+  });
+
+  useQueryTelemetry({
+    startedEvent: TelemetryEvents.ClusterDetailLoadStarted,
+    completedEvent: TelemetryEvents.ClusterDetailLoadCompleted,
+    failedEvent: TelemetryEvents.ClusterDetailLoadFailed,
+    isPending: cluster.isPending,
+    isSuccess: cluster.isSuccess,
+    isError: cluster.isError,
+    error: cluster.error,
   });
 
   if (!clusterId) {

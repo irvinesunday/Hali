@@ -2,8 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InstitutionWebFlagKeys } from "../../featureFlags/FeatureFlagsProvider";
+import {
+  resetTelemetryTransport,
+  setTelemetryTransport,
+  type TelemetryEventRecord,
+} from "../../telemetry/emit";
+import { TelemetryEvents } from "../../telemetry/events";
 import { FeatureFlagsTestProvider } from "../../test/featureFlagsTestProvider";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../../test/mockFetch";
 import { RestorationActionCard } from "./RestorationActionCard";
@@ -180,5 +186,103 @@ describe("RestorationActionCard", () => {
       flagOverride: { [InstitutionWebFlagKeys.restorationClaimEnabled]: false },
     });
     expect(screen.getByText(/awaiting citizen confirmation/i)).toBeInTheDocument();
+  });
+
+  describe("telemetry", () => {
+    let transport: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      transport = vi.fn();
+      setTelemetryTransport(transport);
+    });
+
+    afterEach(() => {
+      resetTelemetryTransport();
+    });
+
+    function names(): string[] {
+      return transport.mock.calls.map((c) => (c[0] as TelemetryEventRecord).name);
+    }
+
+    function recordOf(name: string): TelemetryEventRecord | undefined {
+      return transport.mock.calls
+        .map((c) => c[0] as TelemetryEventRecord)
+        .find((r) => r.name === name);
+    }
+
+    it("emits claim.started when the operator opens the composer", async () => {
+      renderCard({ clusterState: "active", clusterCategory: "water" });
+      await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
+      const started = recordOf(TelemetryEvents.RestorationClaimStarted);
+      expect(started).toBeDefined();
+      expect(started?.tags).toMatchObject({ cluster_category: "water" });
+    });
+
+    it("emits claim.submitted then claim.completed on a successful claim", async () => {
+      mockFetch({
+        "/v1/official-posts": () =>
+          jsonResponse(
+            {
+              id: "post-1",
+              institutionId: "inst-1",
+              type: "live_update",
+              category: "electricity",
+              title: "Service restored",
+              body: "Power is back.",
+              startsAt: null,
+              endsAt: null,
+              status: "published",
+              relatedClusterId: "cluster-1",
+              isRestorationClaim: true,
+              createdAt: "2026-04-18T09:00:00Z",
+              responseStatus: "restoration_in_progress",
+              severity: null,
+            },
+            201,
+          ),
+      });
+
+      renderCard({ clusterState: "active" });
+      await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Power is back.");
+      await userEvent.click(screen.getByRole("button", { name: /confirm restoration claim/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.RestorationClaimCompleted);
+      });
+
+      const sequence = names().filter((n) => n.startsWith("restoration."));
+      expect(sequence).toEqual([
+        TelemetryEvents.RestorationClaimStarted,
+        TelemetryEvents.RestorationClaimSubmitted,
+        TelemetryEvents.RestorationClaimCompleted,
+      ]);
+    });
+
+    it("emits claim.failed with the API status on a 4xx response", async () => {
+      mockFetch({
+        "/v1/official-posts": () => errorResponse(409, "cluster_not_active"),
+      });
+
+      renderCard({ clusterState: "active" });
+      await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
+      await userEvent.type(screen.getByLabelText(/^body$/i), "Power is back.");
+      await userEvent.click(screen.getByRole("button", { name: /confirm restoration claim/i }));
+
+      await waitFor(() => {
+        expect(names()).toContain(TelemetryEvents.RestorationClaimFailed);
+      });
+      expect(recordOf(TelemetryEvents.RestorationClaimFailed)?.tags).toMatchObject({
+        status: 409,
+      });
+    });
+
+    it("emits claim.cancelled when the operator closes without submitting", async () => {
+      renderCard({ clusterState: "active" });
+      await userEvent.click(screen.getByRole("button", { name: /mark as restored/i }));
+      await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+      expect(names()).toContain(TelemetryEvents.RestorationClaimCancelled);
+    });
   });
 });
