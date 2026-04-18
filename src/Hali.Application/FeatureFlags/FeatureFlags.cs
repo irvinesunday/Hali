@@ -46,6 +46,54 @@ public static class FeatureFlags
             new() { Environment = "Development", Value = true },
         });
 
+    // ── Phase 2 institution dashboard master gate. When off, the shell
+    // renders a locked-out state regardless of the user's grants — used
+    // to roll back the surface without a redeploy. Defaults off; flipped
+    // on in Development via targeting and flipped on per institution in
+    // Staging/Production as the rollout progresses.
+    public static readonly BooleanFeatureFlag InstitutionWebEnabled = new(
+        name: "institution_web.enabled",
+        description: "Master gate for the institution operations dashboard shell.",
+        owner: "@irvinesunday",
+        kind: FlagKind.Pilot,
+        visibility: FlagVisibility.ClientVisible,
+        isPermanent: false,
+        expectedRetirement: new DateOnly(2026, 12, 31),
+        @default: false,
+        targeting: new List<FlagRule>
+        {
+            new() { Environment = "Development", Value = true },
+        });
+
+    // ── Gates the "Post an update" composer on the cluster detail
+    // screen. Separate from the master gate so a failing mutation can
+    // be disabled without losing read-only dashboard visibility.
+    public static readonly BooleanFeatureFlag InstitutionWebPostUpdateEnabled = new(
+        name: "institution_web.post_update.enabled",
+        description: "Enables the official-update composer on cluster detail (institution dashboard).",
+        owner: "@irvinesunday",
+        kind: FlagKind.KillSwitch,
+        visibility: FlagVisibility.ClientVisible,
+        isPermanent: true,
+        expectedRetirement: null,
+        @default: true,
+        targeting: new List<FlagRule>());
+
+    // ── Gates the restoration-claim CTA on the cluster detail screen.
+    // Separate from the post-update flag because restoration triggers
+    // a backend state transition; a failure mode in the transition
+    // pipeline can be isolated without disabling other update kinds.
+    public static readonly BooleanFeatureFlag InstitutionWebRestorationClaimEnabled = new(
+        name: "institution_web.restoration_claim.enabled",
+        description: "Enables the institution restoration-claim action on cluster detail.",
+        owner: "@irvinesunday",
+        kind: FlagKind.KillSwitch,
+        visibility: FlagVisibility.ClientVisible,
+        isPermanent: true,
+        expectedRetirement: null,
+        @default: true,
+        targeting: new List<FlagRule>());
+
     /// <summary>
     /// Complete catalog. Kept in the same declaration order as the fields
     /// above; enumeration order is stable for consumers.
@@ -54,5 +102,8 @@ public static class FeatureFlags
     {
         WorkersPushDispatcherEnabled,
         MobileHomeConditionBadgeEnabled,
+        InstitutionWebEnabled,
+        InstitutionWebPostUpdateEnabled,
+        InstitutionWebRestorationClaimEnabled,
     };
 }

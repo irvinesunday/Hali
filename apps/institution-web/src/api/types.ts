@@ -6,12 +6,10 @@
 //
 // Deliberate omissions from `ClusterDetailResponse` vs the server's
 // `ClusterResponse` schema:
-// - `officialPosts` — rendered by the post-update card landing in #203
-// - `myParticipation` — gating for the restoration CTA landing in #204
-// - `restorationRatio` / `restorationYesVotes` / `restorationTotalVotes`
-//   — consumed alongside the restoration CTA in #204
-// Adding them now would bloat the type without a render path; they
-// slot in when those PRs wire the corresponding UI.
+// - `myParticipation` — citizen-scoped participation gating; the
+//   institution dashboard never acts as a citizen so this field is
+//   surplus to requirements.
+// Adding unused fields bloats the type without a render path.
 //
 // When the OpenAPI → TypeScript codegen pipeline lands, this file
 // deletes in favour of generated types re-exported from
@@ -66,9 +64,70 @@ export interface InstitutionSignalsResponse {
   readonly nextCursor: string | null;
 }
 
+export type OfficialPostType = "live_update" | "scheduled_disruption" | "advisory_public_notice";
+
+export type OfficialPostResponseStatus =
+  | "acknowledged"
+  | "teams_dispatched"
+  | "teams_on_site"
+  | "work_ongoing"
+  | "restoration_in_progress"
+  | "service_restored";
+
+export type OfficialPostSeverity = "minor" | "moderate" | "major";
+
+export type CivicCategorySlug =
+  | "roads"
+  | "transport"
+  | "electricity"
+  | "water"
+  | "environment"
+  | "safety"
+  | "governance"
+  | "infrastructure";
+
+export interface OfficialPostResponse {
+  readonly id: string;
+  readonly institutionId: string;
+  readonly type: OfficialPostType | string;
+  readonly category: CivicCategorySlug | string;
+  readonly title: string;
+  readonly body: string;
+  readonly startsAt: string | null;
+  readonly endsAt: string | null;
+  readonly status: string;
+  readonly relatedClusterId: string | null;
+  readonly isRestorationClaim: boolean;
+  readonly createdAt: string;
+  readonly responseStatus: OfficialPostResponseStatus | null;
+  readonly severity: OfficialPostSeverity | null;
+}
+
+export interface OfficialPostCreateRequest {
+  readonly type: OfficialPostType;
+  readonly category: CivicCategorySlug | string;
+  readonly title: string;
+  readonly body: string;
+  readonly startsAt?: string | null;
+  readonly endsAt?: string | null;
+  readonly relatedClusterId?: string | null;
+  readonly isRestorationClaim?: boolean;
+  readonly localityId?: string | null;
+  readonly corridorName?: string | null;
+  readonly responseStatus?: OfficialPostResponseStatus | null;
+  readonly severity?: OfficialPostSeverity | null;
+}
+
+// `unconfirmed` is emitted by the server for clusters below the MACF
+// gate. The institution dashboard filters those out upstream and never
+// renders an unconfirmed detail page, so the restoration card only
+// branches across the remaining three states. Leaving the string wider
+// than the enum keeps the type tolerant of new server-side states.
+export type ClusterState = "unconfirmed" | "active" | "possible_restoration" | "resolved";
+
 export interface ClusterDetailResponse {
   readonly id: string;
-  readonly state: string;
+  readonly state: ClusterState | string;
   readonly category: string;
   readonly subcategorySlug: string | null;
   readonly title: string | null;
@@ -82,4 +141,8 @@ export interface ClusterDetailResponse {
   readonly resolvedAt: string | null;
   readonly locationLabel: string | null;
   readonly responseStatus: string | null;
+  readonly officialPosts: ReadonlyArray<OfficialPostResponse>;
+  readonly restorationRatio: number | null;
+  readonly restorationYesVotes: number | null;
+  readonly restorationTotalVotes: number | null;
 }
