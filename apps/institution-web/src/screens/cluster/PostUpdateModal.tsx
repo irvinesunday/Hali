@@ -145,6 +145,16 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
       return;
     }
 
+    // The wire contract makes startsAt/endsAt nullable (the backend
+    // accepts a scheduled_disruption with no window) but the UX intent
+    // for this kind is a planned, time-bound disruption — without a
+    // schedule the operator should be picking advisory_public_notice
+    // instead. Enforce here so the form guides the choice.
+    if (type === "scheduled_disruption" && (!startsAt || !endsAt)) {
+      setLocalError("Scheduled disruptions need both a start and end time.");
+      return;
+    }
+
     const request: OfficialPostCreateRequest = {
       type,
       category: clusterCategory,
@@ -152,13 +162,13 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
       body: trimmedBody,
       relatedClusterId: clusterId,
       ...(type === "live_update" && responseStatus ? { responseStatus } : {}),
-      ...(type === "scheduled_disruption" && startsAt
-        ? { startsAt: new Date(startsAt).toISOString() }
+      ...(type === "scheduled_disruption"
+        ? {
+            startsAt: new Date(startsAt).toISOString(),
+            endsAt: new Date(endsAt).toISOString(),
+            ...(severity ? { severity } : {}),
+          }
         : {}),
-      ...(type === "scheduled_disruption" && endsAt
-        ? { endsAt: new Date(endsAt).toISOString() }
-        : {}),
-      ...(type === "scheduled_disruption" && severity ? { severity } : {}),
     };
 
     mutation.mutate(request);
@@ -175,17 +185,14 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${titleInputId}-heading`}
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 py-8"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8"
     >
-      <button
-        type="button"
-        aria-label="Close dialog"
-        onClick={() => {
-          if (!mutation.isPending) onClose();
-        }}
-        className="fixed inset-0 -z-0 cursor-default bg-black/40"
-        tabIndex={-1}
-      />
+      {/*
+        Backdrop is decorative — Escape + the explicit ✕ button drive
+        close, so we do not wire a click-to-close on the backdrop. Doing
+        so previously required a focusable <button> wrapper that some
+        assistive tech surfaced as an interactive control.
+      */}
       <div className="relative w-full max-w-xl rounded-lg border border-border bg-card p-6 shadow-lg">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
@@ -308,6 +315,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
                 <input
                   id={startsAtId}
                   type="datetime-local"
+                  required
                   value={startsAt}
                   onChange={(event) => setStartsAt(event.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20"
@@ -320,6 +328,7 @@ export function PostUpdateModal({ clusterId, clusterCategory, open, onClose }: P
                 <input
                   id={endsAtId}
                   type="datetime-local"
+                  required
                   value={endsAt}
                   onChange={(event) => setEndsAt(event.target.value)}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20"

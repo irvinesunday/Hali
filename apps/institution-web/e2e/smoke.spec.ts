@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ClusterDetailResponse, OfficialPostResponse } from "../src/api/types";
 
 // Shell + dashboard smoke. Asserts the Vite dev server boots, the
 // router mounts the institution shell, every primary nav target
@@ -120,27 +121,7 @@ test.describe("institution-web dashboard", () => {
   });
 
   test("opens cluster detail from the signals list and posts a live update", async ({ page }) => {
-    const clusterPayload = {
-      id: "cluster-1",
-      state: "active",
-      category: "electricity",
-      subcategorySlug: "outage",
-      title: "Power outage on Ngong Road",
-      summary: "Several blocks along Ngong Road report no power.",
-      affectedCount: 18,
-      observingCount: 6,
-      createdAt: "2026-04-18T03:00:00Z",
-      updatedAt: "2026-04-18T05:00:00Z",
-      activatedAt: "2026-04-18T03:30:00Z",
-      possibleRestorationAt: null,
-      resolvedAt: null,
-      locationLabel: "Ngong Road near Adams Arcade, Kilimani",
-      responseStatus: "teams_dispatched",
-      officialPosts: [] as unknown[],
-    };
-
-    let postRequests = 0;
-    const createdPost = {
+    const createdPost: OfficialPostResponse = {
       id: "post-1",
       institutionId: "inst-1",
       type: "live_update",
@@ -156,6 +137,27 @@ test.describe("institution-web dashboard", () => {
       responseStatus: "teams_dispatched",
       severity: null,
     };
+
+    const clusterPayload: ClusterDetailResponse = {
+      id: "cluster-1",
+      state: "active",
+      category: "electricity",
+      subcategorySlug: "outage",
+      title: "Power outage on Ngong Road",
+      summary: "Several blocks along Ngong Road report no power.",
+      affectedCount: 18,
+      observingCount: 6,
+      createdAt: "2026-04-18T03:00:00Z",
+      updatedAt: "2026-04-18T05:00:00Z",
+      activatedAt: "2026-04-18T03:30:00Z",
+      possibleRestorationAt: null,
+      resolvedAt: null,
+      locationLabel: "Ngong Road near Adams Arcade, Kilimani",
+      responseStatus: "teams_dispatched",
+      officialPosts: [],
+    };
+
+    let postRequests = 0;
 
     await page.route("**/v1/institution/signals/cluster-1", (route) =>
       route.fulfill({
