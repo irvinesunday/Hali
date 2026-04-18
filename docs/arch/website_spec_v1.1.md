@@ -11,7 +11,8 @@
 
 ### Campaign domain
 **`https://whatsthehali.com`** — social, word-of-mouth, curiosity entry point
-- Redirects to `gethali.app` (301 permanent)
+- Redirects to `gethali.app` with a temporary redirect initially (302/307)
+- Switch to 301 only once the campaign URL + destination are fully locked and expected to remain stable
 - No content served from this domain directly
 
 ### Usage principle
@@ -25,7 +26,7 @@ The `whatsthehali.com` redirect is a Vercel domain redirect — one config line,
 
 ## 1. Purpose and Scope
 
-The Hali website (`apps/hali-web`) is a **public marketing and conversion site**. Its job is not to explain everything — it is to trigger a behavior: open or download the app.
+The Hali website (planned new workspace `apps/hali-web`, to be created in Phase A) is a **public marketing and conversion site**. Its job is not to explain everything — it is to trigger a behavior: open or download the app.
 
 > This site is a behavior trigger, not an explanation platform.
 > Goal: the visitor thinks "let me check Hali."
@@ -185,7 +186,7 @@ The site must feel real, grounded, and immediately useful. Nothing invented for 
 | Pre-launch | "Get notified at launch" | Email capture modal |
 | Live | "Open Hali" | App Store / Play Store links |
 
-Switch: `NEXT_PUBLIC_APP_LAUNCH_STATE=prelaunch` or `live`. No code change required to flip.
+Switch: `NEXT_PUBLIC_APP_LAUNCH_STATE=prelaunch` or `live`. No code changes are required to flip this, but for a static/SSG Next.js site a rebuild/redeploy on Vercel is required for the change to take effect.
 
 ---
 
