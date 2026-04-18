@@ -11,8 +11,8 @@
 
 ### Campaign domain
 **`https://whatsthehali.com`** — social, word-of-mouth, curiosity entry point
-- Redirects to `gethali.app` with a temporary redirect initially (302/307)
-- Switch to 301 only once the campaign URL + destination are fully locked and expected to remain stable
+- Redirects to `gethali.app` with a temporary redirect initially (307 via Vercel `permanent: false`)
+- Switch to 308 (`permanent: true`) only once the campaign URL + destination are fully locked and expected to remain stable
 - No content served from this domain directly
 
 ### Usage principle
@@ -26,7 +26,7 @@ The `whatsthehali.com` redirect is a Vercel domain redirect — one config line,
 
 ## 1. Purpose and Scope
 
-The Hali website (planned new workspace `apps/hali-web`, to be created in Phase A) is a **public marketing and conversion site**. Its job is not to explain everything — it is to trigger a behavior: open or download the app.
+The Hali website lives in `apps/hali-web` (created in Phase A) and is a **public marketing and conversion site**. Its job is not to explain everything — it is to trigger a behavior: open or download the app.
 
 > This site is a behavior trigger, not an explanation platform.
 > Goal: the visitor thinks "let me check Hali."
