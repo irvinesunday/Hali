@@ -72,9 +72,11 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
                 "Cluster not found.");
         }
 
-        // Idempotency replay — if we've seen this key before, return the
-        // original acknowledgement id rather than emitting a duplicate
-        // outbox row.
+        // Optimistic replay fast-path — most retries will hit this and
+        // skip the Redis write entirely. This is not sufficient on its
+        // own for correctness: two concurrent first-time submits can
+        // both miss here, so the claim below is the actual source of
+        // truth.
         InstitutionAcknowledgementReplay? replay = await _store.TryGetReplayAsync(
             institutionId, clusterId, request.IdempotencyKey, ct);
         if (replay is not null)
@@ -89,6 +91,22 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
         Guid acknowledgementId = Guid.NewGuid();
         DateTime now = DateTime.UtcNow;
 
+        // Atomic claim BEFORE the outbox write closes the race Copilot
+        // flagged on #279: the first writer wins the SET NX, any
+        // concurrent caller that lost the race returns the winner's
+        // descriptor without emitting a second outbox row.
+        (InstitutionAcknowledgementReplay winner, bool claimed) = await _store.TryClaimAsync(
+            institutionId, clusterId, request.IdempotencyKey,
+            acknowledgementId, now, ct);
+
+        if (!claimed)
+        {
+            return new InstitutionAcknowledgeResponseDto(
+                AcknowledgementId: winner.AcknowledgementId,
+                ClusterId: clusterId,
+                RecordedAt: winner.RecordedAt);
+        }
+
         OutboxEvent outbox = new OutboxEvent
         {
             Id = acknowledgementId,
@@ -100,7 +118,8 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
             {
                 cluster_id = clusterId,
                 institution_id = institutionId,
-                action = "acknowledge",
+                action_type = "acknowledge",
+                acknowledgement_id = acknowledgementId,
                 idempotency_key = request.IdempotencyKey,
                 note,
             }),
@@ -108,10 +127,6 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
         };
 
         await _clusterRepo.WriteOutboxEventAsync(outbox, ct);
-
-        await _store.StoreAsync(
-            institutionId, clusterId, request.IdempotencyKey,
-            acknowledgementId, now, ct);
 
         _logger?.LogInformation(
             "{Event} cluster_id={ClusterId} institution_id={InstitutionId} acknowledgement_id={AckId}",

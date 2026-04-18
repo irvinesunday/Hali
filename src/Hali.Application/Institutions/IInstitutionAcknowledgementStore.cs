@@ -16,7 +16,9 @@ public interface IInstitutionAcknowledgementStore
     /// <summary>
     /// Returns the previously recorded acknowledgement for the given
     /// institution + cluster + idempotency-key triplet, or null if no
-    /// acknowledgement has been stored yet.
+    /// acknowledgement has been stored yet. Cheap optimistic fast-path —
+    /// callers must still use <see cref="TryClaimAsync"/> to reserve the
+    /// key before emitting an outbox event.
     /// </summary>
     Task<InstitutionAcknowledgementReplay?> TryGetReplayAsync(
         Guid institutionId,
@@ -25,16 +27,23 @@ public interface IInstitutionAcknowledgementStore
         CancellationToken ct);
 
     /// <summary>
-    /// Persists the acknowledgement descriptor for future replay. Writes
-    /// are idempotent — if a concurrent write has already stored a
-    /// different descriptor, the existing entry is left in place.
+    /// Atomically claims the idempotency key for the supplied candidate
+    /// acknowledgement. Returns the authoritative winner — the caller's
+    /// candidate when the claim succeeded, or the previously stored
+    /// descriptor when a concurrent writer had already stored one under
+    /// the same key. The second return value is <c>true</c> iff the
+    /// caller's candidate won the race; <c>false</c> means the caller
+    /// must NOT emit a new outbox event (a previous writer already did).
+    /// Closes the pre-#207-Phase-4 race where two callers could both
+    /// miss <see cref="TryGetReplayAsync"/> and each write a distinct
+    /// outbox row before either claim was visible.
     /// </summary>
-    Task StoreAsync(
+    Task<(InstitutionAcknowledgementReplay Winner, bool Claimed)> TryClaimAsync(
         Guid institutionId,
         Guid clusterId,
         string idempotencyKey,
-        Guid acknowledgementId,
-        DateTime recordedAt,
+        Guid candidateAcknowledgementId,
+        DateTime candidateRecordedAt,
         CancellationToken ct);
 }
 

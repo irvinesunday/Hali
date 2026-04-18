@@ -60,20 +60,46 @@ public sealed class InstitutionAcknowledgementStore : IInstitutionAcknowledgemen
         return new InstitutionAcknowledgementReplay(ackId, recordedAt);
     }
 
-    public async Task StoreAsync(
+    public async Task<(InstitutionAcknowledgementReplay Winner, bool Claimed)> TryClaimAsync(
         Guid institutionId,
         Guid clusterId,
         string idempotencyKey,
-        Guid acknowledgementId,
-        DateTime recordedAt,
+        Guid candidateAcknowledgementId,
+        DateTime candidateRecordedAt,
         CancellationToken ct)
     {
         string redisKey = BuildKey(institutionId, clusterId, idempotencyKey);
-        string value = $"{acknowledgementId:D}|{recordedAt:O}";
-        // When.NotExists: a concurrent writer that got there first wins,
-        // and we leave their descriptor in place. The caller will re-read
-        // on the next idempotent retry and see the winner's record.
-        await _redis.StringSetAsync(redisKey, value, ReplayTtl, When.NotExists);
+        string candidateValue = $"{candidateAcknowledgementId:D}|{candidateRecordedAt:O}";
+        // SET NX under the same TTL the optimistic replay path observes.
+        // The caller's candidate wins iff SET returns true; otherwise a
+        // concurrent writer got there first and its descriptor is now the
+        // authoritative record — we must return THAT descriptor so the
+        // caller does not write a second outbox event under the same key.
+        bool claimed = await _redis.StringSetAsync(
+            redisKey, candidateValue, ReplayTtl, When.NotExists);
+        if (claimed)
+        {
+            return (
+                new InstitutionAcknowledgementReplay(
+                    candidateAcknowledgementId, candidateRecordedAt),
+                Claimed: true);
+        }
+        InstitutionAcknowledgementReplay? existing = await TryGetReplayAsync(
+            institutionId, clusterId, idempotencyKey, ct);
+        if (existing is null)
+        {
+            // Race edge case: SET NX reported the key existed, but by the
+            // time we read it back the descriptor was gone (TTL on a very
+            // short window, or an operator flush). Fall back to treating
+            // the candidate as the winner — worst case the next retry
+            // will still converge because the outbox event is also
+            // idempotent on its own id.
+            return (
+                new InstitutionAcknowledgementReplay(
+                    candidateAcknowledgementId, candidateRecordedAt),
+                Claimed: true);
+        }
+        return (existing, Claimed: false);
     }
 
     private static string BuildKey(Guid institutionId, Guid clusterId, string clientKey)

@@ -87,6 +87,34 @@ public class ParticipationRepository : IParticipationRepository
 		return snapshot ?? new RestorationCountSnapshot(0, 0, 0);
 	}
 
+	public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+		IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
+	{
+		if (clusterIds.Count == 0)
+		{
+			return new Dictionary<Guid, RestorationCountSnapshot>();
+		}
+		var snapshots = await _db.Participations
+			.Where(p => clusterIds.Contains(p.ClusterId))
+			.GroupBy(p => p.ClusterId)
+			.Select(g => new
+			{
+				ClusterId = g.Key,
+				Yes = g.Count(p => p.ParticipationType == ParticipationType.RestorationYes),
+				No = g.Count(p => p.ParticipationType == ParticipationType.RestorationNo),
+				Total = g.Count(p => p.ParticipationType == ParticipationType.RestorationYes
+					|| p.ParticipationType == ParticipationType.RestorationNo
+					|| p.ParticipationType == ParticipationType.RestorationUnsure),
+			})
+			.ToListAsync(ct);
+		var result = new Dictionary<Guid, RestorationCountSnapshot>(snapshots.Count);
+		foreach (var s in snapshots)
+		{
+			result[s.ClusterId] = new RestorationCountSnapshot(s.Yes, s.No, s.Total);
+		}
+		return result;
+	}
+
 	public async Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
 	{
 		return await _db.Participations

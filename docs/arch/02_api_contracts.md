@@ -413,20 +413,24 @@ Returns paginated `InstitutionClusterSummaryDto` — no CIVIS fields, no PII.
       "clusterId": "uuid",
       "title": "...",
       "category": "electricity",
-      "locationLabel": "...",
-      "area": { "id": "uuid", "name": "South B" },
+      "localityId": "uuid | null",
+      "localityName": "South B",
       "possibleRestorationAt": "...",
-      "restorationRatio": 0.42,
-      "affectedVoteCount": 5,
-      "totalAffectedCount": 12,
-      "threshold": 0.60
+      "restorationYes": 3,
+      "stillAffected": 2,
+      "totalRestorationResponses": 5,
+      "restorationRatio": 0.60
     }
-  ],
-  "nextCursor": "opaque | null"
+  ]
 }
 ```
 Returns clusters in `possible_restoration` state within the caller's
-jurisdiction. Cursor-paginated.
+jurisdiction, enriched with live vote counts from the same
+`RestorationCountSnapshot` the lifecycle engine evaluates. Ordered
+ascending by `possibleRestorationAt`. Returned unpaginated — optional
+`areaId` query parameter scopes to a single jurisdiction.
+`restorationRatio` is `null` when no restoration responses have been
+recorded yet.
 
 **POST /v1/institution/clusters/{clusterId}/acknowledge**
 ```json
@@ -468,15 +472,20 @@ schema (see `src/Hali.Domain/Entities/Clusters/OutboxEvent.cs`):
 
 Canonical event names (Phase 4):
 
+Payload field names are `snake_case` inside the JSON body (the outbox
+writer serialises with the default naming policy). The essentials
+below list the keys exactly as they appear on the wire.
+
 | Event | Aggregate type | Payload essentials |
 |---|---|---|
-| `signal.submitted` | `signal_event` | `signalEventId`, `clusterId`, `joined` |
-| `cluster.created` | `signal_cluster` | `clusterId`, `category`, `localityId` |
-| `cluster.activated` | `signal_cluster` | `clusterId`, `from`, `to`, `reasonCode` |
-| `cluster.possible_restoration` | `signal_cluster` | `clusterId`, `trigger` (`official` or `citizen_vote`) |
-| `cluster.restoration_confirmed` | `signal_cluster` | `clusterId`, `ratio`, `affectedVoteCount` |
-| `cluster.reverted_to_active` | `signal_cluster` | `clusterId`, `reasonCode` |
-| `institution.action.recorded` | `signal_cluster` | `clusterId`, `institutionId`, `actionType` (`acknowledge` for Phase 4), `acknowledgementId` |
+| `signal.submitted` | `signal_event` | `signal_id`, `category` |
+| `cluster.created` | `signal_cluster` | `cluster_id`, `signal_event_id`, `category` |
+| `cluster.activated` | `signal_cluster` | `cluster_id`, `from`, `to`, `reason_code` |
+| `cluster.possible_restoration` | `signal_cluster` | `cluster_id`, `from`, `to`, `trigger` (`citizen_vote` or `institution_restoration_claim`), plus `restoration_yes`/`total_responses`/`ratio` (citizen path) or `post_id` (institution path) |
+| `cluster.restoration_confirmed` | `signal_cluster` | `cluster_id`, `from`, `to`, `trigger`, `restoration_yes`, `total_restoration_responses`, `ratio` |
+| `cluster.reverted_to_active` | `signal_cluster` | `cluster_id`, `from`, `to`, `trigger`, `reason_code`, `restoration_yes`, `still_affected` |
+| `cluster.resolved_by_decay` | `signal_cluster` | `cluster_id`, `from`, `to`, `trigger` (`decay`), `reason_code` |
+| `institution.action.recorded` | `signal_cluster` | `cluster_id`, `institution_id`, `action_type` (`acknowledge` for Phase 4), `acknowledgement_id`, `idempotency_key`, `note` |
 
 `correlationId` and `causationId` are deferred and tracked in a
 follow-up issue — they will be added to the payload body in a later

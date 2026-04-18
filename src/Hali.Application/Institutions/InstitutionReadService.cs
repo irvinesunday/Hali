@@ -209,10 +209,21 @@ public sealed class InstitutionReadService : IInstitutionReadService
         }
 
         IReadOnlyList<InstitutionRestorationRow> rows = await _repo.GetRestorationQueueAsync(localityIds, ct);
+
+        // Bulk snapshot lookup avoids the N+1 query pattern Copilot
+        // flagged on #207: one GroupBy over the queue's cluster ids,
+        // then materialise zero-count snapshots for anything the query
+        // didn't return.
+        Guid[] rowClusterIds = rows.Select(r => r.ClusterId).ToArray();
+        IReadOnlyDictionary<Guid, RestorationCountSnapshot> snapshots =
+            await _participationRepo.GetRestorationCountSnapshotsAsync(rowClusterIds, ct);
+
         var items = new List<InstitutionRestorationQueueItemDto>(rows.Count);
         foreach (var row in rows)
         {
-            RestorationCountSnapshot snapshot = await _participationRepo.GetRestorationCountSnapshotAsync(row.ClusterId, ct);
+            RestorationCountSnapshot snapshot = snapshots.TryGetValue(row.ClusterId, out var s)
+                ? s
+                : new RestorationCountSnapshot(0, 0, 0);
             double? ratio = snapshot.TotalResponses > 0
                 ? (double)snapshot.YesVotes / snapshot.TotalResponses
                 : (double?)null;

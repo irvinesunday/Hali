@@ -94,6 +94,18 @@ public class RestorationEvaluationTests
 
         public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
+
+        public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+            IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
+        {
+            var result = new Dictionary<Guid, RestorationCountSnapshot>(clusterIds.Count);
+            foreach (var id in clusterIds)
+            {
+                var snap = await GetRestorationCountSnapshotAsync(id, ct);
+                if (snap.TotalResponses > 0) result[id] = snap;
+            }
+            return result;
+        }
     }
 
     private static (ParticipationService svc, FakeClusterRepo clusterRepo, FakeParticipationRepo participRepo) BuildSut(SignalCluster cluster)
