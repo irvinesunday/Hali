@@ -3,25 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import CtaButton from '@/components/shared/CtaButton'
 
 const NAV_LINKS = [
   { label: 'How It Works', href: '/how-it-works' },
   { label: 'For Institutions', href: '/for-institutions' },
   { label: 'About', href: '/about' },
 ]
-
-function CtaButton() {
-  const isLive = process.env.NEXT_PUBLIC_APP_LAUNCH_STATE === 'live'
-  const label = isLive ? 'Open Hali' : 'Get notified at launch'
-  return (
-    <button
-      type="button"
-      className="bg-hali-primary text-hali-primary-foreground rounded-full px-5 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-    >
-      {label}
-    </button>
-  )
-}
 
 interface MobileDrawerProps {
   open: boolean
