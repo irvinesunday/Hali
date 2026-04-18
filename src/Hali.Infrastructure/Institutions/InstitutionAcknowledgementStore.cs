@@ -75,31 +75,51 @@ public sealed class InstitutionAcknowledgementStore : IInstitutionAcknowledgemen
         // concurrent writer got there first and its descriptor is now the
         // authoritative record — we must return THAT descriptor so the
         // caller does not write a second outbox event under the same key.
-        bool claimed = await _redis.StringSetAsync(
-            redisKey, candidateValue, ReplayTtl, When.NotExists);
-        if (claimed)
+        //
+        // Edge case: SET NX returns false but a subsequent read finds no
+        // descriptor (key expired or was flushed between the two calls).
+        // We retry the SET NX a bounded number of times; only if the key
+        // is genuinely held do we fall back to returning a non-claimed
+        // descriptor so the caller can surface a retryable failure rather
+        // than silently emitting a duplicate outbox event.
+        const int maxAttempts = 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            return (
-                new InstitutionAcknowledgementReplay(
-                    candidateAcknowledgementId, candidateRecordedAt),
-                Claimed: true);
+            bool claimed = await _redis.StringSetAsync(
+                redisKey, candidateValue, ReplayTtl, When.NotExists);
+            if (claimed)
+            {
+                return (
+                    new InstitutionAcknowledgementReplay(
+                        candidateAcknowledgementId, candidateRecordedAt),
+                    Claimed: true);
+            }
+            InstitutionAcknowledgementReplay? existing = await TryGetReplayAsync(
+                institutionId, clusterId, idempotencyKey, ct);
+            if (existing is not null)
+            {
+                return (existing, Claimed: false);
+            }
+            // SET NX reported the key existed, but by the time we read it
+            // back it was gone. Loop and retry the claim; with TTL in the
+            // hours range this realistically only happens under explicit
+            // Redis flushes or malformed descriptor values.
         }
-        InstitutionAcknowledgementReplay? existing = await TryGetReplayAsync(
-            institutionId, clusterId, idempotencyKey, ct);
-        if (existing is null)
-        {
-            // Race edge case: SET NX reported the key existed, but by the
-            // time we read it back the descriptor was gone (TTL on a very
-            // short window, or an operator flush). Fall back to treating
-            // the candidate as the winner — worst case the next retry
-            // will still converge because the outbox event is also
-            // idempotent on its own id.
-            return (
-                new InstitutionAcknowledgementReplay(
-                    candidateAcknowledgementId, candidateRecordedAt),
-                Claimed: true);
-        }
-        return (existing, Claimed: false);
+        // Exhausted retries: caller should treat as a transient conflict.
+        return (
+            new InstitutionAcknowledgementReplay(
+                candidateAcknowledgementId, candidateRecordedAt),
+            Claimed: false);
+    }
+
+    public async Task ReleaseClaimAsync(
+        Guid institutionId,
+        Guid clusterId,
+        string idempotencyKey,
+        CancellationToken ct)
+    {
+        string redisKey = BuildKey(institutionId, clusterId, idempotencyKey);
+        await _redis.KeyDeleteAsync(redisKey);
     }
 
     private static string BuildKey(Guid institutionId, Guid clusterId, string clientKey)

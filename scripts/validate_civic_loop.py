@@ -160,14 +160,15 @@ def _wait_for_state(
 def _query_outbox(db_url: str, cluster_id: str) -> list[dict[str, Any]]:
     try:
         import psycopg  # type: ignore[import-not-found]
-    except ImportError:
-        # psycopg is a soft dep — skip the DB assertion if unavailable.
-        # The harness prints a notice so CI can decide to install the dep.
-        print(
-            "[warn] psycopg not installed — skipping outbox DB assertion",
-            file=sys.stderr,
-        )
-        return []
+    except ImportError as err:
+        # Non-dry-run mode requires DB assertions — silently skipping the
+        # outbox check here would let `make validate-loop` pass without
+        # ever verifying the taxonomy. Fail fast so operators install the
+        # dependency rather than getting a green run that proved nothing.
+        raise LoopError(
+            "psycopg is required for outbox DB assertions; install it to run "
+            "the civic loop harness in non-dry-run mode"
+        ) from err
     rows: list[dict[str, Any]] = []
     with psycopg.connect(db_url) as conn, conn.cursor() as cur:
         cur.execute(

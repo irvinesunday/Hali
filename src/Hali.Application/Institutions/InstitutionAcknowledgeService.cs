@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -88,7 +90,13 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
         }
 
         string? note = Truncate(request.Note, MaxNoteLength);
-        Guid acknowledgementId = Guid.NewGuid();
+        // Deterministic acknowledgement id derived from the idempotency
+        // triple. A retry after a mid-flight outbox write failure sees the
+        // same id, so the DB PK on outbox_events.id acts as a second line
+        // of defence against duplicate emission even if the Redis claim
+        // release below is itself lost.
+        Guid acknowledgementId = BuildDeterministicAckId(
+            institutionId, clusterId, request.IdempotencyKey);
         DateTime now = DateTime.UtcNow;
 
         // Atomic claim BEFORE the outbox write closes the race Copilot
@@ -126,7 +134,32 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
             OccurredAt = now,
         };
 
-        await _clusterRepo.WriteOutboxEventAsync(outbox, ct);
+        try
+        {
+            await _clusterRepo.WriteOutboxEventAsync(outbox, ct);
+        }
+        catch
+        {
+            // Release the Redis claim so a subsequent retry does NOT hit
+            // the replay fast-path and silently skip the outbox write.
+            // Pair with the deterministic id above: if two retries race
+            // past the release and both re-claim, the DB primary-key
+            // constraint on outbox_events.id rejects the second insert.
+            try
+            {
+                await _store.ReleaseClaimAsync(
+                    institutionId, clusterId, request.IdempotencyKey, ct);
+            }
+            catch (Exception releaseEx)
+            {
+                _logger?.LogWarning(
+                    releaseEx,
+                    "Failed to release institution acknowledgement claim after outbox write error (cluster_id={ClusterId} institution_id={InstitutionId})",
+                    clusterId,
+                    institutionId);
+            }
+            throw;
+        }
 
         _logger?.LogInformation(
             "{Event} cluster_id={ClusterId} institution_id={InstitutionId} acknowledgement_id={AckId}",
@@ -148,5 +181,21 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
             return null;
         }
         return value.Length <= max ? value : value[..max];
+    }
+
+    private static Guid BuildDeterministicAckId(
+        Guid institutionId, Guid clusterId, string idempotencyKey)
+    {
+        // Namespaced SHA-256 of the idempotency triple, truncated and
+        // tagged with RFC 4122 variant + version-5 bits so the value is
+        // a legal UUID that round-trips through PostgreSQL's uuid type.
+        string canonical =
+            $"hali.institution.ack|{institutionId:N}|{clusterId:N}|{idempotencyKey}";
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
+        byte[] bytes = new byte[16];
+        Array.Copy(hash, bytes, 16);
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes);
     }
 }

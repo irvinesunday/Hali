@@ -45,6 +45,20 @@ public interface IInstitutionAcknowledgementStore
         Guid candidateAcknowledgementId,
         DateTime candidateRecordedAt,
         CancellationToken ct);
+
+    /// <summary>
+    /// Releases a previously successful claim so a caller can safely retry
+    /// the outbox write. Invoked by <see cref="InstitutionAcknowledgeService"/>
+    /// when <c>WriteOutboxEventAsync</c> throws after a claim has already
+    /// been recorded — without this, subsequent retries would hit the
+    /// replay fast-path and silently drop the <c>institution.action.recorded</c>
+    /// event. No-op when the key is not present.
+    /// </summary>
+    Task ReleaseClaimAsync(
+        Guid institutionId,
+        Guid clusterId,
+        string idempotencyKey,
+        CancellationToken ct);
 }
 
 /// <summary>
