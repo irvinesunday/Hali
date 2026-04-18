@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getInstitutionSignals } from "../api/institution";
-import type { InstitutionSignalListItem } from "../api/types";
+import type { InstitutionSignalListItem, InstitutionSignalsResponse } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
@@ -14,10 +14,18 @@ import { formatDurationSeconds } from "./signalFormatting";
 // them client-side. Each row links to the cluster detail route
 // (`/signals/:clusterId`), which is the entry point the #202
 // acceptance criteria call for.
+//
+// Pagination uses React Query's `useInfiniteQuery` driven by the
+// server's cursor. The first page fetches with no cursor; subsequent
+// pages pass `nextCursor` from the previous page. The "Load more"
+// button is hidden once the server reports the list is exhausted
+// (nextCursor === null).
 export function SignalsScreen() {
-  const signals = useQuery({
+  const signals = useInfiniteQuery<InstitutionSignalsResponse, Error>({
     queryKey: institutionKeys.signalsList({}),
-    queryFn: () => getInstitutionSignals(),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => getInstitutionSignals({ cursor: pageParam as string | undefined }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
 
   if (signals.isLoading) {
@@ -36,7 +44,8 @@ export function SignalsScreen() {
     );
   }
 
-  if (signals.data.items.length === 0) {
+  const items = signals.data.pages.flatMap((page) => page.items);
+  if (items.length === 0) {
     return (
       <EmptyState
         title="No active signals in your scope"
@@ -46,12 +55,24 @@ export function SignalsScreen() {
   }
 
   return (
-    <section aria-label="Live signals" className="space-y-3">
+    <section aria-label="Live signals" className="space-y-4">
       <ul className="space-y-3">
-        {signals.data.items.map((item) => (
+        {items.map((item) => (
           <SignalRow key={item.id} item={item} />
         ))}
       </ul>
+      {signals.hasNextPage ? (
+        <button
+          type="button"
+          onClick={() => {
+            void signals.fetchNextPage();
+          }}
+          disabled={signals.isFetchingNextPage}
+          className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-wait disabled:opacity-60"
+        >
+          {signals.isFetchingNextPage ? "Loading more…" : "Load more"}
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -10,7 +10,7 @@ export const institutionKeys = {
   all: ["institution"] as const,
   overview: () => [...institutionKeys.all, "overview"] as const,
   signalsAll: () => [...institutionKeys.all, "signals"] as const,
-  signalsList: (params: { areaId?: string; state?: string; cursor?: string }) =>
+  signalsList: (params: { areaId?: string; state?: string; limit?: number }) =>
     [...institutionKeys.signalsAll(), "list", params] as const,
   signalDetail: (clusterId: string) =>
     [...institutionKeys.signalsAll(), "detail", clusterId] as const,

@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import type { InstitutionSignalsResponse } from "../api/types";
 import { errorResponse, jsonResponse, mockFetch, restoreFetch } from "../test/mockFetch";
@@ -85,5 +86,37 @@ describe("SignalsScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/couldn't load your signals/i);
     });
+  });
+
+  it("loads additional pages via the Load more button when the server returns a cursor", async () => {
+    const firstPage: InstitutionSignalsResponse = {
+      items: [sampleSignals.items[0]!],
+      nextCursor: "page-2",
+    };
+    const secondPage: InstitutionSignalsResponse = {
+      items: [sampleSignals.items[1]!],
+      nextCursor: null,
+    };
+
+    mockFetch({
+      "/v1/institution/signals": (url) => {
+        if (url.includes("cursor=page-2")) return jsonResponse(secondPage);
+        return jsonResponse(firstPage);
+      },
+    });
+
+    renderWithProviders({ pathname: "/signals" });
+
+    const firstRow = await screen.findByText(/power outage on ngong road/i);
+    expect(firstRow).toBeInTheDocument();
+
+    const loadMore = screen.getByRole("button", { name: /load more/i });
+    await userEvent.click(loadMore);
+
+    await waitFor(() => {
+      expect(screen.getByText(/water supply intermittent/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
   });
 });

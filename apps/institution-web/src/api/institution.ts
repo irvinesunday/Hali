@@ -19,6 +19,7 @@ export interface GetInstitutionSignalsParams {
   readonly areaId?: string;
   readonly state?: string;
   readonly cursor?: string;
+  readonly limit?: number;
 }
 
 export function getInstitutionSignals(
@@ -28,6 +29,7 @@ export function getInstitutionSignals(
   if (params.areaId) search.set("areaId", params.areaId);
   if (params.state) search.set("state", params.state);
   if (params.cursor) search.set("cursor", params.cursor);
+  if (typeof params.limit === "number") search.set("limit", String(params.limit));
   const query = search.toString();
   const path = query ? `/v1/institution/signals?${query}` : "/v1/institution/signals";
   return apiFetch<InstitutionSignalsResponse>(path);

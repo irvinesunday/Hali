@@ -1,13 +1,22 @@
-// TypeScript mirrors of the C# DTOs under `Hali.Contracts.Institutions.*`
-// and `Hali.Contracts.Clusters.ClusterResponseDto`. These are
-// hand-written locally because `@hali/contracts` does not yet publish
-// institution types — see #202 notes and the follow-up work that will
-// move these into a generated contracts package.
+// Hand-written TypeScript shapes for the institution dashboard. These
+// are a UI-focused *subset* of the full backend contract — they
+// cover the fields this PR renders, not every property documented in
+// `02_openapi.yaml` or `Hali.Contracts.Institutions.*` /
+// `Hali.Contracts.Clusters.ClusterResponseDto`.
 //
-// When the OpenAPI → TypeScript codegen pipeline lands, these types
-// will be deleted and re-exported from `@hali/contracts`. Keep the
-// shape aligned with `02_openapi.yaml` paths under `/v1/institution/*`
-// and `GET /v1/clusters/{id}` so the swap is drop-in.
+// Deliberate omissions from `ClusterDetailResponse` vs the server's
+// `ClusterResponse` schema:
+// - `officialPosts` — rendered by the post-update card landing in #203
+// - `myParticipation` — gating for the restoration CTA landing in #204
+// - `restorationRatio` / `restorationYesVotes` / `restorationTotalVotes`
+//   — consumed alongside the restoration CTA in #204
+// Adding them now would bloat the type without a render path; they
+// slot in when those PRs wire the corresponding UI.
+//
+// When the OpenAPI → TypeScript codegen pipeline lands, this file
+// deletes in favour of generated types re-exported from
+// `@hali/contracts`. Keep field names aligned with the OpenAPI
+// `components/schemas` so the swap is drop-in.
 
 export interface InstitutionOverviewSummary {
   readonly activeSignals: number;

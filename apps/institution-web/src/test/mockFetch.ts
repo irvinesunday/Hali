@@ -4,7 +4,9 @@ import { vi } from "vitest";
 // stub `globalThis.fetch` per test with a route table. Unknown URLs
 // throw so a test can't accidentally pass against a real network
 // call. Always call `restoreFetch()` in `afterEach` to keep tests
-// isolated.
+// isolated — it delegates to Vitest's `unstubAllGlobals`, which
+// restores the platform's original `fetch` (Node 22+ ships a native
+// one) rather than leaving `undefined` behind.
 
 type RouteHandler = (url: string, init?: RequestInit) => Response | Promise<Response>;
 
@@ -24,7 +26,7 @@ export function mockFetch(routes: RouteTable): void {
     }
     throw new Error(`Unmocked fetch: ${url}`);
   });
-  Object.assign(globalThis, { fetch: fetchMock });
+  vi.stubGlobal("fetch", fetchMock);
 }
 
 export function jsonResponse<T>(body: T, status = 200): Response {
@@ -42,5 +44,5 @@ export function errorResponse(status: number, message = "Server error"): Respons
 }
 
 export function restoreFetch(): void {
-  Object.assign(globalThis, { fetch: undefined });
+  vi.unstubAllGlobals();
 }
