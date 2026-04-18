@@ -410,17 +410,28 @@ CREATE TABLE IF NOT EXISTS signal_events (
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_events_locality_category_time ON signal_events(locality_id, category, occurred_at)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_signal_events_spatial_cell_time ON signal_events(spatial_cell_id, occurred_at)");
 
-        // Shared outbox_events (used by both Signals and Clusters contexts)
+        // Shared outbox_events (used by both Signals and Clusters contexts).
+        // schema_version added by #207 Phase 4 — see the
+        // B10_AddSchemaVersionToOutboxEvents EF migration. Every producer
+        // writes "1.0"; the DEFAULT here keeps pre-existing INSERTs safe
+        // against a future column addition.
         await ExecAsync(conn, @"
 CREATE TABLE IF NOT EXISTS outbox_events (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     aggregate_type varchar(100) NOT NULL,
     aggregate_id uuid NOT NULL,
     event_type varchar(100) NOT NULL,
+    schema_version varchar(20) NOT NULL DEFAULT '1.0',
     payload jsonb,
     occurred_at timestamptz NOT NULL DEFAULT now(),
     published_at timestamptz
 )");
+        // Idempotent backfill for test DBs that already have the table
+        // from a previous run — CREATE TABLE IF NOT EXISTS would no-op on
+        // those, leaving the column missing.
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ADD COLUMN IF NOT EXISTS schema_version varchar(20) NOT NULL DEFAULT '1.0'");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_outbox_events_unpublished ON outbox_events(occurred_at) WHERE published_at IS NULL");
 
         // Clusters tables

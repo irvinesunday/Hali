@@ -74,6 +74,14 @@ internal sealed class FakeClusterRepo : IClusterRepository
 		return Task.CompletedTask;
 	}
 
+	public Task ApplyClusterTransitionAsync(SignalCluster cluster, CivisDecision? decision, OutboxEvent outboxEvent, CancellationToken ct)
+	{
+		Updates.Add(cluster);
+		if (decision != null) Decisions.Add(decision);
+		OutboxEvents.Add(outboxEvent);
+		return Task.CompletedTask;
+	}
+
 	public Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
 		=> Task.FromResult((IReadOnlyList<OutboxEvent>)OutboxEvents.FindAll(e => e.PublishedAt == null));
 

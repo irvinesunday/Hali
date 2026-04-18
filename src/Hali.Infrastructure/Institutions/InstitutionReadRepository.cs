@@ -493,4 +493,52 @@ SELECT EXISTS(
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is bool b && b;
     }
+
+    public async Task<IReadOnlyList<InstitutionRestorationRow>> GetRestorationQueueAsync(
+        IReadOnlyList<Guid> localityIds, CancellationToken ct)
+    {
+        if (localityIds.Count == 0)
+        {
+            return Array.Empty<InstitutionRestorationRow>();
+        }
+
+        // Clusters currently in possible_restoration inside the caller's
+        // scope — ordered ascending by possible_restoration_at so operators
+        // see the clusters that have waited longest at the top. The service
+        // layer enriches each row with a live RestorationCountSnapshot so
+        // the dashboard displays the same evidence the lifecycle engine
+        // evaluates. Using the authoritative state column (not outbox rows)
+        // keeps the queue durable across outbox retention changes.
+        const string sql = @"
+SELECT sc.id,
+       COALESCE(sc.title, 'Signal in scope') AS title,
+       sc.category::text AS category,
+       sc.locality_id,
+       loc.ward_name AS locality_name,
+       sc.possible_restoration_at
+FROM signal_clusters sc
+LEFT JOIN localities loc ON loc.id = sc.locality_id
+WHERE sc.state = 'possible_restoration'
+  AND sc.locality_id = ANY(@lids)
+  AND sc.possible_restoration_at IS NOT NULL
+ORDER BY sc.possible_restoration_at ASC, sc.id ASC;";
+
+        await using var conn = await _dataSources.Advisories.OpenConnectionAsync(ct);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("lids", (object)localityIds.ToArray());
+
+        var rows = new List<InstitutionRestorationRow>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rows.Add(new InstitutionRestorationRow(
+                ClusterId: reader.GetGuid(0),
+                Title: reader.GetString(1),
+                Category: reader.GetString(2),
+                LocalityId: reader.IsDBNull(3) ? (Guid?)null : reader.GetGuid(3),
+                LocalityName: reader.IsDBNull(4) ? null : reader.GetString(4),
+                PossibleRestorationAt: reader.GetDateTime(5)));
+        }
+        return rows;
+    }
 }

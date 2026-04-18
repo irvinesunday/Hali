@@ -17,7 +17,7 @@ import { RestorationActionCard } from "./cluster/RestorationActionCard";
 import { formatDurationSeconds } from "./signalFormatting";
 
 // Institution-scoped cluster detail. Pulls from
-// `GET /v1/institution/signals/:clusterId`, which the backend
+// `GET /v1/institution/clusters/:clusterId`, which the backend
 // restricts to clusters in the caller's jurisdiction — an out-of-
 // scope id returns 404, which surfaces here as the same error card
 // as a transport failure (we deliberately don't leak the distinction

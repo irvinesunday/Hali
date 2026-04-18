@@ -44,6 +44,13 @@ public class EvaluatePossibleRestorationJobTests
         public Task UpdateClusterAsync(SignalCluster c, CancellationToken ct) { Updates.Add(c); return Task.CompletedTask; }
         public Task WriteCivisDecisionAsync(CivisDecision d, CancellationToken ct) { Decisions.Add(d); return Task.CompletedTask; }
         public Task WriteOutboxEventAsync(OutboxEvent e, CancellationToken ct) { OutboxEvents.Add(e); return Task.CompletedTask; }
+        public Task ApplyClusterTransitionAsync(SignalCluster cluster, CivisDecision? decision, OutboxEvent outboxEvent, CancellationToken ct)
+        {
+            Updates.Add(cluster);
+            if (decision != null) Decisions.Add(decision);
+            OutboxEvents.Add(outboxEvent);
+            return Task.CompletedTask;
+        }
 
         public Task<IReadOnlyList<SignalCluster>> FindCandidateClustersAsync(IEnumerable<string> s, CivicCategory c, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
@@ -95,6 +102,18 @@ public class EvaluatePossibleRestorationJobTests
         public Task UpdateContextAsync(Guid id, string text, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
+
+        public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+            IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
+        {
+            var result = new Dictionary<Guid, RestorationCountSnapshot>(clusterIds.Count);
+            foreach (var id in clusterIds)
+            {
+                var snap = await GetRestorationCountSnapshotAsync(id, ct);
+                if (snap.TotalResponses > 0) result[id] = snap;
+            }
+            return result;
+        }
     }
 
     private static CivisOptions DefaultOptions => new CivisOptions

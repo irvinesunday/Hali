@@ -29,10 +29,14 @@ public class InstitutionController : ControllerBase
     private const int ActivityDefaultLimit = 15;
 
     private readonly IInstitutionReadService _reads;
+    private readonly IInstitutionAcknowledgeService _acks;
 
-    public InstitutionController(IInstitutionReadService reads)
+    public InstitutionController(
+        IInstitutionReadService reads,
+        IInstitutionAcknowledgeService acks)
     {
         _reads = reads;
+        _acks = acks;
     }
 
     [HttpGet("overview")]
@@ -45,8 +49,14 @@ public class InstitutionController : ControllerBase
         return Ok(dto);
     }
 
-    [HttpGet("signals")]
-    public async Task<ActionResult<InstitutionSignalsResponseDto>> GetSignals(
+    // Route rename (#207): `/v1/institution/signals*` → `/v1/institution/clusters*`.
+    // The public contract exposes SignalCluster objects, not raw SignalEvents;
+    // the older `signals` segment was inconsistent with every other Phase 1
+    // surface (citizen app, OpenAPI) and is retired. Internal DTO + service
+    // names (InstitutionSignalsResponseDto, GetSignalsAsync) are intentionally
+    // left unchanged to bound blast radius — only the wire path moved.
+    [HttpGet("clusters")]
+    public async Task<ActionResult<InstitutionSignalsResponseDto>> GetClusters(
         [FromQuery] Guid? areaId,
         [FromQuery] string? state,
         [FromQuery] string? cursor,
@@ -59,8 +69,8 @@ public class InstitutionController : ControllerBase
         return Ok(dto);
     }
 
-    [HttpGet("signals/{clusterId:guid}")]
-    public async Task<ActionResult<ClusterResponseDto>> GetSignalDetail(
+    [HttpGet("clusters/{clusterId:guid}")]
+    public async Task<ActionResult<ClusterResponseDto>> GetClusterDetail(
         Guid clusterId,
         CancellationToken ct)
     {
@@ -88,6 +98,45 @@ public class InstitutionController : ControllerBase
         InstitutionActivityResponseDto dto = await _reads.GetActivityAsync(
             institutionId, areaId, cursor, limit, ct);
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// Queue of clusters currently in <c>possible_restoration</c> inside
+    /// the caller's scope, enriched with live restoration vote counts so
+    /// the dashboard shows the same evidence the lifecycle engine
+    /// evaluates (#207 Phase 4). Ordered ascending by
+    /// <c>possible_restoration_at</c> so the clusters that have sat
+    /// longest surface at the top.
+    /// </summary>
+    [HttpGet("restoration")]
+    public async Task<ActionResult<InstitutionRestorationQueueResponseDto>> GetRestorationQueue(
+        [FromQuery] Guid? areaId,
+        CancellationToken ct)
+    {
+        Guid institutionId = ResolveInstitutionId();
+        InstitutionRestorationQueueResponseDto dto = await _reads.GetRestorationQueueAsync(
+            institutionId, areaId, ct);
+        return Ok(dto);
+    }
+
+    /// <summary>
+    /// Records an explicit institution acknowledgement on a cluster in
+    /// scope (#207 Phase 4). Emits an <c>institution.action.recorded</c>
+    /// outbox event. Passive view tracking is deliberately deferred;
+    /// this endpoint only records explicit operator intent. Idempotent on
+    /// <c>idempotencyKey</c> — resubmitting returns the existing record
+    /// without a duplicate event.
+    /// </summary>
+    [HttpPost("clusters/{clusterId:guid}/acknowledge")]
+    public async Task<ActionResult<InstitutionAcknowledgeResponseDto>> AcknowledgeCluster(
+        Guid clusterId,
+        [FromBody] InstitutionAcknowledgeRequestDto request,
+        CancellationToken ct)
+    {
+        Guid institutionId = ResolveInstitutionId();
+        InstitutionAcknowledgeResponseDto dto = await _acks.AcknowledgeAsync(
+            institutionId, clusterId, request, ct);
+        return Accepted(dto);
     }
 
     // ------------------------------------------------------------------

@@ -16,7 +16,7 @@ import { emitEvent } from "../../telemetry/emit";
 import { TelemetryEvents } from "../../telemetry/events";
 
 // Modal-driven composer for the three official-update kinds defined by
-// `POST /v1/official-posts`:
+// `POST /v1/institution/official-updates`:
 //
 //  - `live_update` — optional `responseStatus` from the canonical 6-value
 //    set; other type-specific fields rejected by the backend.

@@ -35,7 +35,7 @@ public sealed class ForbiddenRoleEnvelopeTests : IntegrationTestBase
     [Theory]
     // OfficialPostsController: [Authorize(Roles = "institution")] — exercised
     // with a citizen-role JWT (the common wrong-role case for this endpoint).
-    [InlineData("POST", "/v1/official-posts", "citizen", "{}")]
+    [InlineData("POST", "/v1/institution/official-updates", "citizen", "{}")]
     // AdminController: class-level [Authorize(Roles = "admin")] — exercised
     // with both a citizen-role and institution-role JWT to cover the two
     // realistic wrong-role shapes a caller can present on admin routes.

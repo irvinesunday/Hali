@@ -305,10 +305,15 @@ create table if not exists outbox_events (
     aggregate_type varchar(60) not null,
     aggregate_id uuid not null,
     event_type varchar(80) not null,
+    schema_version varchar(20) not null default '1.0',
     payload jsonb not null,
     occurred_at timestamptz not null default now(),
     published_at timestamptz
 );
+-- Back-compat for CI DBs that already created outbox_events before #207
+-- Phase 4 added schema_version. The EF migration
+-- B10_AddSchemaVersionToOutboxEvents handles the production path.
+alter table outbox_events add column if not exists schema_version varchar(20) not null default '1.0';
 create index if not exists ix_outbox_unpublished on outbox_events(published_at) where published_at is null;
 
 -- PostGIS GiST spatial indexes — required for ST_DWithin proximity queries in clustering service

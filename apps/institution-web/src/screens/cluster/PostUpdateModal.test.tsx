@@ -46,7 +46,7 @@ describe("PostUpdateModal", () => {
   it("submits a live_update request with the chosen response status", async () => {
     const captured: { url?: string; init?: RequestInit } = {};
     mockFetch({
-      "/v1/official-posts": (url, init) => {
+      "/v1/institution/official-updates": (url, init) => {
         captured.url = url;
         captured.init = init;
         return jsonResponse(
@@ -100,7 +100,7 @@ describe("PostUpdateModal", () => {
   it("reveals severity + schedule fields when scheduled_disruption is picked", async () => {
     const captured: { init?: RequestInit } = {};
     mockFetch({
-      "/v1/official-posts": (_url, init) => {
+      "/v1/institution/official-updates": (_url, init) => {
         captured.init = init;
         return jsonResponse(
           {
@@ -154,7 +154,7 @@ describe("PostUpdateModal", () => {
   it("omits response status and severity for an advisory post", async () => {
     const captured: { init?: RequestInit } = {};
     mockFetch({
-      "/v1/official-posts": (_url, init) => {
+      "/v1/institution/official-updates": (_url, init) => {
         captured.init = init;
         return jsonResponse(
           {
@@ -200,7 +200,7 @@ describe("PostUpdateModal", () => {
 
   it("surfaces a server error without closing the modal", async () => {
     mockFetch({
-      "/v1/official-posts": () => errorResponse(400, "invalid_category"),
+      "/v1/institution/official-updates": () => errorResponse(400, "invalid_category"),
     });
 
     const { onClose } = renderModal();
@@ -254,7 +254,7 @@ describe("PostUpdateModal", () => {
 
     it("emits create.submitted then create.completed on a successful post", async () => {
       mockFetch({
-        "/v1/official-posts": () =>
+        "/v1/institution/official-updates": () =>
           jsonResponse(
             {
               id: "post-1",
@@ -299,7 +299,7 @@ describe("PostUpdateModal", () => {
 
     it("emits create.failed with the API status on a 4xx response", async () => {
       mockFetch({
-        "/v1/official-posts": () => errorResponse(400, "invalid_category"),
+        "/v1/institution/official-updates": () => errorResponse(400, "invalid_category"),
       });
 
       renderModal();
@@ -329,7 +329,7 @@ describe("PostUpdateModal", () => {
 
     it("does not emit draft.cancelled when the modal closes after a failed submit", async () => {
       mockFetch({
-        "/v1/official-posts": () => errorResponse(400, "invalid_category"),
+        "/v1/institution/official-updates": () => errorResponse(400, "invalid_category"),
       });
 
       const onClose = vi.fn();
@@ -350,7 +350,7 @@ describe("PostUpdateModal", () => {
 
     it("does not emit draft.cancelled after a successful post", async () => {
       mockFetch({
-        "/v1/official-posts": () =>
+        "/v1/institution/official-updates": () =>
           jsonResponse(
             {
               id: "post-1",
