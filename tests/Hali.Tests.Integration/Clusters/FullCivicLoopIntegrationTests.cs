@@ -134,7 +134,7 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
                 Id                    = clusterId,
                 LocalityId            = FakeLocalityLookupRepository.TestLocalityId,
                 State                 = SignalState.PossibleRestoration,
-                Category              = "water",
+                Category              = CivicCategory.Water,
                 Title                 = "Water supply cut off.",
                 SpatialCellId         = "8a390d24abfffff",
                 FirstSeenAt           = DateTime.UtcNow.AddHours(-1),
@@ -142,7 +142,7 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
                 PossibleRestorationAt = DateTime.UtcNow.AddMinutes(-10),
                 UpdatedAt             = DateTime.UtcNow,
                 RawConfirmationCount  = 2,
-                TemporalType          = TemporalType.Temporary,
+                TemporalType          = "temporary",
             };
 
             await evaluationService.EvaluateAsync(clusterEntity);
@@ -184,7 +184,7 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
                 Id                    = clusterId,
                 LocalityId            = FakeLocalityLookupRepository.TestLocalityId,
                 State                 = SignalState.PossibleRestoration,
-                Category              = "water",
+                Category              = CivicCategory.Water,
                 Title                 = "Test cluster",
                 SpatialCellId         = "8a390d24abfffff",
                 FirstSeenAt           = DateTime.UtcNow.AddHours(-1),
@@ -192,7 +192,7 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
                 PossibleRestorationAt = DateTime.UtcNow.AddMinutes(-5),
                 UpdatedAt             = DateTime.UtcNow,
                 RawConfirmationCount  = 1,
-                TemporalType          = TemporalType.Temporary,
+                TemporalType          = "temporary",
             };
 
             await evaluationService.EvaluateAsync(clusterEntity);
