@@ -126,6 +126,7 @@ public static class ServiceCollectionExtensions
 		services.AddSingleton<IH3CellService, H3CellService>();
 		services.AddScoped<IClusterRepository, ClusterRepository>();
 		services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
+		services.AddScoped<IRestorationEvaluationService, RestorationEvaluationService>();
 		services.AddScoped<IClusteringService, ClusteringService>();
 		services.AddScoped<IOutboxRelayService, OutboxRelayService>();
 		services.Configure<CivisOptions>(config.GetSection("Civis"));

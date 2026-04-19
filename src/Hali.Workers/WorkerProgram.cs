@@ -17,13 +17,10 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// PushNotificationsMetrics is a hard dependency of ExpoPushNotificationService,
-// which is resolved inside SendPushNotificationsJob. Registered as a singleton
-// so its underlying Meter is shared across every scoped send-service instance
-// — matching the API composition root's pattern for the other observability
-// meters. Safe to register here even though no OTel exporter is wired into
-// the worker host: the Meter still exists in-process at zero cost.
+// Metrics singletons — the Meter still exists in-process at zero cost when
+// no OTel exporter is wired, matching the API composition root's pattern.
 builder.Services.AddSingleton<Hali.Application.Observability.PushNotificationsMetrics>();
+builder.Services.AddSingleton<Hali.Application.Observability.ClustersMetrics>();
 
 // Notification services needed by workers
 builder.Services.AddScoped<IFollowService, Hali.Application.Notifications.FollowService>();

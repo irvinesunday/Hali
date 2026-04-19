@@ -19,11 +19,16 @@ public class OfficialPostsService : IOfficialPostsService
 {
     private readonly IOfficialPostRepository _repo;
     private readonly IClusterRepository _clusters;
+    private readonly ClustersMetrics? _metrics;
 
-    public OfficialPostsService(IOfficialPostRepository repo, IClusterRepository clusters)
+    public OfficialPostsService(
+        IOfficialPostRepository repo,
+        IClusterRepository clusters,
+        ClustersMetrics? metrics = null)
     {
         _repo = repo;
         _clusters = clusters;
+        _metrics = metrics;
     }
 
     public async Task<OfficialPostResponseDto> CreatePostAsync(
@@ -142,6 +147,11 @@ public class OfficialPostsService : IOfficialPostsService
                     OccurredAt = now
                 };
                 await _clusters.ApplyClusterTransitionAsync(cluster, decision, outboxEvent, ct);
+
+                _metrics?.ClusterLifecycleTransitionsTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagFromState, ClustersMetrics.StateActive),
+                    new KeyValuePair<string, object?>(ClustersMetrics.TagToState, ClustersMetrics.StatePossibleRestoration));
             }
         }
 
