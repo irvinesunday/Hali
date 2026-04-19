@@ -8,6 +8,7 @@ using Hali.Api.Middleware;
 using Hali.Api.Observability;
 using Microsoft.AspNetCore.DataProtection;
 using Hali.Application.Auth;
+using Hali.Application.Observability;
 using Hali.Application.Errors;
 using Hali.Application.Institutions;
 using Hali.Application.Notifications;
@@ -155,6 +156,12 @@ else
         "[data-protection] WARNING: keys are NOT protected at rest — " +
         "set DataProtection:CertPath for staging/production");
 }
+// Correlation context — provides the live request correlation id to services
+// that write outbox events so every event carries the request's trace id
+// rather than an unrelated, freshly-minted GUID.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICorrelationContext, CorrelationContext>();
+
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInstitutionService, InstitutionService>();
@@ -421,25 +428,40 @@ app.UseAuthorization();
 app.UseMiddleware<InstitutionCsrfMiddleware>();
 app.MapControllers();
 
-// GET /health
-app.MapGet("/health", async (Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckService healthService) =>
+// GET /health — liveness probe: returns 200 while the process is up.
+// No dependency checks run here; a dependency outage does NOT indicate
+// the process should be restarted. Load balancers that need dependency
+// health should call /ready instead.
+//
+// Backwards compatibility: the response shape is preserved so existing
+// LB/monitoring integrations do not require reconfiguration.
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
-    var report = await healthService.CheckHealthAsync();
-    var dbStatus = report.Entries.TryGetValue("database", out var db) ? db.Status.ToString().ToLowerInvariant() : "unknown";
-    var redisStatus = report.Entries.TryGetValue("redis", out var redis) ? redis.Status.ToString().ToLowerInvariant() : "unknown";
-
-    var result = new
+    // Liveness = no dependency checks. The predicate excludes all named
+    // checks (db, cache) so the endpoint always returns Healthy as long
+    // as the process is running.
+    Predicate = _ => false,
+    ResponseWriter = async (ctx, _) =>
     {
-        status = report.Status == HealthStatus.Healthy ? "healthy" : "unhealthy",
-        database = dbStatus == "healthy" ? "connected" : dbStatus,
-        redis = redisStatus == "healthy" ? "connected" : redisStatus,
-        version = "1.0.0",
-        timestamp = DateTime.UtcNow.ToString("o")
-    };
+        var result = new
+        {
+            status = "healthy",
+            database = "unknown",
+            redis = "unknown",
+            version = "1.0.0",
+            timestamp = DateTime.UtcNow.ToString("o")
+        };
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(result));
+    }
+});
 
-    return report.Status == HealthStatus.Healthy
-        ? Results.Ok(result)
-        : Results.Json(result, statusCode: 503);
+// GET /ready — readiness probe: returns 200 only when Postgres and Redis
+// are reachable. Traffic should not be routed to a pod until this returns
+// 200. A 503 response means the pod is alive but not yet ready to serve.
+app.MapHealthChecks("/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("db") || r.Tags.Contains("cache"),
 });
 
 app.Run();

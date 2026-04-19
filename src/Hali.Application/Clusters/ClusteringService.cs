@@ -27,13 +27,16 @@ public class ClusteringService : IClusteringService
 
     private readonly SignalsMetrics? _metrics;
 
+    private readonly ICorrelationContext? _correlationContext;
+
     public ClusteringService(
         IClusterRepository repo,
         IH3CellService h3,
         ICivisEvaluationService civis,
         IOptions<CivisOptions> options,
         ILogger<ClusteringService>? logger = null,
-        SignalsMetrics? metrics = null)
+        SignalsMetrics? metrics = null,
+        ICorrelationContext? correlationContext = null)
     {
         _repo = repo;
         _h3 = h3;
@@ -41,6 +44,7 @@ public class ClusteringService : IClusteringService
         _options = options.Value;
         _logger = logger;
         _metrics = metrics;
+        _correlationContext = correlationContext;
     }
 
     public async Task<ClusterRoutingResult> RouteSignalAsync(SignalEvent signal, CancellationToken ct = default(CancellationToken))
@@ -116,7 +120,7 @@ public class ClusteringService : IClusteringService
                     raw_confirmation_count = bestCluster.RawConfirmationCount
                 }),
                 OccurredAt = DateTime.UtcNow,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                 CausationId = null,
             }, ct);
             await _civis.EvaluateClusterAsync(bestCluster.Id, ct);
@@ -180,7 +184,7 @@ public class ClusteringService : IClusteringService
                     category = signal.Category.ToString().ToLowerInvariant()
                 }),
                 OccurredAt = now,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                 CausationId = null,
             }, ct);
             await _civis.EvaluateClusterAsync(newCluster.Id, ct);

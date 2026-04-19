@@ -1,29 +1,88 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
+using Hali.Application.Observability;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Hali.Workers;
 
-public sealed class OutboxRelayJob(IServiceScopeFactory scopeFactory, ILogger<OutboxRelayJob> logger) : BackgroundService()
+public sealed class OutboxRelayJob(
+    IServiceScopeFactory scopeFactory,
+    ILogger<OutboxRelayJob> logger,
+    WorkerMetrics metrics) : BackgroundService()
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
+    private const string JobType = WorkerMetrics.JobTypeOutboxRelay;
+    private const string Queue = "outbox";
+    private int _attempt;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using PeriodicTimer timer = new PeriodicTimer(Interval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            int attempt = ++_attempt;
+
+            // Periodic worker — no parent outbox event. Generate a new root
+            // correlation id per pass so each pass is independently traceable.
+            var correlationId = Guid.NewGuid();
+
+            logger.LogInformation(
+                "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                ObservabilityEvents.WorkerJobStarted, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Started);
+
+            var sw = Stopwatch.StartNew();
             try
             {
                 await RunRelayPassAsync(stoppingToken);
+                sw.Stop();
+
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Succeeded));
+
+                metrics.JobDurationSeconds.Record(
+                    sw.Elapsed.TotalSeconds,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType));
+
+                logger.LogInformation(
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome} duration_ms={duration_ms}",
+                    ObservabilityEvents.WorkerJobSucceeded, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Succeeded, sw.ElapsedMilliseconds);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                logger.LogError(ex, "OutboxRelayJob pass failed");
+                sw.Stop();
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Cancelled));
+
+                logger.LogInformation(
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                    ObservabilityEvents.WorkerJobCancelled, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Cancelled);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Failed));
+
+                metrics.JobDurationSeconds.Record(
+                    sw.Elapsed.TotalSeconds,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType));
+
+                logger.LogError(
+                    ex,
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                    ObservabilityEvents.WorkerJobFailed, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Failed);
             }
         }
     }

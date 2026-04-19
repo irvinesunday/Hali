@@ -36,17 +36,20 @@ public sealed class InstitutionReadService : IInstitutionReadService
     private readonly IClusterRepository _clusterRepo;
     private readonly IParticipationRepository _participationRepo;
     private readonly IOfficialPostsService _officialPosts;
+    private readonly ICorrelationContext? _correlationContext;
 
     public InstitutionReadService(
         IInstitutionReadRepository repo,
         IClusterRepository clusterRepo,
         IParticipationRepository participationRepo,
-        IOfficialPostsService officialPosts)
+        IOfficialPostsService officialPosts,
+        ICorrelationContext? correlationContext = null)
     {
         _repo = repo;
         _clusterRepo = clusterRepo;
         _participationRepo = participationRepo;
         _officialPosts = officialPosts;
+        _correlationContext = correlationContext;
     }
 
     public async Task<InstitutionOverviewResponseDto> GetOverviewAsync(
@@ -185,7 +188,7 @@ public sealed class InstitutionReadService : IInstitutionReadService
                 institution_id = institutionId,
             }),
             OccurredAt = DateTime.UtcNow,
-            CorrelationId = Guid.NewGuid(),
+            CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
             CausationId = null,
         }, ct);
 

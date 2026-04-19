@@ -227,7 +227,23 @@ respective follow-up issues (#195, #196, #197), not this audit.
 
 ---
 
-## 5. Relationship to `docs/arch/SECURITY_POSTURE.md`
+## 6. Phase 8A observability changes — authorization posture unchanged
+
+Phase 8A (`feat/phase-8a-observability-baseline`) touched the following
+Institution-namespace files:
+
+| File | Change | Auth impact |
+|---|---|---|
+| `src/Hali.Application/Institutions/InstitutionAcknowledgeService.cs` | Replaced `Guid.NewGuid()` at outbox write with `ICorrelationContext.CurrentCorrelationId` | None — authorization gate is unchanged; only the correlation ID value written to outbox_events changes |
+| `src/Hali.Application/Institutions/InstitutionReadService.cs` | Same correlation threading; no outbox writes added or removed | None |
+
+No new routes were added. No authorization decorators changed. No policy
+or scope rules changed. The matrix rows above for all `InstitutionController`
+and `InstitutionAuthController` routes remain accurate.
+
+---
+
+## 7. Relationship to `docs/arch/SECURITY_POSTURE.md`
 
 This matrix is the operational verification of §2 ("Authorization,
 roles, and scope") of the security posture doc. When the two

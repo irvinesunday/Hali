@@ -18,13 +18,15 @@ public sealed class HealthIntegrationTests : IntegrationTestBase
     [Fact]
     public async Task Health_ReturnsHealthy_WithDatabaseAndRedis()
     {
+        // /health is a pure liveness probe — it always returns 200 with { status: "healthy" }
+        // regardless of dependency state. Dependency health is exposed on /ready.
         var response = await Client.GetAsync("/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(_json);
-        Assert.Equal("healthy",   body.GetProperty("status").GetString());
-        Assert.Equal("connected", body.GetProperty("database").GetString());
-        Assert.Equal("connected", body.GetProperty("redis").GetString());
+        Assert.Equal("healthy", body.GetProperty("status").GetString());
+        Assert.True(body.TryGetProperty("version", out _));
+        Assert.True(body.TryGetProperty("timestamp", out _));
     }
 }
