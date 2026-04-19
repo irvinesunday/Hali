@@ -59,6 +59,9 @@ public sealed class InstitutionAuthController : ControllerBase
 
     [HttpPost("magic-link/request")]
     [AllowAnonymous]
+    [ProducesResponseType(typeof(MagicLinkRequestResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<MagicLinkRequestResponseDto>> RequestMagicLink(
         [FromBody] MagicLinkRequestDto dto, CancellationToken ct)
     {
@@ -67,7 +70,8 @@ public sealed class InstitutionAuthController : ControllerBase
             throw ValidationFromModelState();
         }
 
-        MagicLinkIssued issued = await _magicLink.IssueAsync(dto.Email, ct);
+        string? callerIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        MagicLinkIssued issued = await _magicLink.IssueAsync(dto.Email, callerIp, ct);
 
         // Deliberate UX: the response body never indicates whether the
         // email was registered. Response shape is identical for known

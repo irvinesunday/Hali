@@ -169,6 +169,10 @@ builder.Services.AddScoped<IInstitutionAcknowledgeService, InstitutionAcknowledg
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
 builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Audit hook for institution auth events (#251). No-op until the full audit
+// infrastructure is merged — replace this binding with the real implementation.
+builder.Services.AddScoped<Hali.Application.Auth.IAuthAuditService,
+    Hali.Infrastructure.Auth.NoOpAuthAuditService>();
 // Phase 2 institution-admin routes (#196).
 builder.Services.AddScoped<Hali.Application.InstitutionAdmin.IInstitutionAdminService,
     Hali.Application.InstitutionAdmin.InstitutionAdminService>();

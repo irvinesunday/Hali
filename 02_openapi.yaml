@@ -200,6 +200,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded — max 3 requests per email per 15 minutes (auth.magic_link_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/auth/institution/magic-link/verify:
     post:
@@ -1866,6 +1871,7 @@ components:
         - auth.institution_session_idle_timeout
         - auth.institution_session_invalid
         - auth.magic_link_invalid
+        - auth.magic_link_rate_limited
         - auth.otp_invalid
         - auth.otp_rate_limited
         - auth.refresh_token_invalid
