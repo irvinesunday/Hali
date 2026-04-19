@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Notifications;
+using Hali.Application.Observability;
 using Hali.Domain.Entities.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,30 +15,82 @@ namespace Hali.Workers;
 
 public sealed class SendPushNotificationsJob(
     IServiceScopeFactory scopeFactory,
-    ILogger<SendPushNotificationsJob> logger) : BackgroundService()
+    ILogger<SendPushNotificationsJob> logger,
+    WorkerMetrics metrics) : BackgroundService()
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
     private const int BatchSize = 100;
+    private const string JobType = WorkerMetrics.JobTypeSendPushNotifications;
+    private const string Queue = "push_notifications";
+    private int _attempt;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(Interval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            int attempt = ++_attempt;
+
+            // Periodic worker — generate a new root correlation id per pass.
+            var correlationId = Guid.NewGuid();
+
+            logger.LogInformation(
+                "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                ObservabilityEvents.WorkerJobStarted, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Started);
+
+            var sw = Stopwatch.StartNew();
             try
             {
                 await RunPassAsync(stoppingToken);
+                sw.Stop();
+
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Succeeded));
+
+                metrics.JobDurationSeconds.Record(
+                    sw.Elapsed.TotalSeconds,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType));
+
+                logger.LogInformation(
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome} duration_ms={duration_ms}",
+                    ObservabilityEvents.WorkerJobSucceeded, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Succeeded, sw.ElapsedMilliseconds);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                logger.LogError(ex, "SendPushNotificationsJob pass failed");
+                sw.Stop();
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Cancelled));
+
+                logger.LogInformation(
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                    ObservabilityEvents.WorkerJobCancelled, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Cancelled);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                metrics.JobsProcessedTotal.Add(
+                    1,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType),
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Failed));
+
+                metrics.JobDurationSeconds.Record(
+                    sw.Elapsed.TotalSeconds,
+                    new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType));
+
+                logger.LogError(
+                    ex,
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
+                    ObservabilityEvents.WorkerJobFailed, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Failed);
             }
         }
     }
 
     private async Task RunPassAsync(CancellationToken ct)
     {
-        logger.LogInformation("{job} {event}", "SendPushNotificationsJob", "start");
         await using var scope = scopeFactory.CreateAsyncScope();
         var notificationRepo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
         var pushService = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
@@ -45,7 +99,6 @@ public sealed class SendPushNotificationsJob(
         var due = await notificationRepo.GetDueNotificationsAsync(now, BatchSize, ct);
         if (due.Count == 0)
         {
-            logger.LogInformation("{job} {event} sent=0", "SendPushNotificationsJob", "complete");
             return;
         }
 
@@ -98,7 +151,7 @@ public sealed class SendPushNotificationsJob(
             }
         }
 
-        logger.LogInformation("{job} {event} sent={Sent} failed={Failed}", "SendPushNotificationsJob", "complete", sent, failed);
+        logger.LogInformation("SendPushNotificationsJob: sent={Sent} failed={Failed}", sent, failed);
     }
 
     private static PushMessage? ParsePushMessage(Notification notification)

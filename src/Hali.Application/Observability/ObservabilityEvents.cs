@@ -80,6 +80,25 @@ public static class ObservabilityEvents
     /// </summary>
     public const string InstitutionClusterViewed = "institution.cluster.viewed";
 
+    // ── Worker job lifecycle ───────────────────────────────────────────────
+    // Emitted by every BackgroundService at job pickup, success, and failure.
+    // The outcome tag value is one of the WorkerOutcome constants below.
+    public const string WorkerJobStarted = "worker.job.started";
+    public const string WorkerJobSucceeded = "worker.job.succeeded";
+    public const string WorkerJobFailed = "worker.job.failed";
+    public const string WorkerJobCancelled = "worker.job.cancelled";
+
+    // ── Worker outcome tag values (bounded set) ───────────────────────────
+    // Use these as the value for the "outcome" structured log tag and the
+    // WorkerMetrics outcome tag — never inline string literals.
+    public static class WorkerOutcome
+    {
+        public const string Started = "started";
+        public const string Succeeded = "succeeded";
+        public const string Failed = "failed";
+        public const string Cancelled = "cancelled";
+    }
+
     // ── Outbox schema versions ─────────────────────────────────────────────
     // Each canonical event starts at schema_version "1.0" and increments on
     // breaking payload changes. Kept centralised so publishers and consumers
