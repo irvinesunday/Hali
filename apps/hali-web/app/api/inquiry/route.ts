@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
-
-export const runtime = 'nodejs'
+import { neon } from '@neondatabase/serverless'
 
 // RFC 5321 caps a full email at 254 chars; reject longer inputs before the
 // regex runs so an adversarial string can't trigger polynomial backtracking.
@@ -13,36 +10,17 @@ const ALLOWED_CATEGORIES = ['roads', 'water', 'electricity', 'transport', 'other
 type Category = (typeof ALLOWED_CATEGORIES)[number]
 
 // Server-side upper bounds for free-text fields. Keep modest so a single
-// adversarial request can't bloat the persisted file or the notification email.
+// adversarial request can't bloat persisted data or the notification email.
 const MAX_NAME = 120
 const MAX_ORGANISATION = 200
 const MAX_ROLE = 120
 const MAX_AREA = 200
 const MAX_MESSAGE = 500
 
-interface InquiryPayload {
-  name: string
-  organisation: string
-  role: string
-  email: string
-  area: string
-  category: Category
-  message?: string
-}
-
-// Append-only NDJSON persistence — one JSON object per line. Eliminates the
-// read-modify-write cycle that the previous JSON-array implementation used,
-// which lost concurrent writes. Async so we don't block the event loop during
-// disk I/O. Note: this is still not safe across multiple serverless instances
-// (no inter-instance locking, and the filesystem is ephemeral on serverless).
-// Acceptable for MVP / local / staging; production durability is a post-launch
-// concern (database or queue).
-async function persistEntry(filename: string, entry: object): Promise<void> {
-  const dataDir = path.resolve(process.cwd(), 'data')
-  await fs.mkdir(dataDir, { recursive: true })
-  const filePath = path.join(dataDir, filename)
-  await fs.appendFile(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
-}
+// Schema initialization guard — runs CREATE TABLE at most once per instance
+// (cold start). Subsequent requests within the same instance skip DDL entirely,
+// avoiding extra latency and DDL lock acquisition on every request.
+let schemaReady = false
 
 export async function POST(request: NextRequest) {
   let raw: Record<string, unknown>
@@ -82,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate optional message field
-  let message: string | undefined
+  let message: string | null = null
   if (messageRaw !== undefined) {
     if (typeof messageRaw !== 'string') {
       return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
@@ -91,24 +69,35 @@ export async function POST(request: NextRequest) {
     if (trimmed.length > MAX_MESSAGE) {
       return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
     }
-    message = trimmed || undefined
+    message = trimmed || null
   }
 
-  const payload: InquiryPayload & { at: string } = {
-    name,
-    organisation,
-    role,
-    email: emailRaw,
-    area,
-    category: category as Category,
-    ...(message !== undefined ? { message } : {}),
-    at: new Date().toISOString(),
-  }
-
+  // Persist first — if this fails, return error immediately without attempting email.
   try {
-    await persistEntry('inquiries.ndjson', payload)
+    const url = process.env.DATABASE_URL
+    if (!url) throw new Error('DATABASE_URL is not set')
+    const sql = neon(url)
+    if (!schemaReady) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS pilot_inquiries (
+          id           BIGSERIAL    PRIMARY KEY,
+          name         TEXT         NOT NULL,
+          organisation TEXT         NOT NULL,
+          role         TEXT         NOT NULL,
+          email        TEXT         NOT NULL,
+          area         TEXT         NOT NULL,
+          category     TEXT         NOT NULL,
+          message      TEXT,
+          created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+      `
+      schemaReady = true
+    }
+    await sql`
+      INSERT INTO pilot_inquiries (name, organisation, role, email, area, category, message)
+      VALUES (${name}, ${organisation}, ${role}, ${emailRaw}, ${area}, ${category as Category}, ${message})
+    `
   } catch (err) {
-    // Persistence is the primary contract — fail closed if we can't save.
     console.error('[inquiry] persistence failed', err)
     return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 500 })
   }
@@ -141,7 +130,6 @@ export async function POST(request: NextRequest) {
         }),
       })
       if (!res.ok) {
-        // fetch only throws on network errors; surface 4xx/5xx explicitly.
         const body = await res.text().catch(() => '')
         console.warn('[inquiry] resend delivery non-2xx', res.status, body.slice(0, 500))
       }
@@ -149,6 +137,8 @@ export async function POST(request: NextRequest) {
       // Email delivery is best-effort; inquiry is already persisted.
       console.warn('[inquiry] resend delivery failed', err)
     }
+  } else {
+    console.log('[inquiry] No Resend config — persisted to Postgres only')
   }
 
   return NextResponse.json({ success: true })
