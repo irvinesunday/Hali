@@ -312,7 +312,7 @@ WHERE aggregate_id = @aid AND event_type = @et", conn);
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
-UPDATE signal_clusters SET state = 'active'::signal_state, updated_at = now()
+UPDATE signal_clusters SET state = 'active'::signal_state
 WHERE id = @id", conn);
         cmd.Parameters.AddWithValue("id", clusterId);
         await cmd.ExecuteNonQueryAsync();
@@ -325,8 +325,7 @@ WHERE id = @id", conn);
         await using var cmd = new NpgsqlCommand(@"
 UPDATE signal_clusters
 SET state = 'possible_restoration'::signal_state,
-    possible_restoration_at = now(),
-    updated_at = now()
+    possible_restoration_at = now()
 WHERE id = @id", conn);
         cmd.Parameters.AddWithValue("id", clusterId);
         await cmd.ExecuteNonQueryAsync();
