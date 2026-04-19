@@ -4,8 +4,10 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Hali.Api.Errors;
+using Hali.Api.Extensions;
 using Hali.Api.Middleware;
 using Hali.Api.Observability;
+using Hali.Api.Startup;
 using Microsoft.AspNetCore.DataProtection;
 using Hali.Application.Auth;
 using Hali.Application.Observability;
@@ -15,8 +17,11 @@ using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
 using Hali.Application.Advisories;
+using Hali.Infrastructure.Auth;
 using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Extensions;
+using Hali.Infrastructure.Redis;
+using Hali.Infrastructure.Signals;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -26,6 +31,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -34,9 +40,37 @@ using Sentry;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Fail-fast: production connection strings must all be present before any
+// DB operation is attempted. Non-production is unaffected.
+RequiredConnectionStrings.EnsureAllPresent(builder.Configuration, builder.Environment);
+
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSection("InstitutionAuth"));
+
+// Options validation — fail-fast at startup for critical third-party secrets.
+// In Production the validators enforce non-empty values; outside Production
+// empty values are tolerated so local development works without real keys.
+builder.Services
+    .AddOptions<AfricasTalkingOptions>()
+    .Bind(builder.Configuration.GetSection(AfricasTalkingOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<AfricasTalkingOptions>, AfricasTalkingOptionsValidator>();
+
+builder.Services
+    .AddOptions<AnthropicOptions>()
+    .Bind(builder.Configuration.GetSection(AnthropicOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<AnthropicOptions>, AnthropicOptionsValidator>();
+
+builder.Services
+    .AddOptions<RedisOptions>()
+    .Bind(builder.Configuration.GetSection(RedisOptions.Section))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<RedisOptions>, RedisOptionsValidator>();
 
 // Data Protection key ring (#243). TOTP secrets (#197) are encrypted
 // with these keys — an unresolvable key ring breaks every institution
@@ -395,13 +429,18 @@ builder.Services.AddHealthChecks()
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "cache" });
 
-// Trust X-Forwarded-For/Proto from the immediate upstream reverse-proxy.
-// KnownNetworks/KnownProxies are left at ASP.NET Core defaults (127.0.0.1/8 +
-// loopback) so only the adjacent proxy is trusted; production deployments should
-// add their load-balancer IPs/CIDRs here via configuration.
+// ForwardedHeaders trust config — bind from ForwardedHeaders:KnownProxies and
+// ForwardedHeaders:KnownNetworks in configuration so operators can add their
+// load-balancer IPs/CIDRs without code changes. A startup log line reports the
+// count of trusted entries (never the IPs themselves — topology side-channel).
+// See src/Hali.Api/Extensions/ForwardedHeadersConfigurator.cs for the rules.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    ForwardedHeadersConfigurator.ConfigureForwardedHeaders(
+        options,
+        builder.Configuration,
+        builder.Environment,
+        startupLogger: null);
 });
 
 var app = builder.Build();
