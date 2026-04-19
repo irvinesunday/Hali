@@ -49,7 +49,7 @@ public class SignalRepository : ISignalRepository
         {
             await _redis.KeyExpireAsync(key, RateLimitWindow);
         }
-        return count <= 10;
+        return count <= RateLimitMax;
     }
 
     public async Task<string> BuildTaxonomyBlockAsync(CancellationToken ct = default(CancellationToken))

@@ -389,6 +389,10 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Trust X-Forwarded-For from the immediate upstream proxy so RemoteIpAddress
+// reflects the real client IP in rate-limit keys.
+app.UseForwardedHeaders();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

@@ -141,12 +141,14 @@ public sealed class OutboxTraceFieldsTests
     }
 
     // -----------------------------------------------------------------------
-    // Verify all call-site properties are distinct (each event gets its own
-    // CorrelationId so they can be grouped per-request but are distinct events)
+    // Verify that per-event CorrelationId generation (current behaviour) produces
+    // non-empty, non-identical values. When request-scoped propagation is wired
+    // via CorrelationIdMiddleware in a follow-up PR, events in the same request
+    // chain will share a single CorrelationId; this test will be updated then.
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void OutboxEvent_TwoIndependentEvents_HaveDistinctCorrelationIds()
+    public void OutboxEvent_PerEventCorrelationIdGeneration_ProducesNonEmptyDistinctValues()
     {
         var evt1 = new OutboxEvent
         {

@@ -38,6 +38,12 @@ export async function POST(request: NextRequest) {
     } else {
       const body = await res.text().catch(() => '')
       console.error('[notify] backend persistence non-2xx', res.status, body.slice(0, 500))
+      if (res.status === 400) {
+        return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
+      }
+      if (res.status === 429) {
+        return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 })
+      }
       return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 502 })
     }
   } catch (err) {
