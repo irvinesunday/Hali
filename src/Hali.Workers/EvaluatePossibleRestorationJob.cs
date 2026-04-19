@@ -51,7 +51,7 @@ public sealed class EvaluatePossibleRestorationJob(
         int processed = 0;
         foreach (SignalCluster cluster in clusters)
         {
-            await restorationService.EvaluateAsync(cluster.Id, ct);
+            await restorationService.EvaluateAsync(cluster, ct);
             processed++;
         }
         logger.LogInformation("{job} {event} clustersProcessed={Count}", "EvaluatePossibleRestorationJob", "complete", processed);

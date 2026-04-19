@@ -48,14 +48,14 @@ public class RestorationEvaluationService : IRestorationEvaluationService
         _logger = logger;
     }
 
-    public async Task EvaluateAsync(Guid clusterId, CancellationToken ct = default)
+    public async Task EvaluateAsync(SignalCluster cluster, CancellationToken ct = default)
     {
-        SignalCluster? cluster = await _clusterRepo.GetClusterByIdAsync(clusterId, ct);
-        if (cluster is null || cluster.State != SignalState.PossibleRestoration)
+        if (cluster.State != SignalState.PossibleRestoration)
         {
             return;
         }
 
+        Guid clusterId = cluster.Id;
         RestorationCountSnapshot snapshot = await _participationRepo.GetRestorationCountSnapshotAsync(clusterId, ct);
         int restorationYes = snapshot.YesVotes;
         int stillAffected = snapshot.NoVotes;

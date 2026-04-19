@@ -1,6 +1,6 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Hali.Domain.Entities.Clusters;
 
 namespace Hali.Application.Clusters;
 
@@ -21,9 +21,11 @@ namespace Hali.Application.Clusters;
 public interface IRestorationEvaluationService
 {
     /// <summary>
-    /// Evaluates the cluster identified by <paramref name="clusterId"/>.
-    /// No-ops if the cluster does not exist or is not in
-    /// <c>possible_restoration</c> state.
+    /// Evaluates <paramref name="cluster"/> and applies a lifecycle transition
+    /// if the citizen-vote thresholds are met. No-ops if the cluster is not in
+    /// <c>possible_restoration</c> state. The caller is responsible for loading
+    /// the cluster before calling this method — passing the already-loaded
+    /// entity avoids an additional database round-trip per cluster.
     /// </summary>
-    Task EvaluateAsync(Guid clusterId, CancellationToken ct = default);
+    Task EvaluateAsync(SignalCluster cluster, CancellationToken ct = default);
 }

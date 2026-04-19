@@ -153,7 +153,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Null(cluster.PossibleRestorationAt);
@@ -179,7 +179,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.PossibleRestoration, cluster.State);
         Assert.Empty(clusterRepo.Decisions);
@@ -203,7 +203,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Resolved, cluster.State);
         Assert.NotNull(cluster.ResolvedAt);
@@ -229,7 +229,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.PossibleRestoration, cluster.State);
         Assert.Empty(clusterRepo.Decisions);
@@ -250,7 +250,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Resolved, cluster.State);
         Assert.Single(clusterRepo.Decisions);
@@ -260,13 +260,24 @@ public class EvaluatePossibleRestorationJobTests
     // ── guard conditions ──────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ClusterNotFound_NoTransition()
+    public async Task ClusterNotInPossibleRestoration_NoTransition()
     {
-        var clusterRepo = new FakeClusterRepo(null);
+        var clusterId = Guid.NewGuid();
+        var cluster = new SignalCluster
+        {
+            Id = clusterId,
+            State = SignalState.Active,
+            Category = CivicCategory.Roads,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            FirstSeenAt = DateTime.UtcNow,
+            LastSeenAt = DateTime.UtcNow
+        };
+        var clusterRepo = new FakeClusterRepo(cluster);
         var participRepo = new FakeParticipationRepo(new Dictionary<(Guid, ParticipationType), int>());
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(Guid.NewGuid());
+        await sut.EvaluateAsync(cluster);
 
         Assert.Empty(clusterRepo.Decisions);
         Assert.Empty(clusterRepo.OutboxEvents);
@@ -294,7 +305,7 @@ public class EvaluatePossibleRestorationJobTests
         var participRepo = new FakeParticipationRepo(counts);
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Empty(clusterRepo.Decisions);
