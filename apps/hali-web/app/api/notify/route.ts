@@ -26,11 +26,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Service unavailable' }, { status: 503 })
   }
 
+  const clientIp = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
+
   let persistOk = false
   try {
     const res = await fetch(`${backendUrl}/v1/marketing/signups`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientIp ? { 'X-Forwarded-For': clientIp } : {}),
+      },
       body: JSON.stringify({ email }),
     })
     if (res.ok) {

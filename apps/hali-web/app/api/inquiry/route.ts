@@ -88,11 +88,16 @@ export async function POST(request: NextRequest) {
     ...(message !== undefined ? { message } : {}),
   }
 
+  const clientIp = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
+
   let persistOk = false
   try {
     const res = await fetch(`${backendUrl}/v1/marketing/inquiries`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(clientIp ? { 'X-Forwarded-For': clientIp } : {}),
+      },
       body: JSON.stringify(body),
     })
     if (res.ok) {

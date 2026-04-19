@@ -389,13 +389,12 @@ builder.Services.AddHealthChecks()
         tags: new[] { "cache" });
 
 // Trust X-Forwarded-For/Proto from the immediate upstream reverse-proxy.
-// KnownNetworks and KnownProxies are cleared so the options are explicit —
-// deployments that want to restrict trusted proxies should populate them.
+// KnownNetworks/KnownProxies are left at ASP.NET Core defaults (127.0.0.1/8 +
+// loopback) so only the adjacent proxy is trusted; production deployments should
+// add their load-balancer IPs/CIDRs here via configuration.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
 });
 
 var app = builder.Build();

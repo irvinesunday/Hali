@@ -436,12 +436,21 @@ CREATE TABLE IF NOT EXISTS outbox_events (
         await ExecAsync(conn, @"
 ALTER TABLE outbox_events
 ADD COLUMN IF NOT EXISTS schema_version varchar(20) NOT NULL DEFAULT '1.0'");
-        // B11 (#276): correlation + causation trace fields. correlation_id
-        // defaults to gen_random_uuid() so pre-existing rows get a unique id;
-        // causation_id is null when no parent event exists.
+        // B11 (#276): correlation + causation trace fields. Use the safe
+        // add-nullable → set-default → backfill → set-NOT-NULL pattern so the
+        // test schema matches what the production migration produces and existing
+        // rows are never left with a NULL correlation_id.
         await ExecAsync(conn, @"
 ALTER TABLE outbox_events
-ADD COLUMN IF NOT EXISTS correlation_id uuid NOT NULL DEFAULT gen_random_uuid()");
+ADD COLUMN IF NOT EXISTS correlation_id uuid NULL");
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ALTER COLUMN correlation_id SET DEFAULT gen_random_uuid()");
+        await ExecAsync(conn, @"
+UPDATE outbox_events SET correlation_id = gen_random_uuid() WHERE correlation_id IS NULL");
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ALTER COLUMN correlation_id SET NOT NULL");
         await ExecAsync(conn, @"
 ALTER TABLE outbox_events
 ADD COLUMN IF NOT EXISTS causation_id uuid NULL");
