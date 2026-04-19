@@ -123,27 +123,19 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
         await SeedRestorationYesParticipationAsync(clusterId);
         await SeedRestorationYesParticipationAsync(clusterId);
 
-        // Act — Step 3: call RestorationEvaluationService directly (simulates background job)
+        // Act — Step 3: call RestorationEvaluationService directly (simulates background job).
+        // Load the cluster from IClusterRepository so that ApplyClusterTransitionAsync
+        // calls _db.SignalClusters.Update() on the persisted entity — not a synthetic
+        // stub — avoiding accidental column overwrites.
         using (var scope = Factory.Services.CreateScope())
         {
             var evaluationService = scope.ServiceProvider
                 .GetRequiredService<IRestorationEvaluationService>();
+            var clusterRepo = scope.ServiceProvider
+                .GetRequiredService<IClusterRepository>();
 
-            var clusterEntity = new SignalCluster
-            {
-                Id                    = clusterId,
-                LocalityId            = FakeLocalityLookupRepository.TestLocalityId,
-                State                 = SignalState.PossibleRestoration,
-                Category              = CivicCategory.Water,
-                Title                 = "Water supply cut off.",
-                SpatialCellId         = "8a390d24abfffff",
-                FirstSeenAt           = DateTime.UtcNow.AddHours(-1),
-                LastSeenAt            = DateTime.UtcNow,
-                PossibleRestorationAt = DateTime.UtcNow.AddMinutes(-10),
-                UpdatedAt             = DateTime.UtcNow,
-                RawConfirmationCount  = 2,
-                TemporalType          = "temporary",
-            };
+            SignalCluster? clusterEntity = await clusterRepo.GetClusterByIdAsync(clusterId, default);
+            Assert.NotNull(clusterEntity);
 
             await evaluationService.EvaluateAsync(clusterEntity);
         }
@@ -154,12 +146,22 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
         var finalBody = await finalClusterResp.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal("resolved", finalBody.GetProperty("state").GetString());
 
-        // Assert — cluster.restoration_confirmed outbox event emitted
+        // Assert — cluster.restoration_confirmed outbox event emitted (not seeded — proves
+        // RestorationEvaluationService.EvaluateAsync emitted it as part of the transition).
         await AssertOutboxEventEmittedAsync(
             clusterId, ObservabilityEvents.ClusterRestorationConfirmed, "signal_cluster");
 
+        // Assert — signal.submitted outbox event carries schema_version = "1.0"
+        // (aggregate_id = signalEventId, aggregate_type = "signal_event")
+        await AssertSchemaVersionAsync(signalEventId, "1.0");
+
         // Assert — all cluster outbox events carry schema_version = "1.0"
         await AssertSchemaVersionAsync(clusterId, "1.0");
+
+        // Assert — the cluster outbox has at least the seeded events plus the confirmed event
+        int totalClusterEvents = await CountOutboxEventsAsync(clusterId, null);
+        Assert.True(totalClusterEvents >= 3,
+            $"Expected at least 3 cluster outbox events (activated, possible_restoration, restoration_confirmed) but found {totalClusterEvents}.");
     }
 
     // -----------------------------------------------------------------------
@@ -173,27 +175,18 @@ public sealed class FullCivicLoopIntegrationTests : IntegrationTestBase
         Guid clusterId = await SeedClusterInStateDirectAsync("possible_restoration");
         await SeedRestorationYesParticipationAsync(clusterId); // Only 1 — threshold requires ≥2
 
-        // Act — call evaluation service with the single vote
+        // Act — call evaluation service with the single vote.
+        // Load the cluster from IClusterRepository to avoid overwriting DB columns
+        // with default values when ApplyClusterTransitionAsync calls Update().
         using (var scope = Factory.Services.CreateScope())
         {
             var evaluationService = scope.ServiceProvider
                 .GetRequiredService<IRestorationEvaluationService>();
+            var clusterRepo = scope.ServiceProvider
+                .GetRequiredService<IClusterRepository>();
 
-            var clusterEntity = new SignalCluster
-            {
-                Id                    = clusterId,
-                LocalityId            = FakeLocalityLookupRepository.TestLocalityId,
-                State                 = SignalState.PossibleRestoration,
-                Category              = CivicCategory.Water,
-                Title                 = "Test cluster",
-                SpatialCellId         = "8a390d24abfffff",
-                FirstSeenAt           = DateTime.UtcNow.AddHours(-1),
-                LastSeenAt            = DateTime.UtcNow,
-                PossibleRestorationAt = DateTime.UtcNow.AddMinutes(-5),
-                UpdatedAt             = DateTime.UtcNow,
-                RawConfirmationCount  = 1,
-                TemporalType          = "temporary",
-            };
+            SignalCluster? clusterEntity = await clusterRepo.GetClusterByIdAsync(clusterId, default);
+            Assert.NotNull(clusterEntity);
 
             await evaluationService.EvaluateAsync(clusterEntity);
         }
@@ -269,7 +262,9 @@ LIMIT 1", conn);
             $"Expected outbox event '{eventType}' for aggregate {aggregateId} was not found.");
 
         string actualAggregateType = reader.GetString(0);
+        string? actualSchemaVersion = reader.IsDBNull(1) ? null : reader.GetString(1);
         Assert.Equal(expectedAggregateType, actualAggregateType);
+        Assert.Equal("1.0", actualSchemaVersion);
     }
 
     private static async Task AssertSchemaVersionAsync(Guid clusterId, string expectedVersion)
@@ -290,15 +285,20 @@ WHERE aggregate_id = @aid", conn);
         }
     }
 
-    private static async Task<int> CountOutboxEventsAsync(Guid aggregateId, string eventType)
+    private static async Task<int> CountOutboxEventsAsync(Guid aggregateId, string? eventType)
     {
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(@"
-SELECT COUNT(*) FROM outbox_events
-WHERE aggregate_id = @aid AND event_type = @et", conn);
+        // When eventType is null, count all outbox rows for the aggregate.
+        string sql = eventType is null
+            ? "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = @aid"
+            : "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = @aid AND event_type = @et";
+        await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("aid", aggregateId);
-        cmd.Parameters.AddWithValue("et", eventType);
+        if (eventType is not null)
+        {
+            cmd.Parameters.AddWithValue("et", eventType);
+        }
         var result = await cmd.ExecuteScalarAsync();
         return Convert.ToInt32(result);
     }
@@ -335,17 +335,20 @@ WHERE id = @id", conn);
     {
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand($@"
+        // Use a parameter for state with an explicit cast to avoid string interpolation
+        // into SQL — safe pattern used across all other integration seed helpers.
+        await using var cmd = new NpgsqlCommand(@"
 INSERT INTO signal_clusters
     (id, locality_id, category, state, title, summary,
      spatial_cell_id, first_seen_at, last_seen_at,
      raw_confirmation_count, temporal_type, affected_count, observing_count)
 VALUES
-    (gen_random_uuid(), @locId, 'water', '{state}'::signal_state,
+    (gen_random_uuid(), @locId, 'water', @state::signal_state,
      'Phase 8E test cluster', 'Seeded by FullCivicLoopIntegrationTests',
      '8a390d24abfffff', now(), now(), 1, 'temporary', 1, 0)
 RETURNING id", conn);
         cmd.Parameters.AddWithValue("locId", FakeLocalityLookupRepository.TestLocalityId);
+        cmd.Parameters.AddWithValue("state", state);
         return (Guid)(await cmd.ExecuteScalarAsync())!;
     }
 

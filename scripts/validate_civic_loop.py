@@ -165,16 +165,18 @@ def step_context(
     """
     try:
         yield
-    except LoopError:
-        # Already a LoopError — re-raise as-is; caller will handle it.
-        raise
     except Exception as exc:
+        # Wrap every exception — including LoopError from _assert() — into a
+        # FailureBundle so callers always receive structured JSON on stderr with
+        # the step name, step index, and last observed API / outbox state.
+        # Previously LoopError was re-raised as-is, losing all step context.
+        actual_msg = str(exc)
         bundle = FailureBundle(
             timestamp_utc=datetime.now(timezone.utc).isoformat(),
             step=step_name,
             step_index=step_index,
             expected=expected,
-            actual=str(exc),
+            actual=actual_msg,
             last_api_status=_state.last_api_status,
             last_api_body_excerpt=_state.last_api_body[:400],
             outbox_events_seen=list(_state.outbox_events),
@@ -497,31 +499,37 @@ def run_loop(*, dry_run: bool) -> None:
     ):
         outbox_rows = _query_outbox(db_url, cluster_id)
         _state.outbox_events = [row["event_type"] for row in outbox_rows]
-        if outbox_rows:
-            event_types = {row["event_type"] for row in outbox_rows}
-            schema_versions = {row["schema_version"] for row in outbox_rows}
-            aggregate_types = {row["aggregate_type"] for row in outbox_rows}
-            _assert(
-                "cluster.activated" in event_types,
-                f"outbox missing cluster.activated ({event_types})",
-            )
-            _assert(
-                "institution.action.recorded" in event_types,
-                f"outbox missing institution.action.recorded ({event_types})",
-            )
-            _assert(
-                "cluster.possible_restoration" in event_types,
-                f"outbox missing cluster.possible_restoration ({event_types})",
-            )
-            _assert(
-                schema_versions == {"1.0"},
-                f"outbox carries non-1.0 schema_versions: {schema_versions}",
-            )
-            _assert(
-                aggregate_types <= {"signal_cluster", "signal_event"},
-                f"outbox carries unexpected aggregate_types: {aggregate_types}",
-            )
-            print(f"[ok] outbox has {len(outbox_rows)} rows with canonical taxonomy")
+        # An empty outbox is a hard failure: it means the DB query is wrong,
+        # the wrong cluster_id was passed, or events are not being written at all.
+        _assert(
+            bool(outbox_rows),
+            f"outbox_events returned 0 rows for cluster {cluster_id} — "
+            "either the DB URL is misconfigured or no events were written",
+        )
+        event_types = {row["event_type"] for row in outbox_rows}
+        schema_versions = {row["schema_version"] for row in outbox_rows}
+        aggregate_types = {row["aggregate_type"] for row in outbox_rows}
+        _assert(
+            "cluster.activated" in event_types,
+            f"outbox missing cluster.activated ({event_types})",
+        )
+        _assert(
+            "institution.action.recorded" in event_types,
+            f"outbox missing institution.action.recorded ({event_types})",
+        )
+        _assert(
+            "cluster.possible_restoration" in event_types,
+            f"outbox missing cluster.possible_restoration ({event_types})",
+        )
+        _assert(
+            schema_versions == {"1.0"},
+            f"outbox carries non-1.0 schema_versions: {schema_versions}",
+        )
+        _assert(
+            aggregate_types <= {"signal_cluster", "signal_event"},
+            f"outbox carries unexpected aggregate_types: {aggregate_types}",
+        )
+        print(f"[ok] outbox has {len(outbox_rows)} rows with canonical taxonomy")
     print("[pass] civic loop completed without regression")
 
 
