@@ -54,21 +54,18 @@ builder.Services.Configure<InstitutionAuthOptions>(builder.Configuration.GetSect
 builder.Services
     .AddOptions<AfricasTalkingOptions>()
     .Bind(builder.Configuration.GetSection(AfricasTalkingOptions.Section))
-    .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<AfricasTalkingOptions>, AfricasTalkingOptionsValidator>();
 
 builder.Services
     .AddOptions<AnthropicOptions>()
     .Bind(builder.Configuration.GetSection(AnthropicOptions.Section))
-    .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<AnthropicOptions>, AnthropicOptionsValidator>();
 
 builder.Services
     .AddOptions<RedisOptions>()
     .Bind(builder.Configuration.GetSection(RedisOptions.Section))
-    .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<RedisOptions>, RedisOptionsValidator>();
 
