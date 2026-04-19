@@ -243,6 +243,29 @@ and `InstitutionAuthController` routes remain accurate.
 
 ---
 
+## 8. Phase 8C security hardening — authorization posture unchanged
+
+Phase 8C (`feat/phase-8c-security-hardening`) touched the following Auth-namespace files:
+
+| File | Change | Auth impact |
+|---|---|---|
+| `src/Hali.Infrastructure/Auth/AfricasTalkingOptions.cs` | Added `[Required]` DataAnnotations on `ApiKey` and `Username` | None — startup-time validation only; no change to OTP flow or token issuance |
+| `src/Hali.Infrastructure/Auth/AfricasTalkingOptionsValidator.cs` | New `IValidateOptions<AfricasTalkingOptions>` enforcing non-empty in Production only | None — fail-fast at host startup before any request is served; no route or policy change |
+
+No new routes were added. No authorization decorators changed. No policy or scope rules
+changed. The matrix rows above for all `AuthController` and `InstitutionAuthController`
+routes remain accurate.
+
+Additional changes outside the Auth namespace (not matrix-triggering, recorded here for completeness):
+
+- `src/Hali.Infrastructure/Signals/AnthropicOptions.cs` + `AnthropicOptionsValidator.cs` — startup validation for Anthropic API key in Production
+- `src/Hali.Infrastructure/Redis/RedisOptions.cs` + `RedisOptionsValidator.cs` — startup validation for Redis URL in Production
+- `src/Hali.Api/Startup/RequiredConnectionStrings.cs` — fail-fast validation for all DB connection strings in Production
+- `src/Hali.Api/Extensions/ForwardedHeadersConfigurator.cs` — production-configurable trusted proxy IP/CIDR binding
+- `src/Hali.Contracts/Signals/SignalPreviewRequestDto.cs` — `[Required]` + `[MaxLength(150)]` on `FreeText`
+
+---
+
 ## 7. Relationship to `docs/arch/SECURITY_POSTURE.md`
 
 This matrix is the operational verification of §2 ("Authorization,
