@@ -31,12 +31,10 @@ using Hali.Infrastructure.Feedback;
 using Hali.Infrastructure.Marketing;
 using Hali.Infrastructure.Notifications;
 using Hali.Infrastructure.Participation;
-using Hali.Infrastructure.Redis;
 using Hali.Infrastructure.Signals;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Npgsql.NameTranslation;
 using StackExchange.Redis;
 
@@ -105,15 +103,14 @@ public static class ServiceCollectionExtensions
                 npgsql.MapEnum<ParticipationType>("participation_type", null, Snake);
             }));
 
-        // Redis: resolve Url via IOptions<RedisOptions> so the value goes through
-        // the ValidateOnStart pipeline registered in Program.cs. In non-Production
-        // the default "localhost:6379" is preserved via the appsettings.json default.
-        services.AddSingleton<IConnectionMultiplexer>(sp =>
-        {
-            RedisOptions opts = sp.GetRequiredService<IOptions<RedisOptions>>().Value;
-            string redisUrl = string.IsNullOrWhiteSpace(opts.Url) ? "localhost:6379" : opts.Url;
-            return ConnectionMultiplexer.Connect(redisUrl);
-        });
+        // Redis connection: read URL directly from IConfiguration so the
+        // resolve path is identical to the pre-8C baseline and does not
+        // introduce a dependency on IOptions<RedisOptions> inside the
+        // infrastructure factory. The ValidateOnStart enforcement for Redis
+        // is handled separately in Program.cs via IValidateOptions<RedisOptions>.
+        string redisUrl = config["Redis:Url"] ?? "localhost:6379";
+        services.AddSingleton<IConnectionMultiplexer>(
+            (IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl));
         services.AddSingleton((IServiceProvider sp) => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
         services.AddHttpClient<AfricasTalkingSmsProvider>();
         services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
