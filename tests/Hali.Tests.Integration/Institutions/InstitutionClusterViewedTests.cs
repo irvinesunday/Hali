@@ -1,7 +1,5 @@
 using System;
 using System.Net;
-using System.Net.Http;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Hali.Application.Observability;
 using Hali.Tests.Integration.Helpers;
@@ -25,8 +23,6 @@ namespace Hali.Tests.Integration.Institutions;
 [Trait("Category", "Integration")]
 public sealed class InstitutionClusterViewedTests : IntegrationTestBase
 {
-    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
-
     public InstitutionClusterViewedTests(HaliWebApplicationFactory factory)
         : base(factory) { }
 

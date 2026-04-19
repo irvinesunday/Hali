@@ -7,9 +7,9 @@ using Xunit;
 namespace Hali.Tests.Unit.Clusters;
 
 /// <summary>
-/// Verifies that every outbox event creation path populates
-/// <c>CorrelationId</c> and makes an explicit decision about
-/// <c>CausationId</c> (#276).
+/// Verifies <c>OutboxEvent</c> entity behaviour for <c>CorrelationId</c>
+/// and <c>CausationId</c>: property initializer, nullable semantics, and
+/// JSON round-trip fidelity (#276).
 /// </summary>
 public sealed class OutboxTraceFieldsTests
 {

@@ -1,8 +1,6 @@
 using System;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Hali.Tests.Integration.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,8 +24,6 @@ namespace Hali.Tests.Integration.Marketing;
 [Trait("Category", "Integration")]
 public sealed class MarketingControllerTests : IntegrationTestBase
 {
-    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
-
     public MarketingControllerTests(HaliWebApplicationFactory factory) : base(factory) { }
 
     public override async Task InitializeAsync()
