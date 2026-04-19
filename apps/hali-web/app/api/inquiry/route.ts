@@ -8,6 +8,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ALLOWED_CATEGORIES = ['roads', 'water', 'electricity', 'transport', 'other'] as const
 type Category = (typeof ALLOWED_CATEGORIES)[number]
 
+// Server-side upper bounds for free-text fields.
 const MAX_NAME = 120
 const MAX_ORGANISATION = 200
 const MAX_ROLE = 120
