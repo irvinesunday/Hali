@@ -6,6 +6,11 @@ import { neon } from '@neondatabase/serverless'
 const MAX_EMAIL_LENGTH = 254
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Schema initialization guard — runs CREATE TABLE at most once per instance
+// (cold start). Subsequent requests within the same instance skip DDL entirely,
+// avoiding extra latency and DDL lock acquisition on every request.
+let schemaReady = false
+
 export async function POST(request: NextRequest) {
   let payload: { email?: string }
   try {
@@ -23,13 +28,16 @@ export async function POST(request: NextRequest) {
     const url = process.env.DATABASE_URL
     if (!url) throw new Error('DATABASE_URL is not set')
     const sql = neon(url)
-    await sql`
-      CREATE TABLE IF NOT EXISTS email_signups (
-        id         BIGSERIAL    PRIMARY KEY,
-        email      TEXT         NOT NULL,
-        created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-      )
-    `
+    if (!schemaReady) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS email_signups (
+          id         BIGSERIAL    PRIMARY KEY,
+          email      TEXT         NOT NULL,
+          created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+      `
+      schemaReady = true
+    }
     await sql`INSERT INTO email_signups (email) VALUES (${email})`
   } catch (err) {
     console.error('[notify] persistence failed', err)
@@ -62,7 +70,7 @@ export async function POST(request: NextRequest) {
       console.warn('[notify] resend delivery failed', err)
     }
   } else {
-    console.log(`[notify] No Resend config — persisted only: ${email}`)
+    console.log('[notify] No Resend config — persisted to Postgres only')
   }
 
   return NextResponse.json({ success: true })

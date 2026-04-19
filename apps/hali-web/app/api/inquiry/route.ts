@@ -17,6 +17,11 @@ const MAX_ROLE = 120
 const MAX_AREA = 200
 const MAX_MESSAGE = 500
 
+// Schema initialization guard — runs CREATE TABLE at most once per instance
+// (cold start). Subsequent requests within the same instance skip DDL entirely,
+// avoiding extra latency and DDL lock acquisition on every request.
+let schemaReady = false
+
 export async function POST(request: NextRequest) {
   let raw: Record<string, unknown>
   try {
@@ -72,19 +77,22 @@ export async function POST(request: NextRequest) {
     const url = process.env.DATABASE_URL
     if (!url) throw new Error('DATABASE_URL is not set')
     const sql = neon(url)
-    await sql`
-      CREATE TABLE IF NOT EXISTS pilot_inquiries (
-        id           BIGSERIAL    PRIMARY KEY,
-        name         TEXT         NOT NULL,
-        organisation TEXT         NOT NULL,
-        role         TEXT         NOT NULL,
-        email        TEXT         NOT NULL,
-        area         TEXT         NOT NULL,
-        category     TEXT         NOT NULL,
-        message      TEXT,
-        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-      )
-    `
+    if (!schemaReady) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS pilot_inquiries (
+          id           BIGSERIAL    PRIMARY KEY,
+          name         TEXT         NOT NULL,
+          organisation TEXT         NOT NULL,
+          role         TEXT         NOT NULL,
+          email        TEXT         NOT NULL,
+          area         TEXT         NOT NULL,
+          category     TEXT         NOT NULL,
+          message      TEXT,
+          created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+      `
+      schemaReady = true
+    }
     await sql`
       INSERT INTO pilot_inquiries (name, organisation, role, email, area, category, message)
       VALUES (${name}, ${organisation}, ${role}, ${emailRaw}, ${area}, ${category as Category}, ${message})
@@ -130,7 +138,7 @@ export async function POST(request: NextRequest) {
       console.warn('[inquiry] resend delivery failed', err)
     }
   } else {
-    console.log(`[inquiry] No Resend config — persisted only: ${emailRaw}`)
+    console.log('[inquiry] No Resend config — persisted to Postgres only')
   }
 
   return NextResponse.json({ success: true })
