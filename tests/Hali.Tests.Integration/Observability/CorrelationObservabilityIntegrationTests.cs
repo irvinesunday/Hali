@@ -66,7 +66,7 @@ public sealed class CorrelationObservabilityIntegrationTests : IntegrationTestBa
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "SELECT COUNT(*) FROM outbox_events WHERE correlation_id IS NOT NULL AND correlation_id != '00000000-0000-0000-0000-000000000000'::uuid ORDER BY occurred_at DESC LIMIT 1",
+            "SELECT COUNT(*) FROM outbox_events WHERE correlation_id IS NOT NULL AND correlation_id != '00000000-0000-0000-0000-000000000000'::uuid",
             conn);
         var count = (long)(await cmd.ExecuteScalarAsync())!;
         Assert.True(count > 0, "Expected at least one outbox event with a non-empty correlation_id after signal submit.");
