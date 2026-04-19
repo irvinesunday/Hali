@@ -125,6 +125,34 @@ export interface OfficialPostCreateRequest {
 // than the enum keeps the type tolerant of new server-side states.
 export type ClusterState = "unconfirmed" | "active" | "possible_restoration" | "resolved";
 
+export interface InstitutionRestorationQueueItem {
+  readonly clusterId: string;
+  readonly title: string;
+  readonly category: string;
+  readonly localityId: string | null;
+  readonly localityName: string | null;
+  readonly possibleRestorationAt: string;
+  readonly restorationYes: number;
+  readonly stillAffected: number;
+  readonly totalRestorationResponses: number;
+  readonly restorationRatio: number | null;
+}
+
+export interface InstitutionRestorationQueueResponse {
+  readonly items: ReadonlyArray<InstitutionRestorationQueueItem>;
+}
+
+export interface InstitutionAcknowledgeRequest {
+  readonly idempotencyKey: string;
+  readonly note?: string | null;
+}
+
+export interface InstitutionAcknowledgeResponse {
+  readonly acknowledgementId: string;
+  readonly clusterId: string;
+  readonly recordedAt: string;
+}
+
 export interface ClusterDetailResponse {
   readonly id: string;
   readonly state: ClusterState | string;

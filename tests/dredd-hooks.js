@@ -60,7 +60,7 @@ const SKIP = [
   '/v1/admin/institutions/{id}/access > DELETE',
   '/v1/admin/orphaned-signals > GET',
   // Institution routes need institution JWT
-  '/v1/official-posts > POST',
+  '/v1/institution/official-updates > POST',
 ];
 
 SKIP.forEach(name => {

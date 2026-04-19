@@ -19,7 +19,7 @@ export const metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <main>
+    <main id="main">
       <HowItWorksHero />
       <ExpandedCivicLoop />
       <ParticipationDetail />

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
 using Hali.Application.Institutions;
+using Hali.Application.Observability;
 using Hali.Contracts.Advisories;
 using Hali.Domain.Entities.Advisories;
 using Hali.Domain.Entities.Clusters;
@@ -101,34 +103,45 @@ public class OfficialPostsService : IOfficialPostsService
 
         var created = await _repo.CreateAsync(post, scope, ct);
 
-        // Phase 11 trigger: live_update + is_restoration_claim → possible_restoration
+        // Phase 11 trigger: live_update + is_restoration_claim → possible_restoration.
+        // Atomic transition: cluster update + CivisDecision + outbox row commit together
+        // (see issue #143 for the three-write atomicity rule; #207 canonical taxonomy).
         if (post.Type == OfficialPostType.LiveUpdate && post.IsRestorationClaim && post.RelatedClusterId.HasValue)
         {
             var cluster = await _clusters.GetClusterByIdAsync(post.RelatedClusterId.Value, ct);
             if (cluster != null && cluster.State == SignalState.Active)
             {
+                DateTime now = DateTime.UtcNow;
                 cluster.State = SignalState.PossibleRestoration;
-                cluster.PossibleRestorationAt = DateTime.UtcNow;
-                cluster.UpdatedAt = DateTime.UtcNow;
-                await _clusters.UpdateClusterAsync(cluster, ct);
-                await _clusters.WriteCivisDecisionAsync(new CivisDecision
+                cluster.PossibleRestorationAt = now;
+                cluster.UpdatedAt = now;
+                CivisDecision decision = new CivisDecision
                 {
                     Id = Guid.NewGuid(),
                     ClusterId = cluster.Id,
                     DecisionType = "possible_restoration",
-                    ReasonCodes = "[\"institution_restoration_claim\"]",
-                    Metrics = $"{{\"post_id\":\"{created.Id}\"}}",
-                    CreatedAt = DateTime.UtcNow
-                }, ct);
-                await _clusters.WriteOutboxEventAsync(new OutboxEvent
+                    ReasonCodes = JsonSerializer.Serialize(new[] { "institution_restoration_claim" }),
+                    Metrics = JsonSerializer.Serialize(new { post_id = created.Id }),
+                    CreatedAt = now
+                };
+                OutboxEvent outboxEvent = new OutboxEvent
                 {
                     Id = Guid.NewGuid(),
-                    AggregateType = "cluster",
+                    AggregateType = "signal_cluster",
                     AggregateId = cluster.Id,
-                    EventType = "cluster_state_changed",
-                    Payload = $"{{\"cluster_id\":\"{cluster.Id}\",\"from_state\":\"active\",\"to_state\":\"possible_restoration\",\"source\":\"institution_post\"}}",
-                    OccurredAt = DateTime.UtcNow
-                }, ct);
+                    EventType = ObservabilityEvents.ClusterPossibleRestoration,
+                    SchemaVersion = ObservabilityEvents.SchemaVersionV1,
+                    Payload = JsonSerializer.Serialize(new
+                    {
+                        cluster_id = cluster.Id,
+                        from = ClustersMetrics.StateActive,
+                        to = ClustersMetrics.StatePossibleRestoration,
+                        trigger = "institution_restoration_claim",
+                        post_id = created.Id
+                    }),
+                    OccurredAt = now
+                };
+                await _clusters.ApplyClusterTransitionAsync(cluster, decision, outboxEvent, ct);
             }
         }
 

@@ -70,7 +70,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // /v1/institution/signals (list)
+    // /v1/institution/clusters (list)
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
 
         using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seedB.InstitutionId);
-        var resp = await sessionB.Client.GetAsync("/v1/institution/signals");
+        var resp = await sessionB.Client.GetAsync("/v1/institution/clusters");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -98,7 +98,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await session.Client.GetAsync("/v1/institution/signals");
+        var resp = await session.Client.GetAsync("/v1/institution/clusters");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -114,7 +114,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await session.Client.GetAsync("/v1/institution/signals?state=not_a_real_state");
+        var resp = await session.Client.GetAsync("/v1/institution/clusters?state=not_a_real_state");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -131,7 +131,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
         // limit=2 with 3 clusters → expect a next cursor
-        var first = await session.Client.GetAsync("/v1/institution/signals?limit=2");
+        var first = await session.Client.GetAsync("/v1/institution/clusters?limit=2");
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(2, firstBody.GetProperty("items").GetArrayLength());
@@ -139,7 +139,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         Assert.False(string.IsNullOrEmpty(cursor));
 
         // Next page returns the third cluster and nulls the cursor
-        var second = await session.Client.GetAsync($"/v1/institution/signals?limit=2&cursor={Uri.EscapeDataString(cursor!)}");
+        var second = await session.Client.GetAsync($"/v1/institution/clusters?limit=2&cursor={Uri.EscapeDataString(cursor!)}");
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>(_json);
         Assert.Equal(1, secondBody.GetProperty("items").GetArrayLength());
@@ -147,7 +147,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // /v1/institution/signals/{clusterId}
+    // /v1/institution/clusters/{clusterId}
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -157,7 +157,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var session = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await session.Client.GetAsync($"/v1/institution/signals/{seed.ClusterId}");
+        var resp = await session.Client.GetAsync($"/v1/institution/clusters/{seed.ClusterId}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(_json);
@@ -172,7 +172,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
 
         using var sessionB = await InstitutionAuthHelper.CreateSessionAsync(
             Factory, role: "institution", institutionId: seedB.InstitutionId);
-        var resp = await sessionB.Client.GetAsync($"/v1/institution/signals/{seedA.ClusterId}");
+        var resp = await sessionB.Client.GetAsync($"/v1/institution/clusters/{seedA.ClusterId}");
 
         // 404 (not 403) — an institution can never confirm the existence of
         // another institution's cluster via this route.
@@ -225,11 +225,11 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
     }
 
     // -----------------------------------------------------------------------
-    // /v1/official-posts additions: responseStatus + severity validation
+    // /v1/institution/official-updates additions: responseStatus + severity validation
     // -----------------------------------------------------------------------
 
     // -----------------------------------------------------------------------
-    // /v1/official-posts is NOT covered by InstitutionSessionMiddleware's
+    // /v1/institution/official-updates is NOT covered by InstitutionSessionMiddleware's
     // path list (see src/Hali.Api/Middleware/InstitutionSessionMiddleware.cs,
     // which only resolves the institution session cookie on
     // /v1/institution*, /v1/institution-admin*, and specific auth sub-paths).
@@ -246,7 +246,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var client = InstitutionAuthHelper.CreateBearerClient(
             Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        var resp = await client.PostAsJsonAsync("/v1/institution/official-updates", new
         {
             type = "live_update",
             category = "electricity",
@@ -269,7 +269,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var client = InstitutionAuthHelper.CreateBearerClient(
             Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        var resp = await client.PostAsJsonAsync("/v1/institution/official-updates", new
         {
             type = "advisory_public_notice",
             category = "electricity",
@@ -293,7 +293,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var client = InstitutionAuthHelper.CreateBearerClient(
             Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        var resp = await client.PostAsJsonAsync("/v1/institution/official-updates", new
         {
             type = "scheduled_disruption",
             category = "electricity",
@@ -315,7 +315,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
         using var client = InstitutionAuthHelper.CreateBearerClient(
             Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
-        var resp = await client.PostAsJsonAsync("/v1/official-posts", new
+        var resp = await client.PostAsJsonAsync("/v1/institution/official-updates", new
         {
             type = "scheduled_disruption",
             category = "electricity",
@@ -343,7 +343,7 @@ public sealed class InstitutionReadIntegrationTests : IntegrationTestBase
             Factory, Guid.NewGuid(), role: "institution", institutionId: seed.InstitutionId);
 
         // Post a live_update carrying a response status
-        var post = await institutionClient.PostAsJsonAsync("/v1/official-posts", new
+        var post = await institutionClient.PostAsJsonAsync("/v1/institution/official-updates", new
         {
             type = "live_update",
             category = "electricity",

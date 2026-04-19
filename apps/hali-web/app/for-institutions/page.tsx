@@ -18,7 +18,7 @@ export const metadata = {
 
 export default function ForInstitutionsPage() {
   return (
-    <main>
+    <main id="main">
       <ForInstitutionsHero />
       <WhatInstitutionsSee />
       <PilotProcess />

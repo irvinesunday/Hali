@@ -115,10 +115,10 @@ describe("RestorationActionCard", () => {
     expect(screen.getByText(/citizen confirmations reached the threshold/i)).toBeInTheDocument();
   });
 
-  it("submits a restoration claim via POST /v1/official-posts with isRestorationClaim true", async () => {
+  it("submits a restoration claim via POST /v1/institution/official-updates with isRestorationClaim true", async () => {
     const captured: { url?: string; init?: RequestInit } = {};
     mockFetch({
-      "/v1/official-posts": (url, init) => {
+      "/v1/institution/official-updates": (url, init) => {
         captured.url = url;
         captured.init = init;
         return jsonResponse(
@@ -173,7 +173,7 @@ describe("RestorationActionCard", () => {
 
   it("surfaces a server error without closing the dialog", async () => {
     mockFetch({
-      "/v1/official-posts": () => errorResponse(409, "cluster_not_active"),
+      "/v1/institution/official-updates": () => errorResponse(409, "cluster_not_active"),
     });
 
     renderCard({ clusterState: "active" });
@@ -251,7 +251,7 @@ describe("RestorationActionCard", () => {
 
     it("emits claim.submitted then claim.completed on a successful claim", async () => {
       mockFetch({
-        "/v1/official-posts": () =>
+        "/v1/institution/official-updates": () =>
           jsonResponse(
             {
               id: "post-1",
@@ -292,7 +292,7 @@ describe("RestorationActionCard", () => {
 
     it("emits claim.failed with the API status on a 4xx response", async () => {
       mockFetch({
-        "/v1/official-posts": () => errorResponse(409, "cluster_not_active"),
+        "/v1/institution/official-updates": () => errorResponse(409, "cluster_not_active"),
       });
 
       renderCard({ clusterState: "active" });
@@ -321,7 +321,7 @@ describe("RestorationActionCard", () => {
 
     it("does not emit claim.cancelled when the composer closes after a failed submit", async () => {
       mockFetch({
-        "/v1/official-posts": () => errorResponse(409, "cluster_not_active"),
+        "/v1/institution/official-updates": () => errorResponse(409, "cluster_not_active"),
       });
 
       renderCard({ clusterState: "active" });

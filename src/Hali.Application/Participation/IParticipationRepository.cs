@@ -45,6 +45,18 @@ public interface IParticipationRepository
 	/// </summary>
 	Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct);
 
+	/// <summary>
+	/// Bulk variant of <see cref="GetRestorationCountSnapshotAsync"/>:
+	/// returns snapshots for every cluster id in <paramref name="clusterIds"/>
+	/// as a single database read. Used by the institution restoration
+	/// queue to avoid the per-row N+1 query pattern Copilot flagged on
+	/// #207. Clusters with no recorded restoration responses are omitted
+	/// from the dictionary — callers should materialise the zero-count
+	/// snapshot themselves.
+	/// </summary>
+	Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+		IReadOnlyCollection<Guid> clusterIds, CancellationToken ct);
+
 	/// <summary>Returns account IDs of all users with an active affected participation on this cluster.</summary>
 	Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct);
 }

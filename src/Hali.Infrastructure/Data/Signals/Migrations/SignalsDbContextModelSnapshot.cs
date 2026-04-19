@@ -49,6 +49,12 @@ namespace Hali.Infrastructure.Data.Signals.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("event_type");
 
+                    b.Property<string>("SchemaVersion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("schema_version");
+
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");

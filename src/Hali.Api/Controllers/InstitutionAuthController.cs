@@ -59,6 +59,9 @@ public sealed class InstitutionAuthController : ControllerBase
 
     [HttpPost("magic-link/request")]
     [AllowAnonymous]
+    [ProducesResponseType(typeof(MagicLinkRequestResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<MagicLinkRequestResponseDto>> RequestMagicLink(
         [FromBody] MagicLinkRequestDto dto, CancellationToken ct)
     {
@@ -67,7 +70,13 @@ public sealed class InstitutionAuthController : ControllerBase
             throw ValidationFromModelState();
         }
 
-        MagicLinkIssued issued = await _magicLink.IssueAsync(dto.Email, ct);
+        // Strip IPv6 zone/scope suffix (e.g. "fe80::1%12") before storing;
+        // the column is varchar(45) which matches the longest bare IPv6 address
+        // but not a zone-suffixed one, and zone ids are host-local, not useful for audit.
+        string? rawIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        int zoneSep = rawIp?.IndexOf('%') ?? -1;
+        string? callerIp = zoneSep >= 0 ? rawIp![..zoneSep] : rawIp;
+        MagicLinkIssued issued = await _magicLink.IssueAsync(dto.Email, callerIp, ct);
 
         // Deliberate UX: the response body never indicates whether the
         // email was registered. Response shape is identical for known

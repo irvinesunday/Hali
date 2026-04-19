@@ -162,10 +162,17 @@ builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<IOfficialPostsService, OfficialPostsService>();
 // Institution operational dashboard read service (#195).
 builder.Services.AddScoped<IInstitutionReadService, InstitutionReadService>();
+// Institution acknowledge write path (#207 Phase 4 — explicit action,
+// emits `institution.action.recorded`).
+builder.Services.AddScoped<IInstitutionAcknowledgeService, InstitutionAcknowledgeService>();
 // Phase 2 institution auth + session hardening (#197).
 builder.Services.AddScoped<ITotpService, TotpService>();
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
 builder.Services.AddScoped<IInstitutionSessionService, InstitutionSessionService>();
+// Audit hook for institution auth events (#251). No-op until the full audit
+// infrastructure is merged — replace this binding with the real implementation.
+builder.Services.AddScoped<Hali.Application.Auth.IAuthAuditService,
+    Hali.Infrastructure.Auth.NoOpAuthAuditService>();
 // Phase 2 institution-admin routes (#196).
 builder.Services.AddScoped<Hali.Application.InstitutionAdmin.IInstitutionAdminService,
     Hali.Application.InstitutionAdmin.InstitutionAdminService>();

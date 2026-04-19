@@ -166,6 +166,7 @@ public class AuthDbContext : DbContext
 			e.Property((MagicLinkToken x) => x.ExpiresAt).HasColumnName("expires_at");
 			e.Property((MagicLinkToken x) => x.ConsumedAt).HasColumnName("consumed_at");
 			e.Property((MagicLinkToken x) => x.CreatedAt).HasColumnName("created_at");
+			e.Property((MagicLinkToken x) => x.IpAddress).HasColumnName("ip_address").HasMaxLength(45);
 			e.HasIndex((MagicLinkToken x) => x.TokenHash).IsUnique().HasDatabaseName("uq_magic_link_tokens_hash");
 			e.HasIndex((MagicLinkToken x) => x.DestinationEmail).HasDatabaseName("ix_magic_link_tokens_email");
 			e.HasIndex((MagicLinkToken x) => x.ExpiresAt).HasDatabaseName("ix_magic_link_tokens_expires");

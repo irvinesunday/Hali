@@ -153,9 +153,10 @@ public class ClusteringServiceTests
 
         await repo.Received(1).WriteOutboxEventAsync(
             Arg.Is<OutboxEvent>(e =>
-                e.AggregateType == "cluster" &&
+                e.AggregateType == "signal_cluster" &&
                 e.AggregateId == existingCluster.Id &&
-                e.EventType == "cluster.updated"),
+                e.EventType == "cluster.updated" &&
+                e.SchemaVersion == "1.0"),
             Arg.Any<CancellationToken>());
     }
 
@@ -223,8 +224,9 @@ public class ClusteringServiceTests
 
         await repo.Received(1).WriteOutboxEventAsync(
             Arg.Is<OutboxEvent>(e =>
-                e.AggregateType == "cluster" &&
-                e.EventType == "cluster.created"),
+                e.AggregateType == "signal_cluster" &&
+                e.EventType == "cluster.created" &&
+                e.SchemaVersion == "1.0"),
             Arg.Any<CancellationToken>());
     }
 

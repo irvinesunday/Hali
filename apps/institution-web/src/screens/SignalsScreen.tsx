@@ -11,7 +11,7 @@ import { useQueryTelemetry } from "../telemetry/useQueryTelemetry";
 import { formatDurationSeconds } from "./signalFormatting";
 
 // Live signals list for an institution. Pulls from
-// `GET /v1/institution/signals` — the backend has already restricted
+// `GET /v1/institution/clusters` — the backend has already restricted
 // results to clusters in scope, so this screen never has to filter
 // them client-side. Each row links to the cluster detail route
 // (`/signals/:clusterId`), which is the entry point the #202

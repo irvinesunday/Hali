@@ -18,9 +18,11 @@ public interface IMagicLinkService
     /// logged. When the email has no registered account, the row is
     /// still created (with AccountId = null) — the verify flow will
     /// either reject (institution users must pre-exist) or create an
-    /// account depending on policy.
+    /// account depending on policy. Rate-limited: max 3 requests per
+    /// email per 15 minutes; throws <see cref="Hali.Application.Errors.RateLimitException"/>
+    /// on excess. The calling IP is stored for audit purposes only.
     /// </summary>
-    Task<MagicLinkIssued> IssueAsync(string email, CancellationToken ct);
+    Task<MagicLinkIssued> IssueAsync(string email, string? ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Atomically consumes a plaintext token and returns the matched row

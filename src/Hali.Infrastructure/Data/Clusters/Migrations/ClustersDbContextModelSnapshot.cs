@@ -128,6 +128,12 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("published_at");
 
+                    b.Property<string>("SchemaVersion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("schema_version");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OccurredAt")

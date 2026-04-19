@@ -12,6 +12,8 @@ public class OutboxEvent
 
     public string EventType { get; set; } = string.Empty;
 
+    public string SchemaVersion { get; set; } = "1.0";
+
     public string? Payload { get; set; }
 
     public DateTime OccurredAt { get; set; }
