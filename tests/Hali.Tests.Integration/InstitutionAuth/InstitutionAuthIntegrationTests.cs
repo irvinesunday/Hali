@@ -362,22 +362,29 @@ public sealed class InstitutionAuthIntegrationTests : IntegrationTestBase
         return account;
     }
 
-    private async Task<string> SeedMagicLinkAsync(Account account, DateTime expiresAt)
+    private static async Task<string> SeedMagicLinkAsync(Account account, DateTime expiresAt)
     {
-        using var scope = Factory.Services.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<IMagicLinkService>();
-        MagicLinkIssued issued = await service.IssueAsync(account.Email!, null, default);
-        // Capture the expiresAt override via direct DB update (the
-        // service uses the configured TTL; the test wants to simulate
-        // an already-expired token without waiting 15 minutes).
+        // Write the token row directly to avoid hitting the real Redis rate limiter.
+        byte[] raw = RandomNumberGenerator.GetBytes(32);
+        string plaintext = Convert.ToBase64String(raw);
+        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(plaintext));
+        string tokenHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
         await using var conn = new NpgsqlConnection(TestConstants.ConnectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "UPDATE magic_link_tokens SET expires_at = @exp WHERE token_hash = @hash", conn);
+            """
+            INSERT INTO magic_link_tokens (id, destination_email, token_hash, account_id, expires_at, created_at)
+            VALUES (@id, @email, @hash, @aid, @exp, @now)
+            """, conn);
+        cmd.Parameters.AddWithValue("id", Guid.NewGuid());
+        cmd.Parameters.AddWithValue("email", account.Email!);
+        cmd.Parameters.AddWithValue("hash", tokenHash);
+        cmd.Parameters.AddWithValue("aid", account.Id);
         cmd.Parameters.AddWithValue("exp", expiresAt);
-        cmd.Parameters.AddWithValue("hash", service.HashToken(issued.PlaintextToken));
+        cmd.Parameters.AddWithValue("now", DateTime.UtcNow);
         await cmd.ExecuteNonQueryAsync();
-        return issued.PlaintextToken;
+        return plaintext;
     }
 
     private async Task<Guid> GetInstitutionAccountIdAsync()

@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -107,24 +108,28 @@ public static class InstitutionAuthHelper
 
         string email = await GetAccountEmailAsync(factory, accountId, ct);
 
+        // Write the token row directly to avoid hitting the real Redis rate
+        // limiter — test seeding must not exhaust the 3-per-15-min bucket.
         string plaintextToken;
-        using (var scope = factory.Services.CreateScope())
         {
-            var magic = scope.ServiceProvider.GetRequiredService<IMagicLinkService>();
-            MagicLinkIssued issued = await magic.IssueAsync(email, null, ct);
-            plaintextToken = issued.PlaintextToken;
+            byte[] raw = RandomNumberGenerator.GetBytes(32);
+            plaintextToken = Convert.ToBase64String(raw);
+            byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(plaintextToken));
+            string tokenHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
 
-            // Defensive re-bind: ensure the magic-link row points at the
-            // account we just created. MagicLinkService.IssueAsync does
-            // this via the email→account join, but the test wants a
-            // deterministic tie — mirrors the pattern in
-            // InstitutionAdminIntegrationTests.LogInAdminWithStepUpAsync.
             await using var conn = new NpgsqlConnection(Infrastructure.TestConstants.ConnectionString);
             await conn.OpenAsync(ct);
             await using var cmd = new NpgsqlCommand(
-                "UPDATE magic_link_tokens SET account_id = @aid WHERE token_hash = @hash", conn);
+                """
+                INSERT INTO magic_link_tokens (id, destination_email, token_hash, account_id, expires_at, created_at)
+                VALUES (@id, @email, @hash, @aid, @exp, @now)
+                """, conn);
+            cmd.Parameters.AddWithValue("id", Guid.NewGuid());
+            cmd.Parameters.AddWithValue("email", email);
+            cmd.Parameters.AddWithValue("hash", tokenHash);
             cmd.Parameters.AddWithValue("aid", accountId);
-            cmd.Parameters.AddWithValue("hash", magic.HashToken(plaintextToken));
+            cmd.Parameters.AddWithValue("exp", DateTime.UtcNow.AddMinutes(15));
+            cmd.Parameters.AddWithValue("now", DateTime.UtcNow);
             await cmd.ExecuteNonQueryAsync(ct);
         }
 
