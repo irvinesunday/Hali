@@ -54,7 +54,7 @@ describe("ClusterDetailScreen", () => {
 
   it("renders the cluster title, location, and key detail fields", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+      [`/v1/institution/clusters/${clusterId}`]: () => jsonResponse(sampleCluster),
     });
 
     renderWithProviders({ pathname: `/signals/${clusterId}` });
@@ -70,7 +70,7 @@ describe("ClusterDetailScreen", () => {
 
   it("renders existing official updates for this cluster", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+      [`/v1/institution/clusters/${clusterId}`]: () => jsonResponse(sampleCluster),
     });
 
     renderWithProviders({ pathname: `/signals/${clusterId}` });
@@ -82,7 +82,7 @@ describe("ClusterDetailScreen", () => {
 
   it("shows an empty-state hint when the cluster has no official posts yet", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () =>
+      [`/v1/institution/clusters/${clusterId}`]: () =>
         jsonResponse({ ...sampleCluster, officialPosts: [] }),
     });
 
@@ -95,7 +95,7 @@ describe("ClusterDetailScreen", () => {
 
   it("opens the post-update modal when the Post an update button is clicked", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+      [`/v1/institution/clusters/${clusterId}`]: () => jsonResponse(sampleCluster),
     });
 
     renderWithProviders({ pathname: `/signals/${clusterId}` });
@@ -108,7 +108,7 @@ describe("ClusterDetailScreen", () => {
 
   it("renders the error state when the cluster is out of scope or missing", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => errorResponse(404),
+      [`/v1/institution/clusters/${clusterId}`]: () => errorResponse(404),
     });
 
     renderWithProviders({ pathname: `/signals/${clusterId}` });
@@ -120,7 +120,7 @@ describe("ClusterDetailScreen", () => {
 
   it("hides the Post an update trigger when the post-update kill switch is off", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+      [`/v1/institution/clusters/${clusterId}`]: () => jsonResponse(sampleCluster),
     });
 
     renderWithProviders({
@@ -134,7 +134,7 @@ describe("ClusterDetailScreen", () => {
 
   it("hides the Mark as restored trigger when the restoration kill switch is off", async () => {
     mockFetch({
-      [`/v1/institution/signals/${clusterId}`]: () => jsonResponse(sampleCluster),
+      [`/v1/institution/clusters/${clusterId}`]: () => jsonResponse(sampleCluster),
     });
 
     renderWithProviders({

@@ -67,7 +67,7 @@ test.describe("institution-web dashboard", () => {
         body: JSON.stringify(overviewPayload),
       }),
     );
-    await page.route("**/v1/institution/signals", (route) =>
+    await page.route("**/v1/institution/clusters", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -162,7 +162,7 @@ test.describe("institution-web dashboard", () => {
 
     let postRequests = 0;
 
-    await page.route("**/v1/institution/signals/cluster-1", (route) =>
+    await page.route("**/v1/institution/clusters/cluster-1", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -172,7 +172,7 @@ test.describe("institution-web dashboard", () => {
       }),
     );
 
-    await page.route("**/v1/official-posts", (route) => {
+    await page.route("**/v1/institution/official-updates", (route) => {
       postRequests += 1;
       return route.fulfill({
         status: 201,
@@ -245,7 +245,7 @@ test.describe("institution-web dashboard", () => {
 
     let postRequests = 0;
 
-    await page.route("**/v1/institution/signals/cluster-1", (route) => {
+    await page.route("**/v1/institution/clusters/cluster-1", (route) => {
       const payload =
         postRequests > 0
           ? {
@@ -265,7 +265,7 @@ test.describe("institution-web dashboard", () => {
       });
     });
 
-    await page.route("**/v1/official-posts", (route) => {
+    await page.route("**/v1/institution/official-updates", (route) => {
       postRequests += 1;
       return route.fulfill({
         status: 201,

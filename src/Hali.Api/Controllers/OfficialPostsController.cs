@@ -11,8 +11,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Hali.Api.Controllers;
 
+// Route rename (#207): `/v1/official-posts` → `/v1/institution/official-updates`.
+// Brings the official-update write surface into the canonical `/v1/institution/*`
+// namespace and matches the OpenAPI + 02_api_contracts.md. Internal class and
+// service names keep the `OfficialPost*` stem intentionally — only the wire path
+// moved. Related-cluster reads still live under `/v1/clusters/{id}` (public).
 [ApiController]
-[Route("v1/official-posts")]
+[Route("v1/institution/official-updates")]
 public class OfficialPostsController : ControllerBase
 {
     private readonly IOfficialPostsService _service;
@@ -56,6 +61,6 @@ public class OfficialPostsController : ControllerBase
             authorAccountId = parsed;
 
         var result = await _service.CreatePostAsync(institutionId, authorAccountId, dto, ct);
-        return Created($"/v1/official-posts/{result.Id}", result);
+        return Created($"/v1/institution/official-updates/{result.Id}", result);
     }
 }

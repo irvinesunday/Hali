@@ -123,6 +123,7 @@ public class SignalsDbContext : DbContext
             e.Property((OutboxEvent x) => x.AggregateType).HasColumnName("aggregate_type").HasMaxLength(100);
             e.Property((OutboxEvent x) => x.AggregateId).HasColumnName("aggregate_id");
             e.Property((OutboxEvent x) => x.EventType).HasColumnName("event_type").HasMaxLength(100);
+            e.Property((OutboxEvent x) => x.SchemaVersion).HasColumnName("schema_version").HasMaxLength(20).IsRequired();
             e.Property((OutboxEvent x) => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
             e.Property((OutboxEvent x) => x.OccurredAt).HasColumnName("occurred_at");
             e.Property((OutboxEvent x) => x.PublishedAt).HasColumnName("published_at");

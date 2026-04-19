@@ -196,14 +196,10 @@ public sealed class ClustersMetrics : IDisposable
     // yields "possiblerestoration" (no underscore), which violates
     // `docs/arch/CODING_STANDARDS.md` §Enum serialization rules.
     // The `cluster_state_changed` outbox payload emits the same canonical
-    // strings — the activation emission in
-    // `CivisEvaluationService.EvaluateClusterAsync` and the citizen-vote
-    // emission in `ParticipationService.EvaluateRestorationAsync` use string
-    // literals, and the decay-driven emission in
-    // `CivisEvaluationService.ApplyDecayAsync` uses the module's
-    // `SignalState` → snake_case mapper. Dashboards, alerts, and downstream
-    // outbox consumers therefore observe the same value for the same
-    // transition (see issue #178 for the fix that removed the prior
+    // strings — all five authoritative transition paths use these constants
+    // or equivalent string literals, so dashboards, alerts, and downstream
+    // outbox consumers observe the same value for the same transition
+    // (see issue #178 for the fix that removed the prior
     // `"possiblerestoration"` divergence in `ApplyDecayAsync`).
     // Only the four states that participate in lifecycle transitions are
     // listed here — Expired and Suppressed are not produced by any of the
@@ -249,29 +245,33 @@ public sealed class ClustersMetrics : IDisposable
 
     /// <summary>
     /// <c>cluster_lifecycle_transitions_total</c> — incremented exactly once
-    /// per persisted cluster state transition, at the same lines that emit
-    /// the <c>cluster_state_changed</c> outbox event and the corresponding
-    /// structured log (<c>ClusterActivated</c>,
-    /// <c>ClusterPossibleRestoration</c>, <c>ClusterResolvedByDecay</c>).
+    /// per persisted cluster state transition, colocated with the
+    /// <c>ApplyClusterTransitionAsync</c> call that atomically commits the
+    /// state change, CIVIS decision, and outbox event.
     ///
-    /// Tags (bounded — 3 actual pairs at steady state):
+    /// Tags (bounded — 4 actual pairs at steady state):
     /// <list type="bullet">
     ///   <item><description><see cref="TagFromState"/> —
     ///     <c>unconfirmed | active | possible_restoration</c>.</description></item>
     ///   <item><description><see cref="TagToState"/> —
     ///     <c>active | possible_restoration | resolved</c>.</description></item>
     /// </list>
-    /// Emitted from exactly three places:
+    /// Emitted from five places (one per authoritative transition path):
     /// <list type="bullet">
     ///   <item><description><c>CivisEvaluationService.EvaluateClusterAsync</c>
     ///     — <c>unconfirmed → active</c> (MACF + device diversity met).</description></item>
     ///   <item><description><c>CivisEvaluationService.ApplyDecayAsync</c> —
-    ///     <c>active → possible_restoration</c> (decay below threshold) and
-    ///     <c>possible_restoration → resolved</c> (decay again below
-    ///     threshold).</description></item>
+    ///     <c>active → possible_restoration</c> (decay below threshold).</description></item>
     ///   <item><description><c>ParticipationService.EvaluateRestorationAsync</c>
     ///     — <c>active → possible_restoration</c> (restoration ratio met
     ///     from citizen votes).</description></item>
+    ///   <item><description><c>OfficialPostsService</c>
+    ///     — <c>active → possible_restoration</c> (institution restoration
+    ///     claim).</description></item>
+    ///   <item><description><c>RestorationEvaluationService.EvaluateAsync</c>
+    ///     — <c>possible_restoration → active</c> (still-affected votes
+    ///     dominate) and <c>possible_restoration → resolved</c> (citizen
+    ///     restoration threshold met).</description></item>
     /// </list>
     /// No cluster id, locality id, category, reason code, CIVIS metric, or
     /// restoration vote count is ever attached.

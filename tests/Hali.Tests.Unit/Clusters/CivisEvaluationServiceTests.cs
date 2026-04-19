@@ -85,7 +85,9 @@ public class CivisEvaluationServiceTests
 		var (svc, repo) = Build(cluster, 3, 3, 2);
 		await svc.EvaluateClusterAsync(cluster.Id);
 		Assert.Single(repo.OutboxEvents);
-		Assert.Equal("cluster_state_changed", repo.OutboxEvents[0].EventType);
+		Assert.Equal("cluster.activated", repo.OutboxEvents[0].EventType);
+		Assert.Equal("signal_cluster", repo.OutboxEvents[0].AggregateType);
+		Assert.Equal("1.0", repo.OutboxEvents[0].SchemaVersion);
 	}
 
 	[Fact]
@@ -251,16 +253,21 @@ public class CivisEvaluationServiceTests
 		var (svc, repo) = BuildDecay(cluster);
 		await svc.ApplyDecayAsync(cluster.Id);
 		Assert.Single(repo.OutboxEvents);
-		Assert.Equal("cluster_state_changed", repo.OutboxEvents[0].EventType);
+		// Decay active → possible_restoration emits the canonical discrete event name.
+		Assert.Equal("cluster.possible_restoration", repo.OutboxEvents[0].EventType);
+		Assert.Equal("signal_cluster", repo.OutboxEvents[0].AggregateType);
+		Assert.Equal("1.0", repo.OutboxEvents[0].SchemaVersion);
 	}
 
-	// Issue #178 — the decay-driven active → possible_restoration outbox
-	// emission previously used `SignalState.ToString().ToLowerInvariant()`,
+	// Issue #178 / #207 — the decay-driven active → possible_restoration
+	// outbox emission previously used `SignalState.ToString().ToLowerInvariant()`,
 	// producing `"possiblerestoration"` (no underscore) instead of the
 	// canonical `"possible_restoration"`. Lock the canonical snake_case
 	// values for both decay transitions and the activation transition so the
-	// broken formatting cannot silently reappear on any of the three
-	// `cluster_state_changed` emission paths in `CivisEvaluationService`.
+	// broken formatting cannot silently reappear. Phase 4 taxonomy (#207)
+	// also renamed the payload keys `from_state`/`to_state` to `from`/`to`
+	// and split the single `cluster_state_changed` event into discrete
+	// canonical event names per transition — these tests pin both.
 
 	[Fact]
 	public async Task ApplyDecay_ActiveToPossibleRestoration_WritesCanonicalSnakeCaseOutboxPayload()
@@ -272,8 +279,8 @@ public class CivisEvaluationServiceTests
 
 		Assert.Single(repo.OutboxEvents);
 		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
-		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
-		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		string fromState = payload.RootElement.GetProperty("from").GetString()!;
+		string toState = payload.RootElement.GetProperty("to").GetString()!;
 		Assert.Equal("active", fromState);
 		Assert.Equal("possible_restoration", toState);
 		// Regression guard: the broken `ToString().ToLowerInvariant()`
@@ -292,9 +299,10 @@ public class CivisEvaluationServiceTests
 		await svc.ApplyDecayAsync(cluster.Id);
 
 		Assert.Single(repo.OutboxEvents);
+		Assert.Equal("cluster.resolved_by_decay", repo.OutboxEvents[0].EventType);
 		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
-		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
-		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		string fromState = payload.RootElement.GetProperty("from").GetString()!;
+		string toState = payload.RootElement.GetProperty("to").GetString()!;
 		Assert.Equal("possible_restoration", fromState);
 		Assert.Equal("resolved", toState);
 		Assert.DoesNotContain("possiblerestoration", repo.OutboxEvents[0].Payload);
@@ -310,8 +318,8 @@ public class CivisEvaluationServiceTests
 
 		Assert.Single(repo.OutboxEvents);
 		using JsonDocument payload = JsonDocument.Parse(repo.OutboxEvents[0].Payload);
-		string fromState = payload.RootElement.GetProperty("from_state").GetString()!;
-		string toState = payload.RootElement.GetProperty("to_state").GetString()!;
+		string fromState = payload.RootElement.GetProperty("from").GetString()!;
+		string toState = payload.RootElement.GetProperty("to").GetString()!;
 		Assert.Equal("unconfirmed", fromState);
 		Assert.Equal("active", toState);
 	}

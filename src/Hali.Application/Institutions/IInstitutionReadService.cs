@@ -51,4 +51,17 @@ public interface IInstitutionReadService
         string? cursor,
         int limit,
         CancellationToken ct);
+
+    /// <summary>
+    /// Returns every cluster currently in <c>possible_restoration</c>
+    /// inside the caller's jurisdiction, enriched with live restoration
+    /// vote counts. The dashboard uses this to drive the Restoration
+    /// queue surface introduced in Phase 4 (#207). Rows sort by
+    /// <c>possible_restoration_at</c> ascending so operators see the
+    /// clusters that have sat longest at the top.
+    /// </summary>
+    Task<InstitutionRestorationQueueResponseDto> GetRestorationQueueAsync(
+        Guid institutionId,
+        Guid? areaId,
+        CancellationToken ct);
 }

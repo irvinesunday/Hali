@@ -42,12 +42,12 @@ describe("apiFetch", () => {
 
   it("emits auth.scope.denied with a bounded route_template on 403", async () => {
     mockFetch({
-      "/v1/institution/signals/3fa85f64-5717-4562-b3fc-2c963f66afa6": () =>
+      "/v1/institution/clusters/3fa85f64-5717-4562-b3fc-2c963f66afa6": () =>
         errorResponse(403, "denied"),
     });
 
     await expect(
-      apiFetch("/v1/institution/signals/3fa85f64-5717-4562-b3fc-2c963f66afa6"),
+      apiFetch("/v1/institution/clusters/3fa85f64-5717-4562-b3fc-2c963f66afa6"),
     ).rejects.toBeInstanceOf(ApiError);
 
     const denied = transport.mock.calls
@@ -55,33 +55,33 @@ describe("apiFetch", () => {
       .find((r) => r.name === TelemetryEvents.AuthScopeDenied);
     expect(denied).toBeDefined();
     expect(denied?.tags).toMatchObject({
-      route_template: "/v1/institution/signals/:id",
+      route_template: "/v1/institution/clusters/:id",
       method: "GET",
     });
   });
 
   it("strips query strings from the route template", async () => {
     mockFetch({
-      "/v1/institution/signals": () => errorResponse(403, "denied"),
+      "/v1/institution/clusters": () => errorResponse(403, "denied"),
     });
 
     await expect(
-      apiFetch("/v1/institution/signals?cursor=abc"),
+      apiFetch("/v1/institution/clusters?cursor=abc"),
     ).rejects.toBeInstanceOf(ApiError);
 
     const denied = transport.mock.calls
       .map((c) => c[0] as TelemetryEventRecord)
       .find((r) => r.name === TelemetryEvents.AuthScopeDenied);
-    expect(denied?.tags).toMatchObject({ route_template: "/v1/institution/signals" });
+    expect(denied?.tags).toMatchObject({ route_template: "/v1/institution/clusters" });
   });
 
   it("tags the method as POST when the caller specifies a method", async () => {
     mockFetch({
-      "/v1/official-posts": () => errorResponse(403, "denied"),
+      "/v1/institution/official-updates": () => errorResponse(403, "denied"),
     });
 
     await expect(
-      apiFetch("/v1/official-posts", { method: "POST" }),
+      apiFetch("/v1/institution/official-updates", { method: "POST" }),
     ).rejects.toBeInstanceOf(ApiError);
 
     const denied = transport.mock.calls

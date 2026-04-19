@@ -117,6 +117,16 @@ public interface IInstitutionReadRepository
         Guid clusterId,
         IReadOnlyList<Guid> localityIds,
         CancellationToken ct);
+
+    /// <summary>
+    /// Lists clusters in <c>possible_restoration</c> inside the given
+    /// locality scope. Rows carry the locality display name so the
+    /// dashboard renders without a second round-trip. Ordered ascending
+    /// by <c>possible_restoration_at</c>.
+    /// </summary>
+    Task<IReadOnlyList<InstitutionRestorationRow>> GetRestorationQueueAsync(
+        IReadOnlyList<Guid> localityIds,
+        CancellationToken ct);
 }
 
 /// <summary>Row-shaped projection of an institution jurisdiction.</summary>
@@ -158,3 +168,15 @@ public sealed record InstitutionActivityRow(
     string Message,
     DateTime Timestamp,
     Guid? SignalId);
+
+/// <summary>
+/// Row-shaped projection of a cluster currently in possible_restoration,
+/// enriched with the locality display name.
+/// </summary>
+public sealed record InstitutionRestorationRow(
+    Guid ClusterId,
+    string Title,
+    string Category,
+    Guid? LocalityId,
+    string? LocalityName,
+    DateTime PossibleRestorationAt);

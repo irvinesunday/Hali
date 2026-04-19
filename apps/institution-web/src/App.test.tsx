@@ -16,7 +16,7 @@ function stubInstitutionRoutes(): void {
         summary: { activeSignals: 0, growingSignals: 0, updatesPostedToday: 0, stabilisedToday: 0 },
         areas: [],
       }),
-    "/v1/institution/signals": () => jsonResponse({ items: [], nextCursor: null }),
+    "/v1/institution/clusters": () => jsonResponse({ items: [], nextCursor: null }),
     "/v1/institution/areas": () => jsonResponse({ items: [] }),
   });
 }

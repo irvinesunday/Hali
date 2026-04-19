@@ -68,6 +68,21 @@ internal sealed class FakeParticipationRepo : IParticipationRepository
 		return Task.FromResult(new RestorationCountSnapshot(yes, no, yes + no + unsure));
 	}
 
+	public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+		IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
+	{
+		var result = new Dictionary<Guid, RestorationCountSnapshot>(clusterIds.Count);
+		foreach (var id in clusterIds)
+		{
+			var snapshot = await GetRestorationCountSnapshotAsync(id, ct);
+			if (snapshot.TotalResponses > 0)
+			{
+				result[id] = snapshot;
+			}
+		}
+		return result;
+	}
+
 	public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
 	{
 		IReadOnlyList<Guid> result = _store

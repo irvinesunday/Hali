@@ -87,6 +87,41 @@ public class ParticipationRepository : IParticipationRepository
 		return snapshot ?? new RestorationCountSnapshot(0, 0, 0);
 	}
 
+	public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
+		IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
+	{
+		if (clusterIds.Count == 0)
+		{
+			return new Dictionary<Guid, RestorationCountSnapshot>();
+		}
+		// Filter to restoration participation types in the WHERE clause so
+		// clusters whose only rows are non-restoration participations
+		// (e.g. Affected only) are excluded from the GROUP BY output
+		// entirely. The interface contract is "clusters with no recorded
+		// restoration responses are omitted" — callers materialise the
+		// zero-count snapshot themselves.
+		var snapshots = await _db.Participations
+			.Where(p => clusterIds.Contains(p.ClusterId)
+				&& (p.ParticipationType == ParticipationType.RestorationYes
+					|| p.ParticipationType == ParticipationType.RestorationNo
+					|| p.ParticipationType == ParticipationType.RestorationUnsure))
+			.GroupBy(p => p.ClusterId)
+			.Select(g => new
+			{
+				ClusterId = g.Key,
+				Yes = g.Count(p => p.ParticipationType == ParticipationType.RestorationYes),
+				No = g.Count(p => p.ParticipationType == ParticipationType.RestorationNo),
+				Total = g.Count(),
+			})
+			.ToListAsync(ct);
+		var result = new Dictionary<Guid, RestorationCountSnapshot>(snapshots.Count);
+		foreach (var s in snapshots)
+		{
+			result[s.ClusterId] = new RestorationCountSnapshot(s.Yes, s.No, s.Total);
+		}
+		return result;
+	}
+
 	public async Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
 	{
 		return await _db.Participations

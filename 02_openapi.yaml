@@ -200,6 +200,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit exceeded — max 3 requests per email per 15 minutes (auth.magic_link_rate_limited)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/auth/institution/magic-link/verify:
     post:
@@ -904,11 +909,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  # ── Official Posts ──────────────────────────────────────────────────
-  /v1/official-posts:
+  # ── Institution Official Updates ───────────────────────────────────
+  #
+  # Legacy path `/v1/official-posts` was renamed to
+  # `/v1/institution/official-updates` in Phase 4 to align with
+  # `docs/arch/02_api_contracts.md`. Internal C# class names (e.g.
+  # `OfficialPostsController`, `OfficialPostCreateRequestDto`) retain
+  # the older "official-post" naming; only the wire path changed.
+  /v1/institution/official-updates:
     post:
       tags: [OfficialPosts]
-      summary: Create geo-scoped institution post (requires role=institution)
+      summary: Create geo-scoped institution official update (requires role=institution)
       security:
         - bearerAuth: []
       requestBody:
@@ -1002,10 +1013,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/institution/signals:
+  /v1/institution/clusters:
     get:
       tags: [Institution]
-      summary: Paginated signal list in institution scope
+      summary: Paginated cluster list in institution scope
       security:
         - bearerAuth: []
       parameters:
@@ -1059,10 +1070,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/institution/signals/{clusterId}:
+  /v1/institution/clusters/{clusterId}:
     get:
       tags: [Institution]
-      summary: Signal detail (institution-scoped)
+      summary: Cluster detail (institution-scoped)
       description: |
         Returns the cluster detail shape as `/v1/clusters/{id}`, gated
         by the caller's institution role AND bounded to clusters in
@@ -1099,6 +1110,126 @@ paths:
           description: |
             Cluster not found OR cluster exists but is outside the
             caller's jurisdiction (cluster.not_found).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/clusters/{clusterId}/acknowledge:
+    post:
+      tags: [Institution]
+      summary: Record an explicit institution acknowledgement on a cluster
+      description: |
+        Records an explicit acknowledge action by an institution operator
+        on a cluster in scope. Emits an `institution.action.recorded`
+        outbox event. Passive view tracking
+        (`institution.cluster.viewed`) is intentionally deferred; this
+        endpoint only records explicit operator intent. The action is
+        idempotent: resubmitting with the same `idempotencyKey` returns
+        the existing acknowledgement without emitting a duplicate event.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: clusterId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                idempotencyKey:
+                  type: string
+                  format: uuid
+                  description: |
+                    Client-generated idempotency key. Re-submission
+                    with the same key returns the existing record.
+                note:
+                  type: string
+                  maxLength: 500
+                  description: Optional internal note captured on the acknowledgement.
+      responses:
+        '202':
+          description: Acknowledgement recorded (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledgementId, clusterId, recordedAt]
+                properties:
+                  acknowledgementId: { type: string, format: uuid }
+                  clusterId: { type: string, format: uuid }
+                  recordedAt: { type: string, format: date-time }
+        '400':
+          description: |
+            `idempotencyKey` is missing or blank
+            (institution.acknowledge_missing_idempotency_key).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            Cluster does not exist, or exists but is outside the
+            caller's jurisdiction — returned as 404 (not 403) to
+            deny cross-institution existence probes
+            (institution.acknowledge_out_of_scope).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/institution/restoration:
+    get:
+      tags: [Institution]
+      summary: Restoration queue — clusters in possible_restoration within scope
+      description: |
+        Returns the list of clusters currently in `possible_restoration`
+        state within the caller's jurisdiction, enriched with live
+        restoration vote counts (from the same `RestorationCountSnapshot`
+        the lifecycle engine evaluates). Ordered ascending by
+        `possible_restoration_at` so the longest-sitting clusters surface
+        first. The queue is returned unpaginated — typical depth is small
+        enough that cursor pagination is not required.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: areaId
+          in: query
+          required: false
+          description: Optional jurisdiction filter — scopes the queue to a single institution area.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Restoration queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionRestorationQueueResponse'
+        '401':
+          description: Unauthenticated (auth.unauthenticated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            Caller is missing the institution role
+            (auth.role_insufficient) or has a missing/malformed
+            institution_id claim (auth.institution_id_missing).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1740,6 +1871,7 @@ components:
         - auth.institution_session_idle_timeout
         - auth.institution_session_invalid
         - auth.magic_link_invalid
+        - auth.magic_link_rate_limited
         - auth.otp_invalid
         - auth.otp_rate_limited
         - auth.refresh_token_invalid
@@ -1756,6 +1888,8 @@ components:
         - dependency.spatial_derivation_failed
         - device.missing_fields
         - device.not_found
+        - institution.acknowledge_missing_idempotency_key
+        - institution.acknowledge_out_of_scope
         - institution.invalid_state_filter
         - institution.missing_fields
         - institution_admin.elevation_requires_approval
@@ -2368,6 +2502,70 @@ components:
           type: array
           items: { $ref: '#/components/schemas/InstitutionActivityItem' }
         nextCursor: { type: string, nullable: true }
+
+    InstitutionRestorationQueueItem:
+      type: object
+      required:
+        - clusterId
+        - title
+        - category
+        - possibleRestorationAt
+        - restorationYes
+        - stillAffected
+        - totalRestorationResponses
+      properties:
+        clusterId: { type: string, format: uuid }
+        title: { type: string }
+        category:
+          type: string
+          description: Civic category slug (e.g. `water`, `roads`).
+        localityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Jurisdiction the cluster maps to, if any.
+        localityName:
+          type: string
+          nullable: true
+          description: Display name of the jurisdiction the cluster maps to.
+        possibleRestorationAt:
+          type: string
+          format: date-time
+          description: When the cluster entered possible_restoration state.
+        restorationYes:
+          type: integer
+          minimum: 0
+          description: Count of `restoration_yes` votes recorded on the cluster.
+        stillAffected:
+          type: integer
+          minimum: 0
+          description: Count of `restoration_no` (still-affected) votes recorded on the cluster.
+        totalRestorationResponses:
+          type: integer
+          minimum: 0
+          description: |
+            Total restoration responses recorded (yes + no + unsure).
+            Matches the denominator the lifecycle engine uses to compute
+            the ratio.
+        restorationRatio:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: |
+            Current ratio of `restoration_yes` votes over
+            `totalRestorationResponses`. Null when no responses have
+            been recorded yet (the engine requires at least two before
+            it will evaluate the ratio).
+    InstitutionRestorationQueueResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstitutionRestorationQueueItem'
 
     # ── Users ────────────────────────────────────────────────────────
     NotificationSettings:

@@ -65,8 +65,7 @@ public class CivisEvaluationService : ICivisEvaluationService
             {
                 cluster.State = SignalState.Active;
                 cluster.ActivatedAt = now;
-                await _repo.UpdateClusterAsync(cluster, ct);
-                await _repo.WriteCivisDecisionAsync(new CivisDecision
+                CivisDecision activationDecision = new CivisDecision
                 {
                     Id = Guid.NewGuid(),
                     ClusterId = clusterId,
@@ -82,21 +81,24 @@ public class CivisEvaluationService : ICivisEvaluationService
                         unique_devices = uniqueDevices
                     }),
                     CreatedAt = now
-                }, ct);
-                await _repo.WriteOutboxEventAsync(new OutboxEvent
+                };
+                OutboxEvent activationEvent = new OutboxEvent
                 {
                     Id = Guid.NewGuid(),
-                    AggregateType = "cluster",
+                    AggregateType = "signal_cluster",
                     AggregateId = clusterId,
-                    EventType = "cluster_state_changed",
+                    EventType = ObservabilityEvents.ClusterActivated,
+                    SchemaVersion = ObservabilityEvents.SchemaVersionV1,
                     Payload = JsonSerializer.Serialize(new
                     {
                         cluster_id = clusterId,
-                        from_state = "unconfirmed",
-                        to_state = "active"
+                        from = ClustersMetrics.StateUnconfirmed,
+                        to = ClustersMetrics.StateActive,
+                        reason_code = "macf_met"
                     }),
                     OccurredAt = now
-                }, ct);
+                };
+                await _repo.ApplyClusterTransitionAsync(cluster, activationDecision, activationEvent, ct);
 
                 _logger?.LogInformation(
                     "{EventName} clusterId={ClusterId} localityId={LocalityId} category={Category}",
@@ -213,12 +215,14 @@ public class CivisEvaluationService : ICivisEvaluationService
                 cluster.ResolvedAt = now;
             }
             cluster.UpdatedAt = now;
-            await _repo.UpdateClusterAsync(cluster, ct);
-            await _repo.WriteCivisDecisionAsync(new CivisDecision
+            string decayEventType = toState == SignalState.PossibleRestoration
+                ? ObservabilityEvents.ClusterPossibleRestoration
+                : ObservabilityEvents.ClusterResolvedByDecay;
+            CivisDecision decayDecision = new CivisDecision
             {
                 Id = Guid.NewGuid(),
                 ClusterId = clusterId,
-                DecisionType = ((toState == SignalState.PossibleRestoration) ? "possible_restoration" : "resolved_by_decay"),
+                DecisionType = toState == SignalState.PossibleRestoration ? "possible_restoration" : "resolved_by_decay",
                 ReasonCodes = JsonSerializer.Serialize(new string[1] { "decay_below_threshold" }),
                 Metrics = JsonSerializer.Serialize(new
                 {
@@ -228,28 +232,25 @@ public class CivisEvaluationService : ICivisEvaluationService
                     deactivation_threshold = _options.DeactivationThreshold
                 }),
                 CreatedAt = now
-            }, ct);
-            await _repo.WriteOutboxEventAsync(new OutboxEvent
+            };
+            OutboxEvent decayEvent = new OutboxEvent
             {
                 Id = Guid.NewGuid(),
-                AggregateType = "cluster",
+                AggregateType = "signal_cluster",
                 AggregateId = clusterId,
-                EventType = "cluster_state_changed",
-                // Canonical snake_case wire values via ToCanonicalStateString,
-                // matching the literal `"unconfirmed"` / `"active"` form used
-                // at the activation emission in EvaluateClusterAsync and the
-                // `"active"` / `"possible_restoration"` literals used in
-                // ParticipationService.EvaluateRestorationAsync. Using
-                // `ToString().ToLowerInvariant()` here previously produced
-                // `"possiblerestoration"` (no underscore) — see issue #178.
+                EventType = decayEventType,
+                SchemaVersion = ObservabilityEvents.SchemaVersionV1,
                 Payload = JsonSerializer.Serialize(new
                 {
                     cluster_id = clusterId,
-                    from_state = ToCanonicalStateString(fromState),
-                    to_state = ToCanonicalStateString(toState)
+                    from = ToCanonicalStateString(fromState),
+                    to = ToCanonicalStateString(toState),
+                    trigger = "decay",
+                    reason_code = "decay_below_threshold"
                 }),
                 OccurredAt = now
-            }, ct);
+            };
+            await _repo.ApplyClusterTransitionAsync(cluster, decayDecision, decayEvent, ct);
 
             // Lifecycle counter (R3.c / #168) — fires at the same
             // transition point as the outbox event and the
