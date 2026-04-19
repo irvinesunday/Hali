@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
 
   const clientIp = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
 
-  let persistOk = false
   try {
     const res = await fetch(`${backendUrl}/v1/marketing/signups`, {
       method: 'POST',
@@ -38,9 +37,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({ email }),
     })
-    if (res.ok) {
-      persistOk = true
-    } else {
+    if (!res.ok) {
       const body = await res.text().catch(() => '')
       console.error('[notify] backend persistence non-2xx', res.status, body.slice(0, 500))
       if (res.status === 400) {
@@ -57,7 +54,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Email notification is best-effort. Signup is already durably persisted above.
-  if (persistOk) {
+  {
     const resendApiKey = process.env.RESEND_API_KEY
     const notifyEmail = process.env.NOTIFY_EMAIL
     if (resendApiKey && notifyEmail) {

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Service unavailable' }, { status: 503 })
   }
 
-  const body: InquiryPayload & { at?: string } = {
+  const body: InquiryPayload = {
     name,
     organisation,
     role,
@@ -91,7 +91,6 @@ export async function POST(request: NextRequest) {
 
   const clientIp = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
 
-  let persistOk = false
   try {
     const res = await fetch(`${backendUrl}/v1/marketing/inquiries`, {
       method: 'POST',
@@ -101,9 +100,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(body),
     })
-    if (res.ok) {
-      persistOk = true
-    } else {
+    if (!res.ok) {
       const resBody = await res.text().catch(() => '')
       console.error('[inquiry] backend persistence non-2xx', res.status, resBody.slice(0, 500))
       if (res.status === 400) {
@@ -120,7 +117,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Email notification is best-effort. Inquiry is already durably persisted above.
-  if (persistOk) {
+  {
     const resendApiKey = process.env.RESEND_API_KEY
     const inquiryEmail = process.env.INQUIRY_EMAIL
     if (resendApiKey && inquiryEmail) {
