@@ -111,7 +111,7 @@ public static class InstitutionAuthHelper
         using (var scope = factory.Services.CreateScope())
         {
             var magic = scope.ServiceProvider.GetRequiredService<IMagicLinkService>();
-            MagicLinkIssued issued = await magic.IssueAsync(email, ct);
+            MagicLinkIssued issued = await magic.IssueAsync(email, null, ct);
             plaintextToken = issued.PlaintextToken;
 
             // Defensive re-bind: ensure the magic-link row points at the

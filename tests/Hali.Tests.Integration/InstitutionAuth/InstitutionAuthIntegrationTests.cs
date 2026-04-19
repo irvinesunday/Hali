@@ -366,7 +366,7 @@ public sealed class InstitutionAuthIntegrationTests : IntegrationTestBase
     {
         using var scope = Factory.Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IMagicLinkService>();
-        MagicLinkIssued issued = await service.IssueAsync(account.Email!, default);
+        MagicLinkIssued issued = await service.IssueAsync(account.Email!, null, default);
         // Capture the expiresAt override via direct DB update (the
         // service uses the configured TTL; the test wants to simulate
         // an already-expired token without waiting 15 minutes).
