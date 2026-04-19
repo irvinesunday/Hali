@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
 using Hali.Domain.Entities.Clusters;
-using Hali.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

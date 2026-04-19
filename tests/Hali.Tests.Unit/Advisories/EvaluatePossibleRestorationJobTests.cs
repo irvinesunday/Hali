@@ -20,10 +20,10 @@ namespace Hali.Tests.Unit.Advisories;
 ///
 /// The invariant being enforced (issue #210): every transition routes through
 /// <see cref="IClusterRepository.ApplyClusterTransitionAsync"/>. Each test
-/// asserts that <c>ApplyClusterTransitionAsync</c> was called (by checking
-/// that <c>Decisions</c> and <c>OutboxEvents</c> are populated via the
-/// atomic method), and that the standalone <c>UpdateClusterAsync</c> /
-/// <c>WriteCivisDecisionAsync</c> methods were NOT used for the transition.
+/// asserts that <c>ApplyClusterTransitionAsync</c> was called by checking
+/// <c>Updates</c> (populated exclusively by the atomic method) and that the
+/// standalone <c>UpdateClusterAsync</c> / <c>WriteCivisDecisionAsync</c>
+/// methods were NOT used for the transition.
 /// </summary>
 public class EvaluatePossibleRestorationJobTests
 {
@@ -158,6 +158,7 @@ public class EvaluatePossibleRestorationJobTests
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Null(cluster.PossibleRestorationAt);
         // Invariant: transition committed via ApplyClusterTransitionAsync (atomic)
+        Assert.Single(clusterRepo.Updates);
         Assert.Single(clusterRepo.Decisions);
         Assert.Equal("revert_to_active", clusterRepo.Decisions[0].DecisionType);
         Assert.Single(clusterRepo.OutboxEvents);
@@ -208,6 +209,7 @@ public class EvaluatePossibleRestorationJobTests
         Assert.Equal(SignalState.Resolved, cluster.State);
         Assert.NotNull(cluster.ResolvedAt);
         // Invariant: transition committed via ApplyClusterTransitionAsync (atomic)
+        Assert.Single(clusterRepo.Updates);
         Assert.Single(clusterRepo.Decisions);
         Assert.Equal("resolved", clusterRepo.Decisions[0].DecisionType);
         Assert.Single(clusterRepo.OutboxEvents);
