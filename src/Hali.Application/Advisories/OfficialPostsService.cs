@@ -144,7 +144,9 @@ public class OfficialPostsService : IOfficialPostsService
                         trigger = "institution_restoration_claim",
                         post_id = created.Id
                     }),
-                    OccurredAt = now
+                    OccurredAt = now,
+                    CorrelationId = Guid.NewGuid(),
+                    CausationId = null,
                 };
                 await _clusters.ApplyClusterTransitionAsync(cluster, decision, outboxEvent, ct);
 

@@ -96,7 +96,9 @@ public class CivisEvaluationService : ICivisEvaluationService
                         to = ClustersMetrics.StateActive,
                         reason_code = "macf_met"
                     }),
-                    OccurredAt = now
+                    OccurredAt = now,
+                    CorrelationId = Guid.NewGuid(),
+                    CausationId = null,
                 };
                 await _repo.ApplyClusterTransitionAsync(cluster, activationDecision, activationEvent, ct);
 
@@ -248,7 +250,9 @@ public class CivisEvaluationService : ICivisEvaluationService
                     trigger = "decay",
                     reason_code = "decay_below_threshold"
                 }),
-                OccurredAt = now
+                OccurredAt = now,
+                CorrelationId = Guid.NewGuid(),
+                CausationId = null,
             };
             await _repo.ApplyClusterTransitionAsync(cluster, decayDecision, decayEvent, ct);
 

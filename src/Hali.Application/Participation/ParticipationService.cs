@@ -147,7 +147,9 @@ public class ParticipationService : IParticipationService
                         total_responses = totalResponses,
                         ratio = ratio
                     }),
-                    OccurredAt = now
+                    OccurredAt = now,
+                    CorrelationId = Guid.NewGuid(),
+                    CausationId = null,
                 };
                 await _clusterRepo.ApplyClusterTransitionAsync(cluster, prDecision, prEvent, ct);
 
