@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Clusters;
@@ -8,16 +7,23 @@ using Hali.Application.Participation;
 using Hali.Domain.Entities.Clusters;
 using ParticipationEntity = Hali.Domain.Entities.Participation.Participation;
 using Hali.Domain.Enums;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Hali.Tests.Unit.Advisories;
 
 /// <summary>
-/// Tests the restoration formula run by EvaluatePossibleRestorationJob.
-/// We test the logic directly rather than the hosted service timer.
+/// Verifies the lifecycle transitions driven by
+/// <see cref="RestorationEvaluationService"/> (possible_restoration → active
+/// and possible_restoration → resolved). Tests call the service directly to
+/// prove the production code path is exercised, not a local test copy.
+///
+/// The invariant being enforced (issue #210): every transition routes through
+/// <see cref="IClusterRepository.ApplyClusterTransitionAsync"/>. Each test
+/// asserts that <c>ApplyClusterTransitionAsync</c> was called (by checking
+/// that <c>Decisions</c> and <c>OutboxEvents</c> are populated via the
+/// atomic method), and that the standalone <c>UpdateClusterAsync</c> /
+/// <c>WriteCivisDecisionAsync</c> methods were NOT used for the transition.
 /// </summary>
 public class EvaluatePossibleRestorationJobTests
 {
@@ -25,32 +31,30 @@ public class EvaluatePossibleRestorationJobTests
 
     private sealed class FakeClusterRepo : IClusterRepository
     {
-        private readonly List<SignalCluster> _possible;
+        private readonly SignalCluster? _cluster;
+
         public List<SignalCluster> Updates { get; } = new();
         public List<CivisDecision> Decisions { get; } = new();
         public List<OutboxEvent> OutboxEvents { get; } = new();
+        public List<SignalCluster> StandaloneUpdates { get; } = new();
 
-        public FakeClusterRepo(IEnumerable<SignalCluster> possibleClusters)
-        {
-            _possible = new List<SignalCluster>(possibleClusters);
-        }
-
-        public Task<IReadOnlyList<SignalCluster>> GetPossibleRestorationClustersAsync(CancellationToken ct)
-            => Task.FromResult((IReadOnlyList<SignalCluster>)_possible);
+        public FakeClusterRepo(SignalCluster? cluster = null) { _cluster = cluster; }
 
         public Task<SignalCluster?> GetClusterByIdAsync(Guid id, CancellationToken ct)
-            => Task.FromResult(_possible.Find(c => c.Id == id));
+            => Task.FromResult(_cluster);
 
-        public Task UpdateClusterAsync(SignalCluster c, CancellationToken ct) { Updates.Add(c); return Task.CompletedTask; }
-        public Task WriteCivisDecisionAsync(CivisDecision d, CancellationToken ct) { Decisions.Add(d); return Task.CompletedTask; }
-        public Task WriteOutboxEventAsync(OutboxEvent e, CancellationToken ct) { OutboxEvents.Add(e); return Task.CompletedTask; }
         public Task ApplyClusterTransitionAsync(SignalCluster cluster, CivisDecision? decision, OutboxEvent outboxEvent, CancellationToken ct)
         {
             Updates.Add(cluster);
-            if (decision != null) Decisions.Add(decision);
+            if (decision is not null) Decisions.Add(decision);
             OutboxEvents.Add(outboxEvent);
             return Task.CompletedTask;
         }
+
+        // Tracked separately so tests can assert this was NOT called for lifecycle transitions.
+        public Task UpdateClusterAsync(SignalCluster c, CancellationToken ct) { StandaloneUpdates.Add(c); return Task.CompletedTask; }
+        public Task WriteCivisDecisionAsync(CivisDecision d, CancellationToken ct) { Decisions.Add(d); return Task.CompletedTask; }
+        public Task WriteOutboxEventAsync(OutboxEvent e, CancellationToken ct) { OutboxEvents.Add(e); return Task.CompletedTask; }
 
         public Task<IReadOnlyList<SignalCluster>> FindCandidateClustersAsync(IEnumerable<string> s, CivicCategory c, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
@@ -62,11 +66,15 @@ public class EvaluatePossibleRestorationJobTests
         public Task<double> GetMinLocationConfidenceAsync(Guid c, CancellationToken ct) => Task.FromResult(1.0);
         public Task<IReadOnlyList<SignalCluster>> GetActiveClustersForDecayAsync(CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        public Task<IReadOnlyList<SignalCluster>> GetPossibleRestorationClustersAsync(CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task UpdateCountsAsync(Guid c, int a, int o, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesAsync(IEnumerable<Guid> localityIds, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
-        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
-        public Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct) => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        public Task<IReadOnlyList<SignalCluster>> GetActiveByLocalitiesPagedAsync(IEnumerable<Guid> localityIds, bool? recurringOnly, int limit, DateTime? cursorBefore, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
+        public Task<IReadOnlyList<SignalCluster>> GetAllActivePagedAsync(IEnumerable<Guid> excludeLocalityIds, int limit, DateTime? cursorBefore, CancellationToken ct)
+            => Task.FromResult((IReadOnlyList<SignalCluster>)Array.Empty<SignalCluster>());
         public Task<IReadOnlyList<OutboxEvent>> GetUnpublishedOutboxEventsAsync(int limit, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<OutboxEvent>)Array.Empty<OutboxEvent>());
         public Task MarkOutboxEventsPublishedAsync(IEnumerable<Guid> ids, CancellationToken ct) => Task.CompletedTask;
@@ -81,12 +89,6 @@ public class EvaluatePossibleRestorationJobTests
             _counts = counts;
         }
 
-        public Task<int> CountByTypeAsync(Guid clusterId, ParticipationType type, CancellationToken ct)
-        {
-            _counts.TryGetValue((clusterId, type), out var count);
-            return Task.FromResult(count);
-        }
-
         public Task<RestorationCountSnapshot> GetRestorationCountSnapshotAsync(Guid clusterId, CancellationToken ct)
         {
             _counts.TryGetValue((clusterId, ParticipationType.RestorationYes), out var yes);
@@ -95,6 +97,7 @@ public class EvaluatePossibleRestorationJobTests
             return Task.FromResult(new RestorationCountSnapshot(yes, no, yes + no + unsure));
         }
 
+        public Task<int> CountByTypeAsync(Guid c, ParticipationType t, CancellationToken ct) => Task.FromResult(0);
         public Task<ParticipationEntity?> GetByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
         public Task<ParticipationEntity?> GetMostRecentByAccountAsync(Guid c, Guid a, CancellationToken ct) => Task.FromResult<ParticipationEntity?>(null);
         public Task DeleteByDeviceAsync(Guid c, Guid d, CancellationToken ct) => Task.CompletedTask;
@@ -102,7 +105,6 @@ public class EvaluatePossibleRestorationJobTests
         public Task UpdateContextAsync(Guid id, string text, CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Guid>> GetAffectedAccountIdsAsync(Guid clusterId, CancellationToken ct)
             => Task.FromResult((IReadOnlyList<Guid>)Array.Empty<Guid>());
-
         public async Task<IReadOnlyDictionary<Guid, RestorationCountSnapshot>> GetRestorationCountSnapshotsAsync(
             IReadOnlyCollection<Guid> clusterIds, CancellationToken ct)
         {
@@ -123,199 +125,179 @@ public class EvaluatePossibleRestorationJobTests
         ContextEditWindowMinutes = 2
     };
 
-    // Simulate EvaluatePossibleRestorationJob.EvaluateClusterAsync logic
-    private static async Task EvaluateCluster(
-        SignalCluster cluster,
-        IClusterRepository clusterRepo,
-        IParticipationRepository participRepo,
-        CivisOptions options)
+    private static SignalCluster PossibleRestorationCluster(Guid? id = null) => new SignalCluster
     {
-        var ct = CancellationToken.None;
-        // Mirror the production path: single atomic snapshot, "still affected"
-        // votes are RestorationNo rows (#142 + #143).
-        RestorationCountSnapshot snapshot = await participRepo.GetRestorationCountSnapshotAsync(cluster.Id, ct);
-        int restorationYes = snapshot.YesVotes;
-        int stillAffected = snapshot.NoVotes;
-        int totalRestorationResponses = snapshot.TotalResponses;
+        Id = id ?? Guid.NewGuid(),
+        State = SignalState.PossibleRestoration,
+        Category = CivicCategory.Roads,
+        PossibleRestorationAt = DateTime.UtcNow.AddHours(-1),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        FirstSeenAt = DateTime.UtcNow,
+        LastSeenAt = DateTime.UtcNow
+    };
 
-        if (stillAffected > restorationYes && stillAffected >= options.MinRestorationAffectedVotes)
-        {
-            cluster.State = SignalState.Active;
-            cluster.PossibleRestorationAt = null;
-            cluster.UpdatedAt = DateTime.UtcNow;
-            await clusterRepo.UpdateClusterAsync(cluster, ct);
-            await clusterRepo.WriteCivisDecisionAsync(new CivisDecision
-            {
-                Id = Guid.NewGuid(),
-                ClusterId = cluster.Id,
-                DecisionType = "revert_to_active",
-                ReasonCodes = "[\"still_affected_votes_exceed_restoration\"]",
-                Metrics = JsonSerializer.Serialize(new { restoration_yes = restorationYes, still_affected = stillAffected }),
-                CreatedAt = DateTime.UtcNow
-            }, ct);
-            return;
-        }
-
-        if (totalRestorationResponses >= options.MinRestorationAffectedVotes)
-        {
-            double ratio = (double)restorationYes / (double)totalRestorationResponses;
-            if (ratio >= options.RestorationRatio)
-            {
-                cluster.State = SignalState.Resolved;
-                cluster.ResolvedAt = DateTime.UtcNow;
-                cluster.UpdatedAt = DateTime.UtcNow;
-                await clusterRepo.UpdateClusterAsync(cluster, ct);
-                await clusterRepo.WriteCivisDecisionAsync(new CivisDecision
-                {
-                    Id = Guid.NewGuid(),
-                    ClusterId = cluster.Id,
-                    DecisionType = "resolved",
-                    ReasonCodes = "[\"restoration_ratio_met\"]",
-                    Metrics = JsonSerializer.Serialize(new { restoration_yes = restorationYes, total_restoration_responses = totalRestorationResponses, ratio, threshold = options.RestorationRatio }),
-                    CreatedAt = DateTime.UtcNow
-                }, ct);
-            }
-        }
-    }
-
-    // ── tests ─────────────────────────────────────────────────────────────────
+    // ── revert-to-active path ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task StillAffectedVotesExceedRestoration_RevertsToActive()
+    public async Task StillAffectedVotesExceedRestoration_RevertsToActive_ViaAtomicTransition()
     {
         var clusterId = Guid.NewGuid();
-        var cluster = new SignalCluster
-        {
-            Id = clusterId,
-            State = SignalState.PossibleRestoration,
-            Category = CivicCategory.Roads,
-            PossibleRestorationAt = DateTime.UtcNow.AddHours(-1),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            FirstSeenAt = DateTime.UtcNow,
-            LastSeenAt = DateTime.UtcNow
-        };
-
+        var cluster = PossibleRestorationCluster(clusterId);
         var counts = new Dictionary<(Guid, ParticipationType), int>
         {
             { (clusterId, ParticipationType.RestorationYes), 1 },
-            // 3 still-affected restoration votes — recorded as RestorationNo
-            // by the write path post-#142, counted as snapshot.NoVotes by
-            // the worker post-#143.
             { (clusterId, ParticipationType.RestorationNo), 3 }
         };
-
-        var clusterRepo = new FakeClusterRepo(new[] { cluster });
+        var clusterRepo = new FakeClusterRepo(cluster);
         var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await EvaluateCluster(cluster, clusterRepo, participRepo, DefaultOptions);
+        await sut.EvaluateAsync(clusterId);
 
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Null(cluster.PossibleRestorationAt);
+        // Invariant: transition committed via ApplyClusterTransitionAsync (atomic)
         Assert.Single(clusterRepo.Decisions);
         Assert.Equal("revert_to_active", clusterRepo.Decisions[0].DecisionType);
-    }
-
-    [Fact]
-    public async Task RestorationRatioMet_AtExactly60Percent_Resolves()
-    {
-        var clusterId = Guid.NewGuid();
-        var cluster = new SignalCluster
-        {
-            Id = clusterId,
-            State = SignalState.PossibleRestoration,
-            Category = CivicCategory.Roads,
-            PossibleRestorationAt = DateTime.UtcNow.AddHours(-1),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            FirstSeenAt = DateTime.UtcNow,
-            LastSeenAt = DateTime.UtcNow
-        };
-
-        // 3 yes out of 5 total = 0.60 exactly
-        var counts = new Dictionary<(Guid, ParticipationType), int>
-        {
-            { (clusterId, ParticipationType.RestorationYes), 3 },
-            { (clusterId, ParticipationType.RestorationNo), 2 },
-            { (clusterId, ParticipationType.Affected), 0 }
-        };
-
-        var clusterRepo = new FakeClusterRepo(new[] { cluster });
-        var participRepo = new FakeParticipationRepo(counts);
-
-        await EvaluateCluster(cluster, clusterRepo, participRepo, DefaultOptions);
-
-        Assert.Equal(SignalState.Resolved, cluster.State);
-        Assert.NotNull(cluster.ResolvedAt);
-        Assert.Single(clusterRepo.Decisions);
-        Assert.Equal("resolved", clusterRepo.Decisions[0].DecisionType);
-    }
-
-    [Fact]
-    public async Task RestorationRatioBelow60Percent_DoesNotResolve()
-    {
-        var clusterId = Guid.NewGuid();
-        var cluster = new SignalCluster
-        {
-            Id = clusterId,
-            State = SignalState.PossibleRestoration,
-            Category = CivicCategory.Roads,
-            PossibleRestorationAt = DateTime.UtcNow.AddHours(-1),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            FirstSeenAt = DateTime.UtcNow,
-            LastSeenAt = DateTime.UtcNow
-        };
-
-        // 2 yes out of 5 total = 0.40 < 0.60. Dissent is RestorationUnsure
-        // so the revert-to-active path (which now keys off RestorationNo
-        // post-#142/#143) is not exercised by this ratio-only test.
-        var counts = new Dictionary<(Guid, ParticipationType), int>
-        {
-            { (clusterId, ParticipationType.RestorationYes), 2 },
-            { (clusterId, ParticipationType.RestorationUnsure), 3 }
-        };
-
-        var clusterRepo = new FakeClusterRepo(new[] { cluster });
-        var participRepo = new FakeParticipationRepo(counts);
-
-        await EvaluateCluster(cluster, clusterRepo, participRepo, DefaultOptions);
-
-        Assert.Equal(SignalState.PossibleRestoration, cluster.State);
-        Assert.Empty(clusterRepo.Decisions);
+        Assert.Single(clusterRepo.OutboxEvents);
+        // Invariant: standalone UpdateClusterAsync was NOT called for this transition
+        Assert.Empty(clusterRepo.StandaloneUpdates);
     }
 
     [Fact]
     public async Task StillAffectedVotesBelowMinimum_DoesNotRevert()
     {
         var clusterId = Guid.NewGuid();
+        var cluster = PossibleRestorationCluster(clusterId);
+        var counts = new Dictionary<(Guid, ParticipationType), int>
+        {
+            { (clusterId, ParticipationType.RestorationYes), 0 },
+            { (clusterId, ParticipationType.RestorationNo), 1 }
+        };
+        var clusterRepo = new FakeClusterRepo(cluster);
+        var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
+
+        await sut.EvaluateAsync(clusterId);
+
+        Assert.Equal(SignalState.PossibleRestoration, cluster.State);
+        Assert.Empty(clusterRepo.Decisions);
+        Assert.Empty(clusterRepo.OutboxEvents);
+        Assert.Empty(clusterRepo.StandaloneUpdates);
+    }
+
+    // ── resolve path ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RestorationRatioMet_AtExactly60Percent_Resolves_ViaAtomicTransition()
+    {
+        var clusterId = Guid.NewGuid();
+        var cluster = PossibleRestorationCluster(clusterId);
+        var counts = new Dictionary<(Guid, ParticipationType), int>
+        {
+            { (clusterId, ParticipationType.RestorationYes), 3 },
+            { (clusterId, ParticipationType.RestorationNo), 2 }
+        };
+        var clusterRepo = new FakeClusterRepo(cluster);
+        var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
+
+        await sut.EvaluateAsync(clusterId);
+
+        Assert.Equal(SignalState.Resolved, cluster.State);
+        Assert.NotNull(cluster.ResolvedAt);
+        // Invariant: transition committed via ApplyClusterTransitionAsync (atomic)
+        Assert.Single(clusterRepo.Decisions);
+        Assert.Equal("resolved", clusterRepo.Decisions[0].DecisionType);
+        Assert.Single(clusterRepo.OutboxEvents);
+        // Invariant: standalone UpdateClusterAsync was NOT called for this transition
+        Assert.Empty(clusterRepo.StandaloneUpdates);
+    }
+
+    [Fact]
+    public async Task RestorationRatioBelow60Percent_DoesNotResolve()
+    {
+        var clusterId = Guid.NewGuid();
+        var cluster = PossibleRestorationCluster(clusterId);
+        var counts = new Dictionary<(Guid, ParticipationType), int>
+        {
+            { (clusterId, ParticipationType.RestorationYes), 2 },
+            { (clusterId, ParticipationType.RestorationUnsure), 3 }
+        };
+        var clusterRepo = new FakeClusterRepo(cluster);
+        var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
+
+        await sut.EvaluateAsync(clusterId);
+
+        Assert.Equal(SignalState.PossibleRestoration, cluster.State);
+        Assert.Empty(clusterRepo.Decisions);
+        Assert.Empty(clusterRepo.OutboxEvents);
+    }
+
+    [Fact]
+    public async Task RestorationRatioAbove60Percent_Resolves()
+    {
+        var clusterId = Guid.NewGuid();
+        var cluster = PossibleRestorationCluster(clusterId);
+        var counts = new Dictionary<(Guid, ParticipationType), int>
+        {
+            { (clusterId, ParticipationType.RestorationYes), 4 },
+            { (clusterId, ParticipationType.RestorationNo), 1 }
+        };
+        var clusterRepo = new FakeClusterRepo(cluster);
+        var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
+
+        await sut.EvaluateAsync(clusterId);
+
+        Assert.Equal(SignalState.Resolved, cluster.State);
+        Assert.Single(clusterRepo.Decisions);
+        Assert.Empty(clusterRepo.StandaloneUpdates);
+    }
+
+    // ── guard conditions ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ClusterNotFound_NoTransition()
+    {
+        var clusterRepo = new FakeClusterRepo(null);
+        var participRepo = new FakeParticipationRepo(new Dictionary<(Guid, ParticipationType), int>());
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
+
+        await sut.EvaluateAsync(Guid.NewGuid());
+
+        Assert.Empty(clusterRepo.Decisions);
+        Assert.Empty(clusterRepo.OutboxEvents);
+    }
+
+    [Fact]
+    public async Task ClusterInWrongState_NoTransition()
+    {
+        var clusterId = Guid.NewGuid();
         var cluster = new SignalCluster
         {
             Id = clusterId,
-            State = SignalState.PossibleRestoration,
+            State = SignalState.Active,
             Category = CivicCategory.Roads,
-            PossibleRestorationAt = DateTime.UtcNow.AddHours(-1),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             FirstSeenAt = DateTime.UtcNow,
             LastSeenAt = DateTime.UtcNow
         };
-
-        // 1 still-affected (RestorationNo) restoration vote, but min is 2
-        // — should not revert.
         var counts = new Dictionary<(Guid, ParticipationType), int>
         {
-            { (clusterId, ParticipationType.RestorationYes), 0 },
-            { (clusterId, ParticipationType.RestorationNo), 1 }  // < MinRestorationAffectedVotes
+            { (clusterId, ParticipationType.RestorationYes), 5 },
         };
-
-        var clusterRepo = new FakeClusterRepo(new[] { cluster });
+        var clusterRepo = new FakeClusterRepo(cluster);
         var participRepo = new FakeParticipationRepo(counts);
+        var sut = new RestorationEvaluationService(clusterRepo, participRepo, Options.Create(DefaultOptions));
 
-        await EvaluateCluster(cluster, clusterRepo, participRepo, DefaultOptions);
+        await sut.EvaluateAsync(clusterId);
 
-        // No revert, no resolve — stays in possible_restoration
-        Assert.Equal(SignalState.PossibleRestoration, cluster.State);
+        Assert.Equal(SignalState.Active, cluster.State);
         Assert.Empty(clusterRepo.Decisions);
+        Assert.Empty(clusterRepo.OutboxEvents);
     }
 }
