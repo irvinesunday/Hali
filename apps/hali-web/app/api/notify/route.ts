@@ -1,27 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
-
-export const runtime = 'nodejs'
+import { neon } from '@neondatabase/serverless'
 
 // RFC 5321 caps a full email at 254 chars; reject longer inputs before the
 // regex runs so an adversarial string can't trigger polynomial backtracking.
 const MAX_EMAIL_LENGTH = 254
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-// Append-only NDJSON persistence — one JSON object per line. Eliminates the
-// read-modify-write cycle that the previous JSON-array implementation used,
-// which lost concurrent writes. Async so we don't block the event loop during
-// disk I/O. Note: this is still not safe across multiple serverless instances
-// (no inter-instance locking, and the filesystem is ephemeral on serverless).
-// Acceptable for MVP / local / staging; production durability is a post-launch
-// concern (database or queue).
-async function persistEntry(filename: string, entry: object): Promise<void> {
-  const dataDir = path.resolve(process.cwd(), 'data')
-  await fs.mkdir(dataDir, { recursive: true })
-  const filePath = path.join(dataDir, filename)
-  await fs.appendFile(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
-}
 
 export async function POST(request: NextRequest) {
   let payload: { email?: string }
@@ -35,10 +18,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid email' }, { status: 400 })
   }
 
+  // Persist first — if this fails, return error immediately without attempting email.
   try {
-    await persistEntry('signups.ndjson', { email, at: new Date().toISOString() })
+    const url = process.env.DATABASE_URL
+    if (!url) throw new Error('DATABASE_URL is not set')
+    const sql = neon(url)
+    await sql`
+      CREATE TABLE IF NOT EXISTS email_signups (
+        id         BIGSERIAL    PRIMARY KEY,
+        email      TEXT         NOT NULL,
+        created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `
+    await sql`INSERT INTO email_signups (email) VALUES (${email})`
   } catch (err) {
-    // Persistence is the primary contract — fail closed if we can't save.
     console.error('[notify] persistence failed', err)
     return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 500 })
   }
@@ -61,7 +54,6 @@ export async function POST(request: NextRequest) {
         }),
       })
       if (!res.ok) {
-        // fetch only throws on network errors; surface 4xx/5xx explicitly.
         const body = await res.text().catch(() => '')
         console.warn('[notify] resend delivery non-2xx', res.status, body.slice(0, 500))
       }
@@ -69,6 +61,8 @@ export async function POST(request: NextRequest) {
       // Email delivery is best-effort; signup is already persisted.
       console.warn('[notify] resend delivery failed', err)
     }
+  } else {
+    console.log(`[notify] No Resend config — persisted only: ${email}`)
   }
 
   return NextResponse.json({ success: true })
