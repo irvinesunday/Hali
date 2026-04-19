@@ -240,6 +240,7 @@ public class LifecycleCentralizationTests
         Assert.Single(clusterRepo.Decisions);
         Assert.Equal("possible_restoration", clusterRepo.Decisions[0].DecisionType);
         Assert.Single(clusterRepo.OutboxEvents);
+        Assert.Equal(0, clusterRepo.StandaloneUpdateCallCount);
     }
 
     // ── Path 4: Revert to Active (PossibleRestoration → Active) ─────────────
@@ -267,7 +268,7 @@ public class LifecycleCentralizationTests
         };
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, DefaultOpts);
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Active, cluster.State);
         Assert.Null(cluster.PossibleRestorationAt);
@@ -303,7 +304,7 @@ public class LifecycleCentralizationTests
         };
         var sut = new RestorationEvaluationService(clusterRepo, participRepo, DefaultOpts);
 
-        await sut.EvaluateAsync(clusterId);
+        await sut.EvaluateAsync(cluster);
 
         Assert.Equal(SignalState.Resolved, cluster.State);
         Assert.NotNull(cluster.ResolvedAt);
