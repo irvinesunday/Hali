@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
 
 export const runtime = 'nodejs'
 
-// RFC 5321 caps a full email at 254 chars; reject longer inputs before the
-// regex runs so an adversarial string can't trigger polynomial backtracking.
 const MAX_EMAIL_LENGTH = 254
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const ALLOWED_CATEGORIES = ['roads', 'water', 'electricity', 'transport', 'other'] as const
 type Category = (typeof ALLOWED_CATEGORIES)[number]
 
-// Server-side upper bounds for free-text fields. Keep modest so a single
-// adversarial request can't bloat the persisted file or the notification email.
 const MAX_NAME = 120
 const MAX_ORGANISATION = 200
 const MAX_ROLE = 120
@@ -30,20 +24,6 @@ interface InquiryPayload {
   message?: string
 }
 
-// Append-only NDJSON persistence — one JSON object per line. Eliminates the
-// read-modify-write cycle that the previous JSON-array implementation used,
-// which lost concurrent writes. Async so we don't block the event loop during
-// disk I/O. Note: this is still not safe across multiple serverless instances
-// (no inter-instance locking, and the filesystem is ephemeral on serverless).
-// Acceptable for MVP / local / staging; production durability is a post-launch
-// concern (database or queue).
-async function persistEntry(filename: string, entry: object): Promise<void> {
-  const dataDir = path.resolve(process.cwd(), 'data')
-  await fs.mkdir(dataDir, { recursive: true })
-  const filePath = path.join(dataDir, filename)
-  await fs.appendFile(filePath, JSON.stringify(entry) + '\n', { encoding: 'utf8' })
-}
-
 export async function POST(request: NextRequest) {
   let raw: Record<string, unknown>
   try {
@@ -52,7 +32,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid request' }, { status: 400 })
   }
 
-  // Validate and sanitise required fields
   const name = typeof raw.name === 'string' ? raw.name.trim() : ''
   const organisation = typeof raw.organisation === 'string' ? raw.organisation.trim() : ''
   const role = typeof raw.role === 'string' ? raw.role.trim() : ''
@@ -81,7 +60,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid submission' }, { status: 400 })
   }
 
-  // Validate optional message field
   let message: string | undefined
   if (messageRaw !== undefined) {
     if (typeof messageRaw !== 'string') {
@@ -94,7 +72,13 @@ export async function POST(request: NextRequest) {
     message = trimmed || undefined
   }
 
-  const payload: InquiryPayload & { at: string } = {
+  const backendUrl = process.env.HALI_API_URL
+  if (!backendUrl) {
+    console.error('[inquiry] HALI_API_URL is not configured')
+    return NextResponse.json({ success: false, error: 'Service unavailable' }, { status: 503 })
+  }
+
+  const body: InquiryPayload & { at?: string } = {
     name,
     organisation,
     role,
@@ -102,52 +86,63 @@ export async function POST(request: NextRequest) {
     area,
     category: category as Category,
     ...(message !== undefined ? { message } : {}),
-    at: new Date().toISOString(),
   }
 
+  let persistOk = false
   try {
-    await persistEntry('inquiries.ndjson', payload)
+    const res = await fetch(`${backendUrl}/v1/marketing/inquiries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      persistOk = true
+    } else {
+      const resBody = await res.text().catch(() => '')
+      console.error('[inquiry] backend persistence non-2xx', res.status, resBody.slice(0, 500))
+      return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 502 })
+    }
   } catch (err) {
-    // Persistence is the primary contract — fail closed if we can't save.
-    console.error('[inquiry] persistence failed', err)
-    return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 500 })
+    console.error('[inquiry] backend persistence failed', err)
+    return NextResponse.json({ success: false, error: 'Storage unavailable' }, { status: 502 })
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY
-  const inquiryEmail = process.env.INQUIRY_EMAIL
-  if (resendApiKey && inquiryEmail) {
-    try {
-      const emailText = [
-        `Name: ${name}`,
-        `Organisation: ${organisation}`,
-        `Role: ${role}`,
-        `Email: ${emailRaw}`,
-        `Area: ${area}`,
-        `Category: ${category}`,
-        `Message: ${message ?? 'None'}`,
-      ].join('\n')
+  // Email notification is best-effort. Inquiry is already durably persisted above.
+  if (persistOk) {
+    const resendApiKey = process.env.RESEND_API_KEY
+    const inquiryEmail = process.env.INQUIRY_EMAIL
+    if (resendApiKey && inquiryEmail) {
+      try {
+        const emailText = [
+          `Name: ${name}`,
+          `Organisation: ${organisation}`,
+          `Role: ${role}`,
+          `Email: ${emailRaw}`,
+          `Area: ${area}`,
+          `Category: ${category}`,
+          `Message: ${message ?? 'None'}`,
+        ].join('\n')
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Hali <noreply@gethali.app>',
-          to: [inquiryEmail],
-          subject: `New pilot inquiry — ${organisation} (${category})`,
-          text: emailText,
-        }),
-      })
-      if (!res.ok) {
-        // fetch only throws on network errors; surface 4xx/5xx explicitly.
-        const body = await res.text().catch(() => '')
-        console.warn('[inquiry] resend delivery non-2xx', res.status, body.slice(0, 500))
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'Hali <noreply@gethali.app>',
+            to: [inquiryEmail],
+            subject: `New pilot inquiry — ${organisation} (${category})`,
+            text: emailText,
+          }),
+        })
+        if (!res.ok) {
+          const resBody = await res.text().catch(() => '')
+          console.warn('[inquiry] resend delivery non-2xx', res.status, resBody.slice(0, 500))
+        }
+      } catch (err) {
+        console.warn('[inquiry] resend delivery failed', err)
       }
-    } catch (err) {
-      // Email delivery is best-effort; inquiry is already persisted.
-      console.warn('[inquiry] resend delivery failed', err)
     }
   }
 

@@ -6,6 +6,7 @@ using Hali.Application.Feedback;
 using Hali.Application.Home;
 using Hali.Application.InstitutionAdmin;
 using Hali.Application.Institutions;
+using Hali.Application.Marketing;
 using Hali.Application.Notifications;
 using Hali.Application.Participation;
 using Hali.Application.Signals;
@@ -22,10 +23,12 @@ using Hali.Infrastructure.Data.Auth;
 using Hali.Infrastructure.Data.Clusters;
 using Hali.Infrastructure.Data.DataProtection;
 using Hali.Infrastructure.Data.Feedback;
+using Hali.Infrastructure.Data.Marketing;
 using Hali.Infrastructure.Data.Notifications;
 using Hali.Infrastructure.Data.Participation;
 using Hali.Infrastructure.Data.Signals;
 using Hali.Infrastructure.Feedback;
+using Hali.Infrastructure.Marketing;
 using Hali.Infrastructure.Notifications;
 using Hali.Infrastructure.Participation;
 using Hali.Infrastructure.Signals;
@@ -39,136 +42,143 @@ namespace Hali.Infrastructure.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-	private static readonly NpgsqlSnakeCaseNameTranslator Snake = new();
+    private static readonly NpgsqlSnakeCaseNameTranslator Snake = new();
 
-	public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
-	{
-		// Build all NpgsqlDataSources up front and hand them to a singleton
-		// holder so the DI container owns + disposes the connection pools
-		// on host shutdown (each DbContext resolves its data source from DI).
-		var dataSources = new HaliDataSources(
-			auth: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Auth")!),
-			signals: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Signals")!, useNetTopologySuite: true),
-			clusters: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Clusters")!, useNetTopologySuite: true),
-			participation: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Participation")!),
-			advisories: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Advisories")!, useNetTopologySuite: true),
-			notifications: HaliNpgsqlDataSourceFactory.Build(
-				config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!),
-			feedback: HaliNpgsqlDataSourceFactory.Build(
-				config.GetConnectionString("Feedback") ?? config.GetConnectionString("Auth")!));
-		services.AddSingleton(dataSources);
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
+    {
+        // Build all NpgsqlDataSources up front and hand them to a singleton
+        // holder so the DI container owns + disposes the connection pools
+        // on host shutdown (each DbContext resolves its data source from DI).
+        var dataSources = new HaliDataSources(
+            auth: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Auth")!),
+            signals: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Signals")!, useNetTopologySuite: true),
+            clusters: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Clusters")!, useNetTopologySuite: true),
+            participation: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Participation")!),
+            advisories: HaliNpgsqlDataSourceFactory.Build(config.GetConnectionString("Advisories")!, useNetTopologySuite: true),
+            notifications: HaliNpgsqlDataSourceFactory.Build(
+                config.GetConnectionString("Notifications") ?? config.GetConnectionString("Auth")!),
+            feedback: HaliNpgsqlDataSourceFactory.Build(
+                config.GetConnectionString("Feedback") ?? config.GetConnectionString("Auth")!));
+        services.AddSingleton(dataSources);
 
-		// NOTE: Npgsql enum mapping must be declared on BOTH the data source
-		// (so the ADO.NET layer recognizes the PG type) AND on the EF Core
-		// options builder (so EF's model treats the column as an enum and
-		// not as an int). Missing the EF side produces:
-		//   42804: column "X" is of type X but expression is of type integer
-		services.AddDbContext<AuthDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth, npgsql =>
-			{
-				npgsql.MapEnum<AccountType>("account_type", null, Snake);
-				npgsql.MapEnum<AuthMethod>("auth_method", null, Snake);
-			}));
+        // NOTE: Npgsql enum mapping must be declared on BOTH the data source
+        // (so the ADO.NET layer recognizes the PG type) AND on the EF Core
+        // options builder (so EF's model treats the column as an enum and
+        // not as an int). Missing the EF side produces:
+        //   42804: column "X" is of type X but expression is of type integer
+        services.AddDbContext<AuthDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth, npgsql =>
+            {
+                npgsql.MapEnum<AccountType>("account_type", null, Snake);
+                npgsql.MapEnum<AuthMethod>("auth_method", null, Snake);
+            }));
 
-		// Data Protection key ring (#243). Shares the Auth data source — the
-		// keys protect auth-owned material (TOTP secrets, see #197) and the
-		// table is small enough that a separate pool is not justified. The
-		// DbContext is registered here; the actual AddDataProtection wiring
-		// lives in Program.cs so it can react to IHostEnvironment.
-		services.AddDbContext<HaliDataProtectionDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth));
+        // Data Protection key ring (#243). Shares the Auth data source — the
+        // keys protect auth-owned material (TOTP secrets, see #197) and the
+        // table is small enough that a separate pool is not justified. The
+        // DbContext is registered here; the actual AddDataProtection wiring
+        // lives in Program.cs so it can react to IHostEnvironment.
+        services.AddDbContext<HaliDataProtectionDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Auth));
 
-		services.AddDbContext<SignalsDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Signals, npgsql =>
-			{
-				npgsql.UseNetTopologySuite();
-				npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
-				npgsql.MapEnum<LocationPrecisionType>("location_precision_type", null, Snake);
-			}));
+        services.AddDbContext<SignalsDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Signals, npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
+                npgsql.MapEnum<LocationPrecisionType>("location_precision_type", null, Snake);
+            }));
 
-		services.AddDbContext<ClustersDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Clusters, npgsql =>
-			{
-				npgsql.UseNetTopologySuite();
-				npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
-				npgsql.MapEnum<SignalState>("signal_state", null, Snake);
-			}));
+        services.AddDbContext<ClustersDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Clusters, npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
+                npgsql.MapEnum<SignalState>("signal_state", null, Snake);
+            }));
 
-		services.AddDbContext<ParticipationDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Participation, npgsql =>
-			{
-				npgsql.MapEnum<ParticipationType>("participation_type", null, Snake);
-			}));
+        services.AddDbContext<ParticipationDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Participation, npgsql =>
+            {
+                npgsql.MapEnum<ParticipationType>("participation_type", null, Snake);
+            }));
 
-		string redisUrl = config["Redis:Url"] ?? "localhost:6379";
-		services.AddSingleton((Func<IServiceProvider, IConnectionMultiplexer>)((IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl)));
-		services.AddSingleton((IServiceProvider sp) => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
-		services.AddHttpClient<AfricasTalkingSmsProvider>();
-		services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
-		services.AddScoped<IAuthRepository, AuthRepository>();
-		services.AddScoped<IInstitutionRepository, InstitutionRepository>();
-		// Phase 2 institution auth + session hardening (#197). The email
-		// sender is NOT registered here — Program.cs wires the NoOp
-		// implementation only in Development/Testing and expects a
-		// production-grade binding to be registered explicitly in
-		// Production (failing-fast on missing binding).
-		services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
-		// Phase 2 institution-admin routes (#196).
-		services.AddScoped<IInstitutionAdminRepository, InstitutionAdminRepository>();
-		services.AddSingleton<IRateLimiter, RedisRateLimiter>();
-		services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
-		services.AddScoped<ISignalRepository, SignalRepository>();
-		services.AddScoped<ILocalityLookupRepository, LocalityLookupRepository>();
-		services.AddHttpClient<AnthropicNlpExtractionService>();
-		services.AddScoped<INlpExtractionService, AnthropicNlpExtractionService>();
-		services.AddHttpClient<NominatimGeocodingService>();
-		services.AddScoped<IGeocodingService, NominatimGeocodingService>();
-		services.AddSingleton<IH3CellService, H3CellService>();
-		services.AddScoped<IClusterRepository, ClusterRepository>();
-		services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
-		services.AddScoped<IRestorationEvaluationService, RestorationEvaluationService>();
-		services.AddScoped<IClusteringService, ClusteringService>();
-		services.AddScoped<IOutboxRelayService, OutboxRelayService>();
-		services.Configure<CivisOptions>(config.GetSection("Civis"));
-		services.AddScoped<IParticipationRepository, ParticipationRepository>();
+        string redisUrl = config["Redis:Url"] ?? "localhost:6379";
+        services.AddSingleton((Func<IServiceProvider, IConnectionMultiplexer>)((IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl)));
+        services.AddSingleton((IServiceProvider sp) => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
+        services.AddHttpClient<AfricasTalkingSmsProvider>();
+        services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
+        services.AddScoped<IAuthRepository, AuthRepository>();
+        services.AddScoped<IInstitutionRepository, InstitutionRepository>();
+        // Phase 2 institution auth + session hardening (#197). The email
+        // sender is NOT registered here — Program.cs wires the NoOp
+        // implementation only in Development/Testing and expects a
+        // production-grade binding to be registered explicitly in
+        // Production (failing-fast on missing binding).
+        services.AddScoped<IInstitutionAuthRepository, InstitutionAuthRepository>();
+        // Phase 2 institution-admin routes (#196).
+        services.AddScoped<IInstitutionAdminRepository, InstitutionAdminRepository>();
+        services.AddSingleton<IRateLimiter, RedisRateLimiter>();
+        services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
+        services.AddScoped<ISignalRepository, SignalRepository>();
+        services.AddScoped<ILocalityLookupRepository, LocalityLookupRepository>();
+        services.AddHttpClient<AnthropicNlpExtractionService>();
+        services.AddScoped<INlpExtractionService, AnthropicNlpExtractionService>();
+        services.AddHttpClient<NominatimGeocodingService>();
+        services.AddScoped<IGeocodingService, NominatimGeocodingService>();
+        services.AddSingleton<IH3CellService, H3CellService>();
+        services.AddScoped<IClusterRepository, ClusterRepository>();
+        services.AddScoped<ICivisEvaluationService, CivisEvaluationService>();
+        services.AddScoped<IRestorationEvaluationService, RestorationEvaluationService>();
+        services.AddScoped<IClusteringService, ClusteringService>();
+        services.AddScoped<IOutboxRelayService, OutboxRelayService>();
+        services.Configure<CivisOptions>(config.GetSection("Civis"));
+        services.AddScoped<IParticipationRepository, ParticipationRepository>();
 
-		services.AddDbContext<AdvisoriesDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Advisories, npgsql =>
-			{
-				npgsql.UseNetTopologySuite();
-				npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
-				npgsql.MapEnum<OfficialPostType>("official_post_type", null, Snake);
-			}));
-		services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
+        services.AddDbContext<AdvisoriesDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Advisories, npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MapEnum<CivicCategory>("civic_category", null, Snake);
+                npgsql.MapEnum<OfficialPostType>("official_post_type", null, Snake);
+            }));
+        services.AddScoped<IOfficialPostRepository, OfficialPostRepository>();
 
-		// Institution operational dashboard read repository (#195) — uses the
-		// shared HaliDataSources pool directly via Npgsql so read queries can
-		// join across the Advisories / Clusters / Signals tables without
-		// juggling multiple DbContexts.
-		services.AddScoped<IInstitutionReadRepository, InstitutionReadRepository>();
-		// Idempotency store for `POST /v1/institution/clusters/{id}/acknowledge`
-		// (#207 Phase 4). Redis-backed — matches the SignalIngestionService
-		// pattern so retries inside the ingestion window converge to the
-		// same acknowledgement id without a duplicate outbox event.
-		services.AddScoped<IInstitutionAcknowledgementStore, InstitutionAcknowledgementStore>();
+        // Institution operational dashboard read repository (#195) — uses the
+        // shared HaliDataSources pool directly via Npgsql so read queries can
+        // join across the Advisories / Clusters / Signals tables without
+        // juggling multiple DbContexts.
+        services.AddScoped<IInstitutionReadRepository, InstitutionReadRepository>();
+        // Idempotency store for `POST /v1/institution/clusters/{id}/acknowledge`
+        // (#207 Phase 4). Redis-backed — matches the SignalIngestionService
+        // pattern so retries inside the ingestion window converge to the
+        // same acknowledgement id without a duplicate outbox event.
+        services.AddScoped<IInstitutionAcknowledgementStore, InstitutionAcknowledgementStore>();
 
-		// Home feed read-query service — creates isolated DbContext instances
-		// per query via IServiceScopeFactory to enable safe concurrent reads.
-		services.AddSingleton<IHomeFeedQueryService, HomeFeedQueryService>();
+        // Home feed read-query service — creates isolated DbContext instances
+        // per query via IServiceScopeFactory to enable safe concurrent reads.
+        services.AddSingleton<IHomeFeedQueryService, HomeFeedQueryService>();
 
-		// Notifications
-		services.AddDbContext<NotificationsDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Notifications));
-		services.AddScoped<INotificationRepository, NotificationRepository>();
-		services.AddScoped<IFollowRepository, FollowRepository>();
-		services.AddHttpClient<ExpoPushNotificationService>();
-		services.AddScoped<IPushNotificationService, ExpoPushNotificationService>();
+        // Notifications
+        services.AddDbContext<NotificationsDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Notifications));
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IFollowRepository, FollowRepository>();
+        services.AddHttpClient<ExpoPushNotificationService>();
+        services.AddScoped<IPushNotificationService, ExpoPushNotificationService>();
 
-		// Feedback
-		services.AddDbContext<FeedbackDbContext>((sp, opts) =>
-			opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Feedback));
-		services.AddScoped<IFeedbackService, FeedbackService>();
+        // Feedback
+        services.AddDbContext<FeedbackDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Feedback));
+        services.AddScoped<IFeedbackService, FeedbackService>();
 
-		return services;
-	}
+        // Marketing capture — reuses the Feedback data source (same DB, same
+        // lifecycle). Tables are purpose-specific: early_access_signups and
+        // institution_inquiries. No FK to core domain tables.
+        services.AddDbContext<MarketingDbContext>((sp, opts) =>
+            opts.UseNpgsql(sp.GetRequiredService<HaliDataSources>().Feedback));
+        services.AddScoped<IMarketingService, MarketingService>();
+
+        return services;
+    }
 }
