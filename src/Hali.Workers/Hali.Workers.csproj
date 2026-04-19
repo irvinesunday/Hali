@@ -9,5 +9,7 @@
     <ProjectReference Include="..\Hali.Application\Hali.Application.csproj" />
     <ProjectReference Include="..\Hali.Infrastructure\Hali.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.2" />
   </ItemGroup>
 </Project>

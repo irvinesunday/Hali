@@ -26,13 +26,16 @@ public class ParticipationService : IParticipationService
 
     private readonly ClustersMetrics? _metrics;
 
-    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null, ClustersMetrics? metrics = null)
+    private readonly ICorrelationContext? _correlationContext;
+
+    public ParticipationService(IParticipationRepository participationRepo, IClusterRepository clusterRepo, IOptions<CivisOptions> options, ILogger<ParticipationService>? logger = null, ClustersMetrics? metrics = null, ICorrelationContext? correlationContext = null)
     {
         _participationRepo = participationRepo;
         _clusterRepo = clusterRepo;
         _options = options.Value;
         _logger = logger;
         _metrics = metrics;
+        _correlationContext = correlationContext;
     }
 
     public async Task RecordParticipationAsync(Guid clusterId, Guid deviceId, Guid? accountId, ParticipationType type, string? idempotencyKey, CancellationToken ct)
@@ -148,7 +151,7 @@ public class ParticipationService : IParticipationService
                         ratio = ratio
                     }),
                     OccurredAt = now,
-                    CorrelationId = Guid.NewGuid(),
+                    CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                     CausationId = null,
                 };
                 await _clusterRepo.ApplyClusterTransitionAsync(cluster, prDecision, prEvent, ct);

@@ -26,11 +26,14 @@ public class CivisEvaluationService : ICivisEvaluationService
 
     private readonly ClustersMetrics? _clustersMetrics;
 
+    private readonly ICorrelationContext? _correlationContext;
+
     public CivisEvaluationService(IClusterRepository repo, IOptions<CivisOptions> options,
         INotificationQueueService? notificationQueue = null,
         ILogger<CivisEvaluationService>? logger = null,
         SignalsMetrics? metrics = null,
-        ClustersMetrics? clustersMetrics = null)
+        ClustersMetrics? clustersMetrics = null,
+        ICorrelationContext? correlationContext = null)
     {
         _repo = repo;
         _options = options.Value;
@@ -38,6 +41,7 @@ public class CivisEvaluationService : ICivisEvaluationService
         _logger = logger;
         _metrics = metrics;
         _clustersMetrics = clustersMetrics;
+        _correlationContext = correlationContext;
     }
 
     public async Task EvaluateClusterAsync(Guid clusterId, CancellationToken ct = default(CancellationToken))
@@ -97,7 +101,7 @@ public class CivisEvaluationService : ICivisEvaluationService
                         reason_code = "macf_met"
                     }),
                     OccurredAt = now,
-                    CorrelationId = Guid.NewGuid(),
+                    CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                     CausationId = null,
                 };
                 await _repo.ApplyClusterTransitionAsync(cluster, activationDecision, activationEvent, ct);
@@ -235,6 +239,14 @@ public class CivisEvaluationService : ICivisEvaluationService
                 }),
                 CreatedAt = now
             };
+            // Decay runs from a periodic worker with no parent HTTP request.
+            // Apply the worker correlation rule: if the context carries a
+            // non-empty id (propagated from an outbox event), use it; otherwise
+            // generate a new root so the worker's own job-span is traceable.
+            var decayCorrelationId = _correlationContext is not null
+                && _correlationContext.CurrentCorrelationId != Guid.Empty
+                    ? _correlationContext.CurrentCorrelationId
+                    : _correlationContext?.CreateNewCorrelationId() ?? Guid.NewGuid();
             OutboxEvent decayEvent = new OutboxEvent
             {
                 Id = Guid.NewGuid(),
@@ -251,7 +263,7 @@ public class CivisEvaluationService : ICivisEvaluationService
                     reason_code = "decay_below_threshold"
                 }),
                 OccurredAt = now,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = decayCorrelationId,
                 CausationId = null,
             };
             await _repo.ApplyClusterTransitionAsync(cluster, decayDecision, decayEvent, ct);

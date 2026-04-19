@@ -21,14 +21,17 @@ public class SignalRepository : ISignalRepository
 
     private readonly StackExchange.Redis.IDatabase _redis;
 
+    private readonly ICorrelationContext? _correlationContext;
+
     private const int RateLimitMax = 10;
 
     private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(10L);
 
-    public SignalRepository(SignalsDbContext db, StackExchange.Redis.IDatabase redis)
+    public SignalRepository(SignalsDbContext db, StackExchange.Redis.IDatabase redis, ICorrelationContext? correlationContext = null)
     {
         _db = db;
         _redis = redis;
+        _correlationContext = correlationContext;
     }
 
     public async Task<bool> IdempotencyKeyExistsAsync(string key, CancellationToken ct = default(CancellationToken))
@@ -87,7 +90,7 @@ public class SignalRepository : ISignalRepository
                     category = signal.Category.ToString().ToLowerInvariant()
                 }),
                 OccurredAt = DateTime.UtcNow,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                 CausationId = null,
             };
             _db.OutboxEvents.Add(outbox);

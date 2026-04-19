@@ -30,17 +30,20 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
     private readonly IClusterRepository _clusterRepo;
     private readonly IInstitutionAcknowledgementStore _store;
     private readonly ILogger<InstitutionAcknowledgeService>? _logger;
+    private readonly ICorrelationContext? _correlationContext;
 
     public InstitutionAcknowledgeService(
         IInstitutionReadRepository institutionRepo,
         IClusterRepository clusterRepo,
         IInstitutionAcknowledgementStore store,
-        ILogger<InstitutionAcknowledgeService>? logger = null)
+        ILogger<InstitutionAcknowledgeService>? logger = null,
+        ICorrelationContext? correlationContext = null)
     {
         _institutionRepo = institutionRepo;
         _clusterRepo = clusterRepo;
         _store = store;
         _logger = logger;
+        _correlationContext = correlationContext;
     }
 
     public async Task<InstitutionAcknowledgeResponseDto> AcknowledgeAsync(
@@ -132,7 +135,7 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
                 note,
             }),
             OccurredAt = now,
-            CorrelationId = Guid.NewGuid(),
+            CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
             CausationId = null,
         };
 

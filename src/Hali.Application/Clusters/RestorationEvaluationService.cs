@@ -31,6 +31,7 @@ public class RestorationEvaluationService : IRestorationEvaluationService
     private readonly INotificationQueueService? _notificationQueue;
     private readonly ClustersMetrics? _metrics;
     private readonly ILogger<RestorationEvaluationService>? _logger;
+    private readonly ICorrelationContext? _correlationContext;
 
     public RestorationEvaluationService(
         IClusterRepository clusterRepo,
@@ -38,7 +39,8 @@ public class RestorationEvaluationService : IRestorationEvaluationService
         IOptions<CivisOptions> options,
         INotificationQueueService? notificationQueue = null,
         ClustersMetrics? metrics = null,
-        ILogger<RestorationEvaluationService>? logger = null)
+        ILogger<RestorationEvaluationService>? logger = null,
+        ICorrelationContext? correlationContext = null)
     {
         _clusterRepo = clusterRepo;
         _participationRepo = participationRepo;
@@ -46,6 +48,14 @@ public class RestorationEvaluationService : IRestorationEvaluationService
         _notificationQueue = notificationQueue;
         _metrics = metrics;
         _logger = logger;
+        _correlationContext = correlationContext;
+    }
+
+    private Guid GetWorkerCorrelationId()
+    {
+        if (_correlationContext is null) return Guid.NewGuid();
+        var current = _correlationContext.CurrentCorrelationId;
+        return current != Guid.Empty ? current : _correlationContext.CreateNewCorrelationId();
     }
 
     public async Task EvaluateAsync(SignalCluster cluster, CancellationToken ct = default)
@@ -103,7 +113,7 @@ public class RestorationEvaluationService : IRestorationEvaluationService
                     still_affected = stillAffected
                 }),
                 OccurredAt = now,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = GetWorkerCorrelationId(),
                 CausationId = null,
             };
 
@@ -165,7 +175,7 @@ public class RestorationEvaluationService : IRestorationEvaluationService
                         threshold = _options.RestorationRatio
                     }),
                     OccurredAt = now,
-                    CorrelationId = Guid.NewGuid(),
+                    CorrelationId = GetWorkerCorrelationId(),
                     CausationId = null,
                 };
 

@@ -20,15 +20,18 @@ public class OfficialPostsService : IOfficialPostsService
     private readonly IOfficialPostRepository _repo;
     private readonly IClusterRepository _clusters;
     private readonly ClustersMetrics? _metrics;
+    private readonly ICorrelationContext? _correlationContext;
 
     public OfficialPostsService(
         IOfficialPostRepository repo,
         IClusterRepository clusters,
-        ClustersMetrics? metrics = null)
+        ClustersMetrics? metrics = null,
+        ICorrelationContext? correlationContext = null)
     {
         _repo = repo;
         _clusters = clusters;
         _metrics = metrics;
+        _correlationContext = correlationContext;
     }
 
     public async Task<OfficialPostResponseDto> CreatePostAsync(
@@ -145,7 +148,7 @@ public class OfficialPostsService : IOfficialPostsService
                         post_id = created.Id
                     }),
                     OccurredAt = now,
-                    CorrelationId = Guid.NewGuid(),
+                    CorrelationId = _correlationContext?.CurrentCorrelationId ?? Guid.NewGuid(),
                     CausationId = null,
                 };
                 await _clusters.ApplyClusterTransitionAsync(cluster, decision, outboxEvent, ct);
