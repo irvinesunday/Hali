@@ -10,20 +10,21 @@ namespace Hali.Infrastructure.Data.Auth.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "ip_address",
-                table: "magic_link_tokens",
-                type: "character varying(45)",
-                maxLength: 45,
-                nullable: true);
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE magic_link_tokens
+                ADD COLUMN IF NOT EXISTS ip_address character varying(45);
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ip_address",
-                table: "magic_link_tokens");
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE magic_link_tokens
+                DROP COLUMN IF EXISTS ip_address;
+                """);
         }
     }
 }

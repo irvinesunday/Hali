@@ -53,7 +53,7 @@ public sealed class MagicLinkService : IMagicLinkService
 
         // Rate limit: 3 requests per email per 15 minutes.
         // Key uses the normalised email so case variants don't bypass the limit.
-        string rateLimitKey = $"ml_issue:{normalised}";
+        string rateLimitKey = $"ratelimit:magic_link_issue:{normalised}";
         bool allowed = await _rateLimiter.IsAllowedAsync(
             rateLimitKey,
             MagicLinkRateMaxRequests,
