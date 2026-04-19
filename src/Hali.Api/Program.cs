@@ -19,6 +19,7 @@ using Hali.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -387,7 +388,18 @@ builder.Services.AddHealthChecks()
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "cache" });
 
+// Trust X-Forwarded-For/Proto from the immediate upstream reverse-proxy.
+// KnownNetworks/KnownProxies are left at ASP.NET Core defaults (127.0.0.1/8 +
+// loopback) so only the adjacent proxy is trusted; production deployments should
+// add their load-balancer IPs/CIDRs here via configuration.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
+
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {

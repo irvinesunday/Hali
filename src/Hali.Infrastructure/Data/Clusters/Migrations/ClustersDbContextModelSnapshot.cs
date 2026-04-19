@@ -110,6 +110,16 @@ namespace Hali.Infrastructure.Data.Clusters.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("aggregate_type");
 
+                    b.Property<Guid?>("CausationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("causation_id");
+
+                    b.Property<Guid>("CorrelationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasMaxLength(100)

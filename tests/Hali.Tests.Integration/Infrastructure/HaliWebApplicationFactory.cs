@@ -52,30 +52,30 @@ public sealed class HaliWebApplicationFactory
         {
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:Auth"]          = connStr,
-                ["ConnectionStrings:Signals"]        = connStr,
-                ["ConnectionStrings:Clusters"]       = connStr,
-                ["ConnectionStrings:Participation"]  = connStr,
-                ["ConnectionStrings:Advisories"]     = connStr,
-                ["ConnectionStrings:Notifications"]  = connStr,
-                ["ConnectionStrings:Feedback"]       = connStr,
-                ["ConnectionStrings:Admin"]          = connStr,
-                ["Redis:Url"]                        = TestConstants.RedisUrl,
-                ["Auth:JwtSecret"]                   = TestConstants.JwtSecret,
-                ["Auth:JwtIssuer"]                   = TestConstants.JwtIssuer,
-                ["Auth:JwtAudience"]                 = TestConstants.JwtAudience,
-                ["Auth:JwtExpiryMinutes"]            = "60",
-                ["Auth:RefreshTokenExpiryDays"]      = "30",
-                ["Otp:Length"]                       = "6",
-                ["Otp:TtlMinutes"]                   = "10",
-                ["Otp:MaxRequestsPerWindow"]         = "100",
-                ["Otp:WindowMinutes"]                = "60",
-                ["Anthropic:ApiKey"]                 = "test-key",
-                ["Anthropic:Model"]                  = "claude-sonnet-4-6",
-                ["Civis:JoinThreshold"]              = "0.4",
-                ["Civis:TimeScoreMaxAgeHours"]       = "72",
-                ["Civis:ContextEditWindowMinutes"]   = "2",
-                ["Civis:RestorationRatio"]           = "0.60",
+                ["ConnectionStrings:Auth"] = connStr,
+                ["ConnectionStrings:Signals"] = connStr,
+                ["ConnectionStrings:Clusters"] = connStr,
+                ["ConnectionStrings:Participation"] = connStr,
+                ["ConnectionStrings:Advisories"] = connStr,
+                ["ConnectionStrings:Notifications"] = connStr,
+                ["ConnectionStrings:Feedback"] = connStr,
+                ["ConnectionStrings:Admin"] = connStr,
+                ["Redis:Url"] = TestConstants.RedisUrl,
+                ["Auth:JwtSecret"] = TestConstants.JwtSecret,
+                ["Auth:JwtIssuer"] = TestConstants.JwtIssuer,
+                ["Auth:JwtAudience"] = TestConstants.JwtAudience,
+                ["Auth:JwtExpiryMinutes"] = "60",
+                ["Auth:RefreshTokenExpiryDays"] = "30",
+                ["Otp:Length"] = "6",
+                ["Otp:TtlMinutes"] = "10",
+                ["Otp:MaxRequestsPerWindow"] = "100",
+                ["Otp:WindowMinutes"] = "60",
+                ["Anthropic:ApiKey"] = "test-key",
+                ["Anthropic:Model"] = "claude-sonnet-4-6",
+                ["Civis:JoinThreshold"] = "0.4",
+                ["Civis:TimeScoreMaxAgeHours"] = "72",
+                ["Civis:ContextEditWindowMinutes"] = "2",
+                ["Civis:RestorationRatio"] = "0.60",
                 ["Civis:MinRestorationAffectedVotes"] = "2",
                 // Phase 2 institution auth. TestServer serves over HTTP,
                 // so RequireSecureCookies must be off or the browser /
@@ -142,6 +142,8 @@ public sealed class HaliWebApplicationFactory
             "TRUNCATE official_post_scopes, official_posts, institution_jurisdictions, institutions CASCADE",
             "TRUNCATE notifications, follows CASCADE",
             "TRUNCATE app_feedback CASCADE",
+            "TRUNCATE early_access_signups CASCADE",
+            "TRUNCATE institution_inquiries CASCADE",
         };
 
         foreach (var sql in statements)
@@ -434,6 +436,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
         await ExecAsync(conn, @"
 ALTER TABLE outbox_events
 ADD COLUMN IF NOT EXISTS schema_version varchar(20) NOT NULL DEFAULT '1.0'");
+        // B11 (#276): correlation + causation trace fields. Use the safe
+        // add-nullable → set-default → backfill → set-NOT-NULL pattern so the
+        // test schema matches what the production migration produces and existing
+        // rows are never left with a NULL correlation_id.
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ADD COLUMN IF NOT EXISTS correlation_id uuid NULL");
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ALTER COLUMN correlation_id SET DEFAULT gen_random_uuid()");
+        await ExecAsync(conn, @"
+UPDATE outbox_events SET correlation_id = gen_random_uuid() WHERE correlation_id IS NULL");
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ALTER COLUMN correlation_id SET NOT NULL");
+        await ExecAsync(conn, @"
+ALTER TABLE outbox_events
+ADD COLUMN IF NOT EXISTS causation_id uuid NULL");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_outbox_events_unpublished ON outbox_events(occurred_at) WHERE published_at IS NULL");
 
         // Clusters tables
@@ -602,6 +622,32 @@ CREATE TABLE IF NOT EXISTS app_feedback (
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_submitted_at ON app_feedback(submitted_at)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_rating ON app_feedback(rating)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_app_feedback_screen ON app_feedback(screen)");
+
+        // Marketing capture tables (#281) — mirrored here per the schema-bootstrap
+        // rule in docs/arch/CODING_STANDARDS.md. Shares the Feedback data source.
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS early_access_signups (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email varchar(254) NOT NULL,
+    submitted_at timestamptz NOT NULL
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_early_access_signups_email ON early_access_signups(email)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_early_access_signups_submitted_at ON early_access_signups(submitted_at)");
+
+        await ExecAsync(conn, @"
+CREATE TABLE IF NOT EXISTS institution_inquiries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name varchar(120) NOT NULL,
+    organisation varchar(200) NOT NULL,
+    role varchar(120) NOT NULL,
+    email varchar(254) NOT NULL,
+    area varchar(200) NOT NULL,
+    category varchar(50) NOT NULL,
+    message varchar(500),
+    submitted_at timestamptz NOT NULL
+)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_inquiries_email ON institution_inquiries(email)");
+        await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_institution_inquiries_submitted_at ON institution_inquiries(submitted_at)");
     }
 
     // -------------------------------------------------------------------------

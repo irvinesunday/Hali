@@ -95,6 +95,11 @@ public class ClustersDbContext : DbContext
             e.Property((OutboxEvent x) => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
             e.Property((OutboxEvent x) => x.OccurredAt).HasColumnName("occurred_at");
             e.Property((OutboxEvent x) => x.PublishedAt).HasColumnName("published_at");
+            e.Property((OutboxEvent x) => x.CorrelationId)
+                .HasColumnName("correlation_id")
+                .HasDefaultValueSql("gen_random_uuid()")
+                .ValueGeneratedOnAdd();
+            e.Property((OutboxEvent x) => x.CausationId).HasColumnName("causation_id");
             e.HasIndex((OutboxEvent x) => x.OccurredAt).HasDatabaseName("ix_outbox_events_unpublished").HasFilter("published_at IS NULL");
         });
     }

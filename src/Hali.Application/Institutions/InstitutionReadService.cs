@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Hali.Application.Advisories;
 using Hali.Application.Clusters;
 using Hali.Application.Errors;
+using Hali.Application.Observability;
 using Hali.Application.Participation;
 using Hali.Contracts.Advisories;
 using Hali.Contracts.Clusters;
@@ -166,6 +168,26 @@ public sealed class InstitutionReadService : IInstitutionReadService
         }
 
         string? responseStatus = await _repo.GetLatestResponseStatusForClusterAsync(clusterId, ct);
+
+        // Emit passive view event after all reads succeed and scope is confirmed.
+        // causationId is null — this is triggered by a user read request, not
+        // by a parent outbox event. Does not mutate cluster state.
+        await _clusterRepo.WriteOutboxEventAsync(new OutboxEvent
+        {
+            Id = Guid.NewGuid(),
+            AggregateType = "signal_cluster",
+            AggregateId = clusterId,
+            EventType = ObservabilityEvents.InstitutionClusterViewed,
+            SchemaVersion = ObservabilityEvents.SchemaVersionV1,
+            Payload = JsonSerializer.Serialize(new
+            {
+                cluster_id = clusterId,
+                institution_id = institutionId,
+            }),
+            OccurredAt = DateTime.UtcNow,
+            CorrelationId = Guid.NewGuid(),
+            CausationId = null,
+        }, ct);
 
         return new ClusterResponseDto(
             cluster.Id,

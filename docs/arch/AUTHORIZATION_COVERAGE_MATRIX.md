@@ -95,7 +95,7 @@ Columns:
 |---|---|---|---|---|
 | `GET /v1/institution/overview` | InstitutionController | `[Authorize(Roles = "institution")]` (class-level) | `institution_id` from JWT (ForbiddenException when absent); optional `areaId` validated against caller's jurisdictions server-side | ✓ |
 | `GET /v1/institution/clusters` | InstitutionController | class-level | `institution_id` from JWT; `state` filter validated against canonical enum; locality scope applied server-side before any rows leave the repository. Renamed from `/v1/institution/signals` under the #207 Phase 4 route rename — `signal` terminology is reserved for raw `SignalEvent` rows; `cluster` is the public aggregate | ✓ |
-| `GET /v1/institution/clusters/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe. Renamed from `/v1/institution/signals/{clusterId}` (#207 Phase 4) | ✓ |
+| `GET /v1/institution/clusters/{clusterId}` | InstitutionController | class-level | `institution_id` from JWT; returns 404 for out-of-scope clusters to prevent cross-institution existence probe. Renamed from `/v1/institution/signals/{clusterId}` (#207 Phase 4). Emits passive `institution.cluster.viewed` outbox event after scope gate passes (#275) | ✓ |
 | `GET /v1/institution/restoration` | InstitutionController | class-level | `institution_id` from JWT; returns clusters in `possible_restoration` inside the caller's scope enriched with live restoration vote counts, ordered ascending by `possible_restoration_at`. Optional `areaId` validated against caller's jurisdictions server-side (#207 Phase 4) | ✓ |
 | `POST /v1/institution/clusters/{clusterId}/acknowledge` | InstitutionController | class-level | `institution_id` from JWT; cross-institution clusters return 404 (`institution.acknowledge_out_of_scope`) to deny existence probe; requires `idempotencyKey` body field (`institution.acknowledge_missing_idempotency_key` on absence); idempotent replay returns the existing record without duplicating the outbox event; emits canonical `institution.action.recorded` event with `aggregate_type = signal_cluster` + `schema_version = 1.0` (#207 Phase 4) | ✓ |
 | `POST /v1/institution/official-updates` | OfficialPostsController | `[Authorize(Roles = "institution")]` | `institution_id` from JWT (no header fallback); `localityId` / `corridorName` validated against caller's jurisdiction server-side; supports `isRestorationClaim=true` + `relatedClusterId`; validates optional `responseStatus` (live_update only) + `severity` (scheduled_disruption only). Renamed from `/v1/official-posts` under the #207 Phase 4 route rename — official-writer surface now lives fully under `/v1/institution/*` | ✓ |
@@ -118,6 +118,13 @@ Columns:
 | `POST /v1/institution-admin/users/invite` | InstitutionAdminController | class-level + step-up gate | Writes require session with fresh step-up (bearer-JWT rejected with `auth.step_up_required`); elevation to `institution_admin` at invite time rejected (`institution_admin.elevation_requires_approval`); duplicate email rejected (`institution_admin.email_already_in_use`) | ✓ |
 | `PUT /v1/institution-admin/users/{userId}/role` | InstitutionAdminController | class-level + step-up gate | Elevation blocked (`institution_admin.elevation_requires_approval`); demotion of the last admin blocked (`institution_admin.last_admin_cannot_demote`); cross-institution target → 404 | ✓ |
 | `GET /v1/institution-admin/scope` | InstitutionAdminController | class-level | Returns the acting admin's institution + jurisdictions (scoped server-side) | ✓ |
+
+### Marketing (pre-launch capture — #281)
+
+| Route | Controller | Decorator | Policy / scope | Tested? |
+|---|---|---|---|---|
+| `POST /v1/marketing/signups` | MarketingController | `[AllowAnonymous]` | No actor required; Redis rate-limited at 5 requests per 15 min per client IP; invalid email returns 400; 429 on cap breach | ✓ |
+| `POST /v1/marketing/inquiries` | MarketingController | `[AllowAnonymous]` | No actor required; Redis rate-limited at 3 requests per 15 min per client IP; category validated against allowlist; invalid payload returns 400 | ✓ |
 
 ### Feature flags (new — #194)
 

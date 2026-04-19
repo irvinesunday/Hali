@@ -115,7 +115,9 @@ public class ClusteringService : IClusteringService
                     signal_event_id = signal.Id,
                     raw_confirmation_count = bestCluster.RawConfirmationCount
                 }),
-                OccurredAt = DateTime.UtcNow
+                OccurredAt = DateTime.UtcNow,
+                CorrelationId = Guid.NewGuid(),
+                CausationId = null,
             }, ct);
             await _civis.EvaluateClusterAsync(bestCluster.Id, ct);
 
@@ -177,7 +179,9 @@ public class ClusteringService : IClusteringService
                     signal_event_id = signal.Id,
                     category = signal.Category.ToString().ToLowerInvariant()
                 }),
-                OccurredAt = now
+                OccurredAt = now,
+                CorrelationId = Guid.NewGuid(),
+                CausationId = null,
             }, ct);
             await _civis.EvaluateClusterAsync(newCluster.Id, ct);
 

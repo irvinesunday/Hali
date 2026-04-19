@@ -132,6 +132,8 @@ public sealed class InstitutionAcknowledgeService : IInstitutionAcknowledgeServi
                 note,
             }),
             OccurredAt = now,
+            CorrelationId = Guid.NewGuid(),
+            CausationId = null,
         };
 
         try

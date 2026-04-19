@@ -102,7 +102,9 @@ public class RestorationEvaluationService : IRestorationEvaluationService
                     restoration_yes = restorationYes,
                     still_affected = stillAffected
                 }),
-                OccurredAt = now
+                OccurredAt = now,
+                CorrelationId = Guid.NewGuid(),
+                CausationId = null,
             };
 
             await _clusterRepo.ApplyClusterTransitionAsync(cluster, revertDecision, revertEvent, ct);
@@ -162,7 +164,9 @@ public class RestorationEvaluationService : IRestorationEvaluationService
                         ratio,
                         threshold = _options.RestorationRatio
                     }),
-                    OccurredAt = now
+                    OccurredAt = now,
+                    CorrelationId = Guid.NewGuid(),
+                    CausationId = null,
                 };
 
                 await _clusterRepo.ApplyClusterTransitionAsync(cluster, resolvedDecision, resolvedEvent, ct);
