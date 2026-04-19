@@ -103,8 +103,14 @@ public static class ServiceCollectionExtensions
                 npgsql.MapEnum<ParticipationType>("participation_type", null, Snake);
             }));
 
+        // Redis connection: read URL directly from IConfiguration so the
+        // resolve path is identical to the pre-8C baseline and does not
+        // introduce a dependency on IOptions<RedisOptions> inside the
+        // infrastructure factory. The ValidateOnStart enforcement for Redis
+        // is handled separately in Program.cs via IValidateOptions<RedisOptions>.
         string redisUrl = config["Redis:Url"] ?? "localhost:6379";
-        services.AddSingleton((Func<IServiceProvider, IConnectionMultiplexer>)((IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl)));
+        services.AddSingleton<IConnectionMultiplexer>(
+            (IServiceProvider _) => ConnectionMultiplexer.Connect(redisUrl));
         services.AddSingleton((IServiceProvider sp) => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
         services.AddHttpClient<AfricasTalkingSmsProvider>();
         services.AddScoped<ISmsProvider, AfricasTalkingSmsProvider>();
@@ -119,7 +125,6 @@ public static class ServiceCollectionExtensions
         // Phase 2 institution-admin routes (#196).
         services.AddScoped<IInstitutionAdminRepository, InstitutionAdminRepository>();
         services.AddSingleton<IRateLimiter, RedisRateLimiter>();
-        services.Configure<AfricasTalkingOptions>(config.GetSection("AfricasTalking"));
         services.AddScoped<ISignalRepository, SignalRepository>();
         services.AddScoped<ILocalityLookupRepository, LocalityLookupRepository>();
         services.AddHttpClient<AnthropicNlpExtractionService>();

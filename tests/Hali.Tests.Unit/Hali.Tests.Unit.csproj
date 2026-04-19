@@ -7,6 +7,7 @@
     <NoWarn>$(NoWarn);SER002;SER003;SER006</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\Hali.Domain\Hali.Domain.csproj" />
     <ProjectReference Include="..\..\src\Hali.Application\Hali.Application.csproj" />
     <ProjectReference Include="..\..\src\Hali.Contracts\Hali.Contracts.csproj" />
@@ -18,6 +19,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.5" />
+    <!-- Microsoft.AspNetCore.HttpOverrides is now included via FrameworkReference Microsoft.AspNetCore.App -->
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
     <PackageReference Include="StackExchange.Redis" Version="2.12.14" />
   </ItemGroup>
