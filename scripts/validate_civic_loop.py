@@ -25,7 +25,7 @@ Postgres. It is NOT a replacement for the xUnit integration tests
 sanity check Phase 4 requires before the loop is called proven.
 
 Usage:
-    python3 scripts/validate_civic_loop.py [--dry-run]
+    python3 scripts/validate_civic_loop.py [--dry-run] [--self-test]
 
 Environment variables (all optional; defaults target local dev):
     HALI_API_BASE       Base URL for the API (default http://localhost:8080)
@@ -53,6 +53,11 @@ The --dry-run flag performs config resolution and attempts an API
 health-check only. If the API is unreachable in dry-run mode, the
 script reports a warning and still exits successfully so CI can lint
 the harness without needing a full stack.
+
+The --self-test flag exercises the FailureBundle machinery end-to-end
+without requiring a running API or database. Used in CI to verify the
+diagnostic plumbing is intact. Exits 0 on success, 1 on any assertion
+failure.
 """
 from __future__ import annotations
 
@@ -64,12 +69,125 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Iterable
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import Any, Generator, Iterable
 
 
 class LoopError(RuntimeError):
     """Fails the harness with a clear message."""
 
+
+# ---------------------------------------------------------------------------
+# Diagnostic failure bundle
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FailureBundle:
+    """
+    Structured diagnostic payload emitted to stderr as a single JSON line
+    whenever a step raises an exception.  Every field is always present so
+    downstream tooling can parse without optional-field handling.
+    """
+
+    timestamp_utc: str
+    """ISO-8601 UTC timestamp of the failure."""
+
+    step: str
+    """Human-readable step name (e.g. 'signal_submit')."""
+
+    step_index: int
+    """1-based index of the step within the loop."""
+
+    expected: str
+    """What the step expected to happen."""
+
+    actual: str
+    """What actually happened (exception message or observed value)."""
+
+    last_api_status: int | None
+    """HTTP status code from the most-recent _request() call, or None."""
+
+    last_api_body_excerpt: str
+    """First 400 chars of the last API response body, or empty string."""
+
+    outbox_events_seen: list[str]
+    """Event-type strings observed in the outbox up to the point of failure."""
+
+    cluster_id: str | None
+    """cluster_id in play when the failure occurred, or None."""
+
+    signal_event_id: str | None
+    """signal_event_id from the signal submit step, or None."""
+
+    notes: str
+    """Any operator-facing context the step author chose to attach."""
+
+    def to_json_line(self) -> str:
+        """Serialise to a single-line JSON string suitable for stderr."""
+        return json.dumps(asdict(self), separators=(",", ":"))
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "FailureBundle":
+        return cls(**d)
+
+
+# ---------------------------------------------------------------------------
+# Per-run mutable state — shared between step_context and _request
+# ---------------------------------------------------------------------------
+
+class _StepState:
+    def __init__(self) -> None:
+        self.last_api_status: int | None = None
+        self.last_api_body: str = ""
+        self.outbox_events: list[str] = []
+        self.cluster_id: str | None = None
+        self.signal_event_id: str | None = None
+
+
+# Module-level singleton — reset at the start of each run_loop call.
+_state = _StepState()
+
+
+@contextmanager
+def step_context(
+    step_name: str,
+    step_index: int,
+    expected: str,
+    notes: str = "",
+) -> Generator[None, None, None]:
+    """
+    Context manager that wraps a single harness step.  On any exception the
+    current ``_state`` snapshot is baked into a :class:`FailureBundle`, the
+    bundle is re-raised as a :class:`LoopError` with the JSON line attached
+    so callers can emit it to stderr.
+    """
+    try:
+        yield
+    except LoopError:
+        # Already a LoopError — re-raise as-is; caller will handle it.
+        raise
+    except Exception as exc:
+        bundle = FailureBundle(
+            timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            step=step_name,
+            step_index=step_index,
+            expected=expected,
+            actual=str(exc),
+            last_api_status=_state.last_api_status,
+            last_api_body_excerpt=_state.last_api_body[:400],
+            outbox_events_seen=list(_state.outbox_events),
+            cluster_id=_state.cluster_id,
+            signal_event_id=_state.signal_event_id,
+            notes=notes,
+        )
+        raise LoopError(bundle.to_json_line()) from exc
+
+
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
@@ -106,6 +224,8 @@ def _request(
             status = resp.status
             raw = resp.read().decode("utf-8") if resp.length != 0 else ""
             parsed = json.loads(raw) if raw else None
+            _state.last_api_status = status
+            _state.last_api_body = raw
             return status, parsed
     except urllib.error.HTTPError as err:
         raw = err.read().decode("utf-8", errors="replace")
@@ -113,6 +233,8 @@ def _request(
             parsed = json.loads(raw)
         except Exception:
             parsed = {"raw": raw}
+        _state.last_api_status = err.code
+        _state.last_api_body = raw
         return err.code, parsed
 
 
@@ -192,7 +314,14 @@ def _query_outbox(db_url: str, cluster_id: str) -> list[dict[str, Any]]:
     return rows
 
 
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
+
 def run_loop(*, dry_run: bool) -> None:
+    global _state
+    _state = _StepState()
+
     base_url = _env("HALI_API_BASE", "http://localhost:8080") or "http://localhost:8080"
     if dry_run:
         print(f"[dry-run] base_url={base_url}")
@@ -229,135 +358,234 @@ def run_loop(*, dry_run: bool) -> None:
         "locationLabel": "Test Street",
         "locationSource": "manual",
     }
-    status, body = _request(
-        "POST",
-        f"{base_url}/v1/signals/submit",
-        bearer=citizen_jwt,
-        body=submit_body,
-    )
-    # SignalsController.Submit returns 200 (not 201) per the OpenAPI
-    # contract — POST semantics here are idempotent replay-safe ingest,
-    # not a resource-creation endpoint.
-    _assert(status == 200, f"signal submit expected 200, got {status}: {body}")
-    _assert(isinstance(body, dict) and "clusterId" in body, "signal submit missing clusterId")
-    cluster_id = body["clusterId"]
-    print(f"[ok] signal submitted, cluster_id={cluster_id}")
+    with step_context("signal_submit", 1, "POST /v1/signals/submit returns 200 with clusterId"):
+        status, body = _request(
+            "POST",
+            f"{base_url}/v1/signals/submit",
+            bearer=citizen_jwt,
+            body=submit_body,
+        )
+        # SignalsController.Submit returns 200 (not 201) per the OpenAPI
+        # contract — POST semantics here are idempotent replay-safe ingest,
+        # not a resource-creation endpoint.
+        _assert(status == 200, f"signal submit expected 200, got {status}: {body}")
+        _assert(isinstance(body, dict) and "clusterId" in body, "signal submit missing clusterId")
+        cluster_id = body["clusterId"]
+        signal_event_id = body.get("signalEventId")
+        _state.cluster_id = cluster_id
+        _state.signal_event_id = signal_event_id
+        print(f"[ok] signal submitted, cluster_id={cluster_id}")
 
     # Step 2 — wait for activation.
-    state = _wait_for_state(
-        base_url, citizen_jwt, cluster_id, {"active", "unconfirmed"}, max_wait
-    )
-    if state == "unconfirmed":
-        raise LoopError(
-            "cluster stayed 'unconfirmed' — MACF gate not satisfied; the test "
-            "scenario needs additional affected participations. Raise device "
-            "count or lower MACF threshold for this run."
+    with step_context(
+        "wait_activation", 2, "cluster reaches 'active' state within max_wait seconds",
+        notes="MACF gate must be satisfied; check CIVIS config if cluster stays unconfirmed",
+    ):
+        state = _wait_for_state(
+            base_url, citizen_jwt, cluster_id, {"active", "unconfirmed"}, max_wait
         )
-    print("[ok] cluster activated")
+        if state == "unconfirmed":
+            raise LoopError(
+                "cluster stayed 'unconfirmed' — MACF gate not satisfied; the test "
+                "scenario needs additional affected participations. Raise device "
+                "count or lower MACF threshold for this run."
+            )
+        print("[ok] cluster activated")
 
     # Step 3 — institution dashboard sees the cluster.
-    status, body = _request(
-        "GET",
-        f"{base_url}/v1/institution/clusters?state=active",
-        bearer=institution_jwt,
-    )
-    _assert(status == 200, f"institution list expected 200, got {status}")
-    items = (body or {}).get("items", [])
-    _assert(
-        any(row.get("id") == cluster_id for row in items),
-        "cluster not visible in institution list",
-    )
-    print("[ok] institution can see cluster in scope")
+    with step_context(
+        "institution_view", 3, "GET /v1/institution/clusters returns cluster in list",
+    ):
+        status, body = _request(
+            "GET",
+            f"{base_url}/v1/institution/clusters?state=active",
+            bearer=institution_jwt,
+        )
+        _assert(status == 200, f"institution list expected 200, got {status}")
+        items = (body or {}).get("items", [])
+        _assert(
+            any(row.get("id") == cluster_id for row in items),
+            "cluster not visible in institution list",
+        )
+        print("[ok] institution can see cluster in scope")
 
     # Step 4 — institution acknowledges.
     ack_key = str(uuid.uuid4())
-    status, body = _request(
-        "POST",
-        f"{base_url}/v1/institution/clusters/{cluster_id}/acknowledge",
-        bearer=institution_jwt,
-        body={"idempotencyKey": ack_key, "note": "validation harness"},
-    )
-    _assert(status == 202, f"acknowledge expected 202, got {status}: {body}")
-    ack_id = (body or {}).get("acknowledgementId")
-    _assert(bool(ack_id), "acknowledge missing acknowledgementId")
+    with step_context(
+        "institution_acknowledge", 4,
+        "POST /v1/institution/clusters/{id}/acknowledge returns 202",
+    ):
+        status, body = _request(
+            "POST",
+            f"{base_url}/v1/institution/clusters/{cluster_id}/acknowledge",
+            bearer=institution_jwt,
+            body={"idempotencyKey": ack_key, "note": "validation harness"},
+        )
+        _assert(status == 202, f"acknowledge expected 202, got {status}: {body}")
+        ack_id = (body or {}).get("acknowledgementId")
+        _assert(bool(ack_id), "acknowledge missing acknowledgementId")
 
-    # Idempotency replay must return the same acknowledgementId.
-    status, body = _request(
-        "POST",
-        f"{base_url}/v1/institution/clusters/{cluster_id}/acknowledge",
-        bearer=institution_jwt,
-        body={"idempotencyKey": ack_key, "note": "harness replay"},
-    )
-    _assert(status == 202, f"acknowledge replay expected 202, got {status}")
-    _assert((body or {}).get("acknowledgementId") == ack_id, "acknowledge idempotency broken")
-    print("[ok] acknowledge + idempotent replay")
+    with step_context(
+        "institution_acknowledge_replay", 5,
+        "Idempotent replay returns same acknowledgementId",
+    ):
+        # Idempotency replay must return the same acknowledgementId.
+        status, body = _request(
+            "POST",
+            f"{base_url}/v1/institution/clusters/{cluster_id}/acknowledge",
+            bearer=institution_jwt,
+            body={"idempotencyKey": ack_key, "note": "harness replay"},
+        )
+        _assert(status == 202, f"acknowledge replay expected 202, got {status}")
+        _assert(
+            (body or {}).get("acknowledgementId") == ack_id,
+            "acknowledge idempotency broken",
+        )
+        print("[ok] acknowledge + idempotent replay")
 
     # Step 5 — institution posts a restoration claim.
     claim_key = str(uuid.uuid4())
-    status, body = _request(
-        "POST",
-        f"{base_url}/v1/institution/official-updates",
-        bearer=institution_jwt,
-        body={
-            "type": "live_update",
-            "category": "water",
-            "title": "Crew dispatched",
-            "body": "Service should return shortly.",
-            "relatedClusterId": cluster_id,
-            "isRestorationClaim": True,
-            "responseStatus": "restoration_in_progress",
-            "idempotencyKey": claim_key,
-        },
-    )
-    _assert(status == 201, f"restoration claim expected 201, got {status}: {body}")
-    _wait_for_state(
-        base_url, citizen_jwt, cluster_id, {"possible_restoration"}, max_wait
-    )
-    print("[ok] cluster moved to possible_restoration")
+    with step_context(
+        "restoration_claim", 6,
+        "POST /v1/institution/official-updates with isRestorationClaim=true returns 201 "
+        "and cluster moves to possible_restoration",
+    ):
+        status, body = _request(
+            "POST",
+            f"{base_url}/v1/institution/official-updates",
+            bearer=institution_jwt,
+            body={
+                "type": "live_update",
+                "category": "water",
+                "title": "Crew dispatched",
+                "body": "Service should return shortly.",
+                "relatedClusterId": cluster_id,
+                "isRestorationClaim": True,
+                "responseStatus": "restoration_in_progress",
+                "idempotencyKey": claim_key,
+            },
+        )
+        _assert(status == 201, f"restoration claim expected 201, got {status}: {body}")
+        _wait_for_state(
+            base_url, citizen_jwt, cluster_id, {"possible_restoration"}, max_wait
+        )
+        print("[ok] cluster moved to possible_restoration")
 
     # Step 6 — citizen "restored" responses drive resolution (≥60%, ≥2 votes).
     # Harness does not currently synthesize a second device vote; in a real
     # CI run this is stubbed by a seeded affected participation on a second
     # device. If only one yes vote exists, the cluster stays in
     # possible_restoration and the harness records that outcome.
-    status, body = _request(
-        "POST",
-        f"{base_url}/v1/clusters/{cluster_id}/restoration-response",
-        bearer=citizen_jwt,
-        body={"response": "restored", "idempotencyKey": str(uuid.uuid4())},
-    )
-    _assert(status // 100 == 2, f"restoration response expected 2xx, got {status}")
-    print("[ok] restoration response recorded")
+    with step_context(
+        "restoration_response", 7,
+        "POST /v1/clusters/{id}/restoration-response returns 2xx",
+    ):
+        status, body = _request(
+            "POST",
+            f"{base_url}/v1/clusters/{cluster_id}/restoration-response",
+            bearer=citizen_jwt,
+            body={"response": "restored", "idempotencyKey": str(uuid.uuid4())},
+        )
+        _assert(status // 100 == 2, f"restoration response expected 2xx, got {status}")
+        print("[ok] restoration response recorded")
 
     # Step 7 — outbox assertions.
-    outbox_rows = _query_outbox(db_url, cluster_id)
-    if outbox_rows:
-        event_types = {row["event_type"] for row in outbox_rows}
-        schema_versions = {row["schema_version"] for row in outbox_rows}
-        aggregate_types = {row["aggregate_type"] for row in outbox_rows}
-        _assert(
-            "cluster.activated" in event_types,
-            f"outbox missing cluster.activated ({event_types})",
-        )
-        _assert(
-            "institution.action.recorded" in event_types,
-            f"outbox missing institution.action.recorded ({event_types})",
-        )
-        _assert(
-            "cluster.possible_restoration" in event_types,
-            f"outbox missing cluster.possible_restoration ({event_types})",
-        )
-        _assert(
-            schema_versions == {"1.0"},
-            f"outbox carries non-1.0 schema_versions: {schema_versions}",
-        )
-        _assert(
-            aggregate_types <= {"signal_cluster", "signal_event"},
-            f"outbox carries unexpected aggregate_types: {aggregate_types}",
-        )
-        print(f"[ok] outbox has {len(outbox_rows)} rows with canonical taxonomy")
+    with step_context(
+        "outbox_assert", 8,
+        "outbox_events contains cluster.activated, institution.action.recorded, "
+        "cluster.possible_restoration with schema_version='1.0'",
+    ):
+        outbox_rows = _query_outbox(db_url, cluster_id)
+        _state.outbox_events = [row["event_type"] for row in outbox_rows]
+        if outbox_rows:
+            event_types = {row["event_type"] for row in outbox_rows}
+            schema_versions = {row["schema_version"] for row in outbox_rows}
+            aggregate_types = {row["aggregate_type"] for row in outbox_rows}
+            _assert(
+                "cluster.activated" in event_types,
+                f"outbox missing cluster.activated ({event_types})",
+            )
+            _assert(
+                "institution.action.recorded" in event_types,
+                f"outbox missing institution.action.recorded ({event_types})",
+            )
+            _assert(
+                "cluster.possible_restoration" in event_types,
+                f"outbox missing cluster.possible_restoration ({event_types})",
+            )
+            _assert(
+                schema_versions == {"1.0"},
+                f"outbox carries non-1.0 schema_versions: {schema_versions}",
+            )
+            _assert(
+                aggregate_types <= {"signal_cluster", "signal_event"},
+                f"outbox carries unexpected aggregate_types: {aggregate_types}",
+            )
+            print(f"[ok] outbox has {len(outbox_rows)} rows with canonical taxonomy")
     print("[pass] civic loop completed without regression")
 
+
+# ---------------------------------------------------------------------------
+# Self-test — exercises the FailureBundle machinery without a live stack
+# ---------------------------------------------------------------------------
+
+def run_self_test() -> None:
+    """
+    Constructs a synthetic FailureBundle, round-trips it through JSON, and
+    asserts every required field is present and correctly typed.  Exits 0
+    on success, raises on failure (which causes main() to return 1).
+    """
+    synthetic = FailureBundle(
+        timestamp_utc="2026-01-01T00:00:00+00:00",
+        step="signal_submit",
+        step_index=1,
+        expected="POST /v1/signals/submit returns 200",
+        actual="status 503",
+        last_api_status=503,
+        last_api_body_excerpt='{"error":"service unavailable"}',
+        outbox_events_seen=["cluster.activated"],
+        cluster_id="00000000-0000-0000-0000-000000000001",
+        signal_event_id="00000000-0000-0000-0000-000000000002",
+        notes="self-test synthetic bundle",
+    )
+
+    json_line = synthetic.to_json_line()
+    assert isinstance(json_line, str), "to_json_line must return str"
+    assert "\n" not in json_line, "to_json_line must be a single line"
+
+    parsed = json.loads(json_line)
+    assert isinstance(parsed, dict), "JSON round-trip must produce dict"
+
+    required_fields = [
+        "timestamp_utc",
+        "step",
+        "step_index",
+        "expected",
+        "actual",
+        "last_api_status",
+        "last_api_body_excerpt",
+        "outbox_events_seen",
+        "cluster_id",
+        "signal_event_id",
+        "notes",
+    ]
+    for field in required_fields:
+        assert field in parsed, f"FailureBundle missing field: {field}"
+
+    reconstructed = FailureBundle.from_dict(parsed)
+    assert reconstructed.step == "signal_submit"
+    assert reconstructed.step_index == 1
+    assert reconstructed.last_api_status == 503
+    assert reconstructed.outbox_events_seen == ["cluster.activated"]
+
+    print("[self-test] FailureBundle round-trip: PASS")
+    print(f"[self-test] JSON line length: {len(json_line)} bytes")
+    print("[self-test] all 11 required fields present")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Civic loop validation harness")
@@ -366,11 +594,49 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Resolve configuration and run a health check only",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help=(
+            "Exercise the FailureBundle diagnostic machinery without a "
+            "running API or database. Exits 0 on success."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.self_test:
+        try:
+            run_self_test()
+        except Exception as err:
+            print(f"[self-test FAIL] {err!r}", file=sys.stderr)
+            return 1
+        return 0
+
     try:
         run_loop(dry_run=args.dry_run)
     except LoopError as err:
-        print(f"[fail] {err}", file=sys.stderr)
+        msg = str(err)
+        # If the message looks like a JSON FailureBundle, emit it as-is.
+        # Otherwise wrap it in a minimal bundle so downstream tooling
+        # always gets parseable output.
+        try:
+            json.loads(msg)
+            print(msg, file=sys.stderr)
+        except (json.JSONDecodeError, ValueError):
+            fallback = FailureBundle(
+                timestamp_utc=datetime.now(timezone.utc).isoformat(),
+                step="unknown",
+                step_index=0,
+                expected="loop completion",
+                actual=msg,
+                last_api_status=_state.last_api_status,
+                last_api_body_excerpt=_state.last_api_body[:400],
+                outbox_events_seen=list(_state.outbox_events),
+                cluster_id=_state.cluster_id,
+                signal_event_id=_state.signal_event_id,
+                notes="raised outside a step_context — check for config errors",
+            )
+            print(fallback.to_json_line(), file=sys.stderr)
         return 1
     except Exception as err:  # pragma: no cover - last-resort safety net
         print(f"[fail] unexpected error: {err!r}", file=sys.stderr)
