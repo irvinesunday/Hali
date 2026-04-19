@@ -72,6 +72,14 @@ public static class ObservabilityEvents
     // ── Institution actions ────────────────────────────────────────────────
     public const string InstitutionActionRecorded = "institution.action.recorded";
 
+    /// <summary>
+    /// Emitted when an institution user successfully reads a cluster detail
+    /// within their authorised scope. Passive/observational — no domain
+    /// state is mutated. Distinct from <see cref="InstitutionActionRecorded"/>
+    /// which records explicit operator intent (e.g. acknowledge).
+    /// </summary>
+    public const string InstitutionClusterViewed = "institution.cluster.viewed";
+
     // ── Outbox schema versions ─────────────────────────────────────────────
     // Each canonical event starts at schema_version "1.0" and increments on
     // breaking payload changes. Kept centralised so publishers and consumers
