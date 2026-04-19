@@ -33,7 +33,7 @@ public sealed class DecayActiveClustersJob(
             var correlationId = Guid.NewGuid();
 
             logger.LogInformation(
-                "{EventName} job_type={JobType} attempt={Attempt} queue={Queue} correlation_id={CorrelationId} outcome={Outcome}",
+                "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
                 ObservabilityEvents.WorkerJobStarted, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Started);
 
             var sw = Stopwatch.StartNew();
@@ -52,7 +52,7 @@ public sealed class DecayActiveClustersJob(
                     new KeyValuePair<string, object?>(WorkerMetrics.TagJobType, JobType));
 
                 logger.LogInformation(
-                    "{EventName} job_type={JobType} attempt={Attempt} queue={Queue} correlation_id={CorrelationId} outcome={Outcome} durationMs={DurationMs}",
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome} duration_ms={duration_ms}",
                     ObservabilityEvents.WorkerJobSucceeded, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Succeeded, sw.ElapsedMilliseconds);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -64,7 +64,7 @@ public sealed class DecayActiveClustersJob(
                     new KeyValuePair<string, object?>(WorkerMetrics.TagOutcome, ObservabilityEvents.WorkerOutcome.Cancelled));
 
                 logger.LogInformation(
-                    "{EventName} job_type={JobType} attempt={Attempt} queue={Queue} correlation_id={CorrelationId} outcome={Outcome}",
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
                     ObservabilityEvents.WorkerJobCancelled, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Cancelled);
             }
             catch (Exception ex)
@@ -81,7 +81,7 @@ public sealed class DecayActiveClustersJob(
 
                 logger.LogError(
                     ex,
-                    "{EventName} job_type={JobType} attempt={Attempt} queue={Queue} correlation_id={CorrelationId} outcome={Outcome}",
+                    "{event_name} job_type={job_type} attempt={attempt} queue={queue} correlation_id={correlation_id} outcome={outcome}",
                     ObservabilityEvents.WorkerJobFailed, JobType, attempt, Queue, correlationId, ObservabilityEvents.WorkerOutcome.Failed);
             }
         }
