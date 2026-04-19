@@ -2,7 +2,7 @@
 # workflows (dotnet, pnpm) — they provide one-shot aliases for the few
 # multi-step flows that are easier to memorise than retype.
 
-.PHONY: validate-loop validate-loop-dry test test-unit
+.PHONY: validate-loop validate-loop-dry validate-loop-ci test test-unit
 
 # Walks the full civic loop end-to-end against a running stack. Requires
 # the API at $$HALI_API_BASE (default http://localhost:8080), a
@@ -24,5 +24,11 @@ validate-loop-dry:
 # local Postgres/Redis; this alias is the faster default.
 test-unit:
 	dotnet test tests/Hali.Tests.Unit/Hali.Tests.Unit.csproj
+
+# Runs the dry-run check plus the self-test so CI can verify the harness
+# plumbing without needing a full Postgres/Redis/API stack.
+validate-loop-ci:
+	python3 scripts/validate_civic_loop.py --dry-run
+	python3 scripts/validate_civic_loop.py --self-test
 
 test: test-unit
