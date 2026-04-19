@@ -35,4 +35,11 @@ public class MagicLinkToken
     public DateTime? ConsumedAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// IP address of the client that requested the magic link. Stored for
+    /// audit purposes — helps correlate suspicious link-request patterns
+    /// without exposing plaintext tokens in logs.
+    /// </summary>
+    public string? IpAddress { get; set; }
 }
