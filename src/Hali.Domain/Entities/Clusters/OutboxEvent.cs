@@ -26,7 +26,7 @@ public class OutboxEvent
     /// of events from a single request can be grouped in logs and
     /// monitoring tools.
     /// </summary>
-    public Guid CorrelationId { get; set; }
+    public Guid CorrelationId { get; set; } = Guid.NewGuid();
 
     /// <summary>
     /// The id of the direct parent event that caused this event, or

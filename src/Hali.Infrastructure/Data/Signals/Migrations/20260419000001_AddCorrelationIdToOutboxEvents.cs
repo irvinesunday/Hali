@@ -15,9 +15,25 @@ namespace Hali.Infrastructure.Data.Signals.Migrations
             // (20260419000000_B11_AddCorrelationIdToOutboxEvents) adds the same
             // columns; whichever migrator runs first wins, and the other becomes
             // a no-op via ADD COLUMN IF NOT EXISTS.
+            //
+            // Safe pattern for NOT NULL on a non-empty table:
+            // 1. Add nullable so existing rows are unaffected.
+            // 2. Set the DB default for future inserts.
+            // 3. Back-fill existing rows before enforcing NOT NULL.
+            // 4. Tighten to NOT NULL.
             migrationBuilder.Sql(@"
                 ALTER TABLE outbox_events
-                ADD COLUMN IF NOT EXISTS correlation_id uuid NOT NULL DEFAULT gen_random_uuid();");
+                ADD COLUMN IF NOT EXISTS correlation_id uuid NULL;");
+            migrationBuilder.Sql(@"
+                ALTER TABLE outbox_events
+                ALTER COLUMN correlation_id SET DEFAULT gen_random_uuid();");
+            migrationBuilder.Sql(@"
+                UPDATE outbox_events
+                SET correlation_id = gen_random_uuid()
+                WHERE correlation_id IS NULL;");
+            migrationBuilder.Sql(@"
+                ALTER TABLE outbox_events
+                ALTER COLUMN correlation_id SET NOT NULL;");
             migrationBuilder.Sql(@"
                 ALTER TABLE outbox_events
                 ADD COLUMN IF NOT EXISTS causation_id uuid NULL;");

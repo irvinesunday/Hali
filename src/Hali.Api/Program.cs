@@ -19,6 +19,7 @@ using Hali.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -387,10 +388,18 @@ builder.Services.AddHealthChecks()
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "cache" });
 
+// Trust X-Forwarded-For/Proto from the immediate upstream reverse-proxy.
+// KnownNetworks and KnownProxies are cleared so the options are explicit —
+// deployments that want to restrict trusted proxies should populate them.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
-// Trust X-Forwarded-For from the immediate upstream proxy so RemoteIpAddress
-// reflects the real client IP in rate-limit keys.
 app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())

@@ -48,8 +48,10 @@ namespace Hali.Infrastructure.Data.Signals.Migrations
                         .HasColumnName("causation_id");
 
                     b.Property<Guid>("CorrelationId")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
-                        .HasColumnName("correlation_id");
+                        .HasColumnName("correlation_id")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("EventType")
                         .IsRequired()
