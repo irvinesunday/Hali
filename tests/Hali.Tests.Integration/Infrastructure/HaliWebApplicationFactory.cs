@@ -322,6 +322,8 @@ CREATE TABLE IF NOT EXISTS magic_link_tokens (
 )");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_magic_link_tokens_email ON magic_link_tokens(destination_email)");
         await ExecAsync(conn, "CREATE INDEX IF NOT EXISTS ix_magic_link_tokens_expires ON magic_link_tokens(expires_at)");
+        // #254: ip_address column added to magic_link_tokens for audit trail.
+        await ExecAsync(conn, "ALTER TABLE magic_link_tokens ADD COLUMN IF NOT EXISTS ip_address varchar(45) NULL");
 
         // Data Protection key ring (#243) — mirrors the EF migration.
         // Same schema-bootstrap convention as every other table in this
